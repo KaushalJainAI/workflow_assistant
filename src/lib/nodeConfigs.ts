@@ -21,11 +21,21 @@ export interface ConfigField {
   description?: string;
 }
 
+export interface HandleDefinition {
+  id: string;
+  label?: string;
+  color?: string;
+}
+
 export interface NodeConfig {
   nodeType: string;
   displayName: string;
   description: string;
   fields: ConfigField[];
+  inputs?: HandleDefinition[];
+  outputs?: HandleDefinition[];
+  color?: string;
+  icon?: string;
 }
 
 // Configuration schemas for each node type
@@ -35,6 +45,10 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'manual_trigger',
     displayName: 'Manual Trigger',
     description: 'Start the workflow manually',
+    icon: '▶️',
+    color: '#ff6d5a',
+    inputs: [],
+    outputs: [{ id: 'output-0', label: '' }],
     fields: [
       {
         id: 'name',
@@ -50,6 +64,10 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'schedule_trigger',
     displayName: 'Schedule Trigger',
     description: 'Run workflow on a schedule',
+    icon: '⏰',
+    color: '#ff6d5a',
+    inputs: [],
+    outputs: [{ id: 'output-0', label: '' }],
     fields: [
       {
         id: 'mode',
@@ -83,6 +101,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'webhook',
     displayName: 'Webhook',
     description: 'Receive HTTP requests',
+    inputs: [],
+    outputs: [{ id: 'output-0', label: '' }],
     fields: [
       {
         id: 'httpMethod',
@@ -123,6 +143,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'http_request',
     displayName: 'HTTP Request',
     description: 'Make HTTP requests to any API',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
     fields: [
       {
         id: 'method',
@@ -185,6 +207,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'code',
     displayName: 'Code',
     description: 'Run custom JavaScript code',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
     fields: [
       {
         id: 'language',
@@ -210,6 +234,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'set',
     displayName: 'Set',
     description: 'Set or modify data fields',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
     fields: [
       {
         id: 'mode',
@@ -242,6 +268,11 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'if',
     displayName: 'IF',
     description: 'Conditional branching based on conditions',
+    inputs: [{ id: 'input-0' }],
+    outputs: [
+      { id: 'true', label: 'True', color: '#22c55e' },
+      { id: 'false', label: 'False', color: '#ef4444' },
+    ],
     fields: [
       {
         id: 'conditions',
@@ -267,6 +298,12 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'switch',
     displayName: 'Switch',
     description: 'Multiple conditional branches',
+    inputs: [{ id: 'input-0' }],
+    outputs: [
+      { id: 'output-0', label: 'Case 1', color: '#3b82f6' },
+      { id: 'output-1', label: 'Case 2', color: '#8b5cf6' },
+      { id: 'output-2', label: 'Default', color: '#6b7280' },
+    ],
     fields: [
       {
         id: 'dataPropertyName',
@@ -289,6 +326,11 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'merge',
     displayName: 'Merge',
     description: 'Combine data from multiple inputs',
+    inputs: [
+      { id: 'input-0', label: 'Input 1' },
+      { id: 'input-1', label: 'Input 2' },
+    ],
+    outputs: [{ id: 'output-0' }],
     fields: [
       {
         id: 'mode',
@@ -319,6 +361,11 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'split_in_batches',
     displayName: 'Split In Batches',
     description: 'Process items in batches',
+    inputs: [{ id: 'input-0' }],
+    outputs: [
+      { id: 'loop', label: 'Loop', color: '#f59e0b' },
+      { id: 'done', label: 'Done', color: '#22c55e' },
+    ],
     fields: [
       {
         id: 'batchSize',
@@ -335,6 +382,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'function',
     displayName: 'Function',
     description: 'Transform data with JavaScript',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
     fields: [
       {
         id: 'functionCode',
@@ -349,6 +398,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'item_lists',
     displayName: 'Item Lists',
     description: 'Manipulate item lists',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
     fields: [
       {
         id: 'operation',
@@ -382,6 +433,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'date_time',
     displayName: 'Date & Time',
     description: 'Date and time operations',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
     fields: [
       {
         id: 'operation',

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronUp, Info, Copy, Check, Settings, Database, ArrowRightLeft } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Info, Copy, Check, Settings, Database, ArrowRightLeft, Play } from 'lucide-react';
 import { type Node } from 'reactflow';
 import { getNodeConfig, type ConfigField, type NodeConfig } from '../../lib/nodeConfigs';
+import DataViewer from '../execution/DataViewer';
 
 interface NodeConfigPanelProps {
   isOpen: boolean;
@@ -196,181 +197,197 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
     }
   };
 
+    // State for simulated execution
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<unknown>(null);
+
   // Mock input/output data for demonstration
-  const mockInputData = {
-    items: [
-      {
-        json: {
-          id: 1,
-          name: 'Sample Item',
-          status: 'active',
-        },
-      },
-    ],
+  const getMockData = (type: string, input: any = null) => {
+    if (type === 'manual_trigger') {
+      return [{ json: { timestamp: new Date().toISOString(), trigger: 'manual' } }];
+    }
+    if (type === 'http_request') {
+      return [{ json: { status: 200, data: { id: 101, name: 'Response Data' }, headers: { 'content-type': 'application/json' } } }];
+    }
+    // Generic transformation
+    return [{ json: { ...input?.[0]?.json, processed: true, processedAt: new Date().toISOString() } }];
   };
 
-  const mockOutputData = {
-    items: [
-      {
-        json: {
-          id: 1,
-          name: 'Sample Item',
-          status: 'active',
-          processed: true,
-          timestamp: new Date().toISOString(),
-        },
-      },
-    ],
+  const handleTestStep = () => {
+    if (!node) return;
+    
+    setIsExecuting(true);
+    // Simulate API call
+    setTimeout(() => {
+      const result = getMockData(nodeType, node.data.inputData || [{ json: { sample: 'input' } }]);
+      setExecutionResult(result);
+      setIsExecuting(false);
+      
+      // Update node data with output for persistence (like n8n does temporarily)
+      onUpdateNode(node.id, {
+        ...node.data,
+        outputData: result
+      });
+      
+      // Switch to output tab to show result
+      setActiveTab('output');
+    }, 1500);
   };
 
   if (!isOpen || !node) return null;
 
   return (
-    <div className="absolute top-0 right-0 h-full w-96 bg-card border-l border-border shadow-xl z-50 flex flex-col">
+    <div className="absolute top-0 right-0 h-full w-[450px] bg-card border-l border-border shadow-xl z-50 flex flex-col transition-all animate-in slide-in-from-right duration-300">
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
-              style={{ backgroundColor: `${node.data?.color || '#7b68ee'}30` }}
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-sm"
+              style={{ backgroundColor: `${node.data?.color || '#7b68ee'}20`, color: node.data?.color || '#7b68ee' }}
             >
               {node.data?.icon || '📦'}
             </div>
             <div>
-              <h3 className="font-semibold text-sm">{node.data?.label || 'Node'}</h3>
-              <p className="text-xs text-muted-foreground">
-                {nodeConfig?.description || 'Configure this node'}
+              <h3 className="font-bold text-base">{node.data?.label || 'Node'}</h3>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                {nodeType.replace(/_/g, ' ')}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-muted rounded">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="p-1.5 hover:bg-muted rounded-full transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
-
+        
         {/* Tabs */}
         <div className="flex gap-1 bg-muted/50 p-1 rounded-lg">
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md transition-all ${
               activeTab === 'settings'
-                ? 'bg-background shadow-sm text-foreground'
+                ? 'bg-background shadow-sm text-primary'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Settings className="w-3 h-3" />
-            Settings
+            <Settings className="w-3.5 h-3.5" />
+            Parameters
           </button>
           <button
             onClick={() => setActiveTab('input')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md transition-all ${
               activeTab === 'input'
-                ? 'bg-background shadow-sm text-foreground'
+                ? 'bg-background shadow-sm text-primary'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Database className="w-3 h-3" />
+            <Database className="w-3.5 h-3.5" />
             Input
           </button>
           <button
             onClick={() => setActiveTab('output')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md transition-all ${
               activeTab === 'output'
-                ? 'bg-background shadow-sm text-foreground'
+                ? 'bg-background shadow-sm text-primary'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <ArrowRightLeft className="w-3 h-3" />
+            <ArrowRightLeft className="w-3.5 h-3.5" />
             Output
           </button>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-4 custom-scrollbar">
         {activeTab === 'settings' && nodeConfig && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {nodeConfig.fields.map((field) => (
-              <div key={field.id} className="space-y-1.5">
-                <label className="flex items-center gap-1.5 text-sm font-medium">
-                  {field.label}
-                  {field.required && <span className="text-red-500">*</span>}
+              <div key={field.id} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    {field.label}
+                    {field.required && <span className="text-red-500">*</span>}
+                  </label>
                   {field.description && field.type !== 'checkbox' && (
-                    <span title={field.description} className="cursor-help">
-                      <Info className="w-3 h-3 text-muted-foreground" />
+                    <span title={field.description} className="cursor-help text-muted-foreground hover:text-foreground transition-colors">
+                      <Info className="w-3.5 h-3.5" />
                     </span>
                   )}
-                </label>
+                </div>
                 {renderField(field)}
               </div>
             ))}
 
             {nodeConfig.fields.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <Settings className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No configuration required</p>
+              <div className="text-center py-12 text-muted-foreground">
+                <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Settings className="w-6 h-6 opacity-30" />
+                </div>
+                <p className="text-sm font-medium">No configuration required</p>
+                <p className="text-xs mt-1">This node works with default settings</p>
               </div>
             )}
           </div>
         )}
 
         {activeTab === 'settings' && !nodeConfig && (
-          <div className="text-center py-8 text-muted-foreground">
-            <Info className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Configuration not available for this node type</p>
-            <p className="text-xs mt-1">Node type: {nodeType || 'unknown'}</p>
+          <div className="text-center py-12 text-muted-foreground">
+            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                <Info className="w-6 h-6 opacity-30" />
+            </div>
+            <p className="text-sm font-medium">Configuration not available</p>
+            <p className="text-xs mt-1">Node type: <span className="font-mono">{nodeType || 'unknown'}</span></p>
           </div>
         )}
 
-        {activeTab === 'input' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">Input Data</h4>
-              <span className="text-xs text-muted-foreground">1 item</span>
-            </div>
-            <div className="p-3 bg-muted/50 rounded-lg">
-              <pre className="text-xs font-mono overflow-auto whitespace-pre-wrap">
-                {JSON.stringify(mockInputData, null, 2)}
-              </pre>
-            </div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Info className="w-3 h-3" />
-              This is sample data. Run the workflow to see actual input.
-            </p>
-          </div>
-        )}
-
-        {activeTab === 'output' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">Output Data</h4>
-              <span className="text-xs text-muted-foreground">1 item</span>
-            </div>
-            <div className="p-3 bg-muted/50 rounded-lg">
-              <pre className="text-xs font-mono overflow-auto whitespace-pre-wrap">
-                {JSON.stringify(mockOutputData, null, 2)}
-              </pre>
-            </div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Info className="w-3 h-3" />
-              This is sample data. Run the workflow to see actual output.
-            </p>
+        {(activeTab === 'input' || activeTab === 'output') && (
+          <div className="h-full">
+             <DataViewer 
+               inputData={activeTab === 'input' ? (node.data.inputData || [{ json: { message: 'No input data yet' } }]) : undefined}
+               outputData={activeTab === 'output' ? (node.data.outputData || executionResult) : undefined}
+               nodeName={node.data.label}
+               onPinData={activeTab === 'input' ? (data) => {
+                 onUpdateNode(node.id, { ...node.data, inputData: data });
+               } : undefined}
+               isPinned={!!node.data.inputData}
+             />
           </div>
         )}
       </div>
 
       {/* Footer */}
-      {activeTab === 'settings' && nodeConfig && (
-        <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-border flex gap-3 bg-muted/20">
+        <button
+          onClick={handleTestStep}
+          disabled={isExecuting}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-bold transition-all ${
+            isExecuting 
+                ? 'bg-muted text-muted-foreground cursor-not-allowed' 
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm active:scale-95'
+          }`}
+        >
+           {isExecuting ? (
+             <>
+               <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+               Executing...
+             </>
+           ) : (
+             <>
+               <Play className="w-4 h-4" />
+               Test Step
+             </>
+           )}
+        </button>
+        {activeTab === 'settings' && nodeConfig && (
           <button
             onClick={handleSave}
-            className="w-full py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90 shadow-sm transition-all active:scale-95"
           >
-            Save Configuration
+            Save
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

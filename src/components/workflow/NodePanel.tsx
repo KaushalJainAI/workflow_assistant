@@ -128,9 +128,10 @@ interface NodePanelProps {
   isOpen: boolean;
   onClose: () => void;
   onAddNode: (nodeType: NodeType) => void;
+  isFirstNode?: boolean;
 }
 
-export default function NodePanel({ isOpen, onClose, onAddNode }: NodePanelProps) {
+export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = false }: NodePanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -140,7 +141,9 @@ export default function NodePanel({ isOpen, onClose, onAddNode }: NodePanelProps
     const matchesSearch = node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           node.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = !selectedCategory || node.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesTriggerConstraint = !isFirstNode || node.category === 'Triggers';
+    
+    return matchesSearch && matchesCategory && matchesTriggerConstraint;
   });
 
   const groupedNodes = filteredNodes.reduce((acc, node) => {
@@ -216,7 +219,12 @@ export default function NodePanel({ isOpen, onClose, onAddNode }: NodePanelProps
                 <button
                   key={node.id}
                   onClick={() => onAddNode(node)}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors text-left group"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/reactflow', JSON.stringify(node));
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors text-left group cursor-grab active:cursor-grabbing"
                 >
                   <div 
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"

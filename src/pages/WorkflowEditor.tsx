@@ -12,8 +12,6 @@ import ReactFlow, {
   type Edge,
   type Node,
   type NodeTypes,
-  Handle,
-  Position,
 } from 'reactflow';
 import { Plus, Play, Save, Undo, Redo, Settings, Trash2, Rocket, CheckCircle2, X } from 'lucide-react';
 import NodePanel from '../components/workflow/NodePanel';
@@ -23,82 +21,28 @@ import { useUndoRedo } from '../hooks/useUndoRedo';
 
 import 'reactflow/dist/style.css';
 
-// Custom Node Component
-interface CustomNodeData {
-  label: string;
-  icon?: string;
-  color?: string;
-  nodeType?: string;
-}
+import GenericNode from '../components/workflow/GenericNode';
 
-function CustomNode({ data, selected }: { data: CustomNodeData; selected: boolean }) {
-  return (
-    <div 
-      className={`px-4 py-3 rounded-lg border-2 shadow-md transition-all min-w-[140px] ${
-        selected ? 'border-primary shadow-lg scale-105' : 'border-transparent'
-      }`}
-      style={{ 
-        backgroundColor: data.color || '#7b68ee',
-      }}
-    >
-      <Handle 
-        type="target" 
-        position={Position.Left} 
-        className="w-3 h-3 bg-white border-2 border-gray-400"
-      />
-      <div className="flex items-center gap-2 text-white">
-        {data.icon && <span className="text-lg">{data.icon}</span>}
-        <span className="font-medium text-sm">{data.label}</span>
-      </div>
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        className="w-3 h-3 bg-white border-2 border-gray-400"
-      />
-    </div>
-  );
-}
 
-// Input Node (Trigger)
-function TriggerNode({ data, selected }: { data: CustomNodeData; selected: boolean }) {
-  return (
-    <div 
-      className={`px-4 py-3 rounded-lg border-2 shadow-md transition-all min-w-[140px] ${
-        selected ? 'border-primary shadow-lg scale-105' : 'border-transparent'
-      }`}
-      style={{ backgroundColor: '#ff6d5a' }}
-    >
-      <div className="flex items-center gap-2 text-white">
-        {data.icon && <span className="text-lg">{data.icon}</span>}
-        <span className="font-medium text-sm">{data.label}</span>
-      </div>
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        className="w-3 h-3 bg-white border-2 border-gray-400"
-      />
-    </div>
-  );
-}
 
-const initialNodes: Node<CustomNodeData>[] = [
+const initialNodes: Node<any>[] = [
   { 
     id: '1', 
     position: { x: 100, y: 200 }, 
-    data: { label: 'Manual Trigger', icon: '▶️', color: '#ff6d5a' }, 
-    type: 'trigger',
+    data: { label: 'Manual Trigger', icon: '▶️', color: '#ff6d5a', nodeType: 'manual_trigger' }, 
+    type: 'generic',
   },
   { 
     id: '2', 
     position: { x: 350, y: 200 }, 
-    data: { label: 'HTTP Request', icon: '🌐', color: '#7b68ee' },
-    type: 'custom',
+    data: { label: 'HTTP Request', icon: '🌐', color: '#7b68ee', nodeType: 'http_request' },
+    type: 'generic',
   },
   { 
     id: '3', 
     position: { x: 600, y: 200 }, 
-    data: { label: 'Set Data', icon: '📝', color: '#20b2aa' },
-    type: 'custom',
+    data: { label: 'Set Data', icon: '📝', color: '#20b2aa', nodeType: 'set' },
+    type: 'generic',
   },
 ];
 
@@ -106,6 +50,14 @@ const initialEdges: Edge[] = [
   { id: 'e1-2', source: '1', target: '2', animated: true, style: { stroke: '#888', strokeWidth: 2 } },
   { id: 'e2-3', source: '2', target: '3', animated: true, style: { stroke: '#888', strokeWidth: 2 } },
 ];
+
+const nodeTypes: NodeTypes = {
+  generic: GenericNode,
+  custom: GenericNode,
+  trigger: GenericNode,
+  conditional: GenericNode,
+  switch: GenericNode,
+};
 
 export default function WorkflowEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -124,11 +76,6 @@ export default function WorkflowEditor() {
   const undoRedo = useUndoRedo({ maxHistory: 50 });
   const isFirstRender = useRef(true);
 
-  const nodeTypes: NodeTypes = useMemo(() => ({
-    custom: CustomNode,
-    trigger: TriggerNode,
-  }), []);
-
   const onConnect = useCallback(
     (params: Edge | Connection) => setEdges((eds) => addEdge({ 
       ...params, 
@@ -140,6 +87,15 @@ export default function WorkflowEditor() {
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
+    // If the node is already selected, clicking it again can open the panel
+    // but n8n usually uses double click or a dedicated button.
+    // We'll stick to double click but keep this for selection state.
+  }, []);
+
+  const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node);
+    setConfigPanelOpen(true);
+    setNodePanelOpen(false);
   }, []);
 
   const onPaneClick = useCallback(() => {
@@ -147,9 +103,19 @@ export default function WorkflowEditor() {
   }, []);
 
   const handleAddNode = useCallback((nodeType: { id: string; name: string; icon: string; color: string }) => {
-    const newNode: Node<CustomNodeData> = {
+    // Determine the correct node type based on the node id
+    let type = 'custom';
+    if (nodeType.id.includes('trigger')) {
+      type = 'trigger';
+    } else if (nodeType.id === 'if') {
+      type = 'conditional';
+    } else if (nodeType.id === 'switch') {
+      type = 'switch';
+    }
+
+    const newNode: Node<any> = {
       id: `node-${Date.now()}`,
-      type: nodeType.id.includes('trigger') ? 'trigger' : 'custom',
+      type,
       position: { 
         x: Math.random() * 400 + 200, 
         y: Math.random() * 200 + 100 
@@ -158,7 +124,8 @@ export default function WorkflowEditor() {
         label: nodeType.name, 
         icon: nodeType.icon, 
         color: nodeType.color,
-        nodeType: nodeType.id 
+        nodeType: nodeType.id,
+        ...(type === 'switch' ? { outputs: ['Case 1', 'Case 2', 'Default'] } : {}),
       },
     };
     setNodes((nds) => [...nds, newNode]);
@@ -173,6 +140,45 @@ export default function WorkflowEditor() {
       setConfigPanelOpen(false);
     }
   }, [selectedNode, setNodes, setEdges]);
+
+  // Drag and drop handlers for adding nodes from panel
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    
+    const nodeData = event.dataTransfer.getData('application/reactflow');
+    if (!nodeData) return;
+
+    try {
+      const nodeType = JSON.parse(nodeData);
+      const reactFlowBounds = event.currentTarget.getBoundingClientRect();
+      const position = {
+        x: event.clientX - reactFlowBounds.left - 70,
+        y: event.clientY - reactFlowBounds.top - 25,
+      };
+
+      const newNode: Node<any> = {
+        id: `node-${Date.now()}`,
+        type: nodeType.id.includes('trigger') ? 'trigger' : 'custom',
+        position,
+        data: {
+          label: nodeType.name,
+          icon: nodeType.icon,
+          color: nodeType.color,
+          nodeType: nodeType.id,
+        },
+      };
+
+      setNodes((nds) => [...nds, newNode]);
+      setNodePanelOpen(false);
+    } catch (e) {
+      console.error('Failed to parse dropped node data', e);
+    }
+  }, [setNodes]);
 
   // Handle opening the config panel
   const handleOpenConfigPanel = useCallback(() => {
@@ -252,7 +258,7 @@ export default function WorkflowEditor() {
   // Handle duplicate
   const handleDuplicate = useCallback(() => {
     if (selectedNode) {
-      const newNode: Node<CustomNodeData> = {
+      const newNode: Node<any> = {
         ...selectedNode,
         id: `node-${Date.now()}`,
         position: {
@@ -276,7 +282,7 @@ export default function WorkflowEditor() {
   // Handle paste
   const handlePaste = useCallback(() => {
     if (copiedNode) {
-      const newNode: Node<CustomNodeData> = {
+      const newNode: Node<any> = {
         ...copiedNode,
         id: `node-${Date.now()}`,
         position: {
@@ -403,7 +409,11 @@ export default function WorkflowEditor() {
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 relative">
+      <div 
+        className="flex-1 relative"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -411,6 +421,7 @@ export default function WorkflowEditor() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
+          onNodeDoubleClick={onNodeDoubleClick}
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
@@ -430,13 +441,58 @@ export default function WorkflowEditor() {
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#ddd" />
           
           {/* Add Node Button */}
-          <Panel position="bottom-center" className="mb-4">
+          <Panel position="bottom-center" className="mb-4 flex items-center gap-2">
             <button 
               onClick={() => setNodePanelOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all hover:scale-105"
             >
               <Plus className="w-5 h-5" />
               Add Node
+            </button>
+          </Panel>
+          
+          {/* Canvas Controls Panel */}
+          <Panel position="top-right" className="flex flex-col gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+            <button
+              onClick={() => {
+                const workflow = { name: workflowName, nodes, edges };
+                const blob = new Blob([JSON.stringify(workflow, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${workflowName.replace(/\s+/g, '-').toLowerCase()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="p-2 hover:bg-muted rounded-md text-xs"
+              title="Export Workflow"
+            >
+              📤 Export
+            </button>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = async (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (!file) return;
+                  const text = await file.text();
+                  try {
+                    const workflow = JSON.parse(text);
+                    if (workflow.nodes) setNodes(workflow.nodes);
+                    if (workflow.edges) setEdges(workflow.edges);
+                    if (workflow.name) setWorkflowName(workflow.name);
+                  } catch {
+                    console.error('Invalid workflow file');
+                  }
+                };
+                input.click();
+              }}
+              className="p-2 hover:bg-muted rounded-md text-xs"
+              title="Import Workflow"
+            >
+              📥 Import
             </button>
           </Panel>
         </ReactFlow>

@@ -13,12 +13,13 @@ import {
   Sun,
   Monitor
 } from 'lucide-react';
+import { useTheme } from '../hooks/useTheme';
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api';
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  const { theme, setTheme } = useTheme();
 
   const tabs = [
     { id: 'general' as const, label: 'General', icon: SettingsIcon },

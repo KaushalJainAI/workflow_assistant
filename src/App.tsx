@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 import Sidebar from './components/layout/Sidebar';
 import AIChatPanel from './components/layout/AIChatPanel';
 import WorkflowsDashboard from './pages/WorkflowsDashboard';
@@ -27,22 +28,24 @@ const Layout = () => {
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Navigate to="/workflows" replace />} />
-          <Route path="/workflows" element={<WorkflowsDashboard />} />
-          <Route path="/workflow/:id" element={<WorkflowEditor />} />
-          <Route path="/workflows/new" element={<WorkflowEditor />} />
-          <Route path="/ai-chat" element={<AIChat />} />
-          <Route path="/executions" element={<Executions />} />
+    <ThemeProvider>
+      <Router>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Navigate to="/workflows" replace />} />
+            <Route path="/workflows" element={<WorkflowsDashboard />} />
+            <Route path="/workflow/:id" element={<WorkflowEditor />} />
+            <Route path="/workflows/new" element={<WorkflowEditor />} />
+            <Route path="/ai-chat" element={<AIChat />} />
+            <Route path="/executions" element={<Executions />} />
 
-          <Route path="/documents" element={<Documents />} />
-          <Route path="/credentials" element={<Credentials />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-      </Routes>
-    </Router>
+            <Route path="/documents" element={<Documents />} />
+            <Route path="/credentials" element={<Credentials />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
 }
 

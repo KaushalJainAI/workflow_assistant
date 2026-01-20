@@ -1,11 +1,32 @@
-# React + TypeScript + Vite
+# Nexus (Better n8n)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Nexus is a modern, AI-powered n8n clone built with React, TypeScript, and ReactFlow.
 
-Currently, two official plugins are available:
+## 📖 Documentation
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+For a detailed explanation of the project structure, components, and architecture, please refer to:
+👉 **[documentation.md](./documentation.md)**
+
+---
+
+## 🚀 Quick Start
+
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Run Development Server**:
+   ```bash
+   npm run dev
+   ```
+
+## 🛠️ Tech Stack
+- **Frontend**: React 19, TypeScript, Vite
+- **Flow Engine**: ReactFlow
+- **Styling**: TailwindCSS
+- **State Management**: Zustand
+
 
 ## React Compiler
 
