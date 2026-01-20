@@ -4,7 +4,7 @@ import {
   Play, FileText, Globe, Box, Clock, Hash, CheckSquare, 
   Settings, Mail, MessageSquare, Database, Layout, 
   Zap, List, Calendar, Code, Scissors, Layers, 
-  Search, Lock, HardDrive, Cpu, Shield, Share2
+  Search, Lock, HardDrive, Cpu, Shield, Share2, Plus
 } from 'lucide-react';
 import { nodeConfigs } from '../../lib/nodeConfigs';
 
@@ -57,8 +57,8 @@ const GenericNode = ({ data, selected, type }: NodeProps) => {
 
   return (
     <div 
-      className={`px-4 py-3 rounded-lg border-2 shadow-md transition-all min-w-[140px] relative bg-card ${
-        selected ? 'border-primary shadow-lg scale-105' : 'border-transparent'
+      className={`px-4 py-3 rounded-lg border-2 shadow-lg transition-all min-w-[140px] relative bg-card ${
+        selected ? 'border-primary shadow-xl scale-105' : 'border-border/50 dark:border-border'
       }`}
       style={{ 
         minHeight: `${Math.max(40, Math.max(inputs.length, outputs.length) * 25 + 20)}px`,
@@ -80,8 +80,8 @@ const GenericNode = ({ data, selected, type }: NodeProps) => {
             type="target" 
             position={Position.Left}
             id={handleId === 'main' ? `input-${index}` : handleId}
-            style={{ top: `${topPercent}%`, background: '#fff' }}
-            className="w-3 h-3 border-2 border-border"
+            style={{ top: `${topPercent}%`, background: '#888' }}
+            className="w-5 h-5 border-2 border-background hover:scale-125 transition-transform"
           />
         );
       })}
@@ -107,15 +107,33 @@ const GenericNode = ({ data, selected, type }: NodeProps) => {
         const handleId = getHandleId(output);
         const handleLabel = getHandleLabel(output);
         const topPercent = outputs.length === 1 ? 50 : 20 + (index * (60 / (outputs.length - 1)));
+        const actualHandleId = handleId === 'main' ? `output-${index}` : handleId;
+        const connectedHandles = data.connectedHandles as Set<string> | undefined;
+        const isHandleConnected = connectedHandles?.has(actualHandleId) || false;
+        const showAddButton = !isHandleConnected && data.onAddNodeFromHandle;
         return (
           <div key={`out-${index}`}>
             <Handle 
               type="source" 
               position={Position.Right}
               id={handleId === 'main' ? `output-${index}` : handleId}
-              style={{ top: `${topPercent}%`, background: '#fff' }}
-              className="w-3 h-3 border-2 border-border"
+              style={{ top: `${topPercent}%`, background: '#888' }}
+              className="w-5 h-5 border-2 border-background hover:scale-125 transition-transform"
             />
+            {/* Add node button for unconnected outputs */}
+            {showAddButton && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onAddNodeFromHandle(data.nodeId, actualHandleId);
+                }}
+                className="absolute w-8 h-8 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-full flex items-center justify-center shadow-lg hover:shadow-primary/40 hover:shadow-xl hover:scale-125 transition-all duration-200 nodrag border-2 border-background z-10"
+                style={{ top: `calc(${topPercent}% - 16px)`, right: '-45px' }}
+                title="Add node"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            )}
              {/* Only show label if it's not 'main' or if there are multiple outputs */}
             {(handleId !== 'main' || outputs.length > 1) && (
               <span 

@@ -1,6 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { getCustomNodes, type CustomNodeMetadata } from '../../lib/customNodes';
+import NodeBuilderModal from './NodeBuilderModal';
+
+interface NodeAction {
+  id: string;
+  name: string;
+  description: string;
+}
 
 interface NodeType {
   id: string;
@@ -9,6 +17,7 @@ interface NodeType {
   category: string;
   color: string;
   icon: string;
+  actions?: NodeAction[];
 }
 
 const nodeTypes: NodeType[] = [
@@ -50,10 +59,35 @@ const nodeTypes: NodeType[] = [
   { id: 'langchain', name: 'LangChain', description: 'LangChain tools', category: 'AI', color: '#1c3c3c', icon: '🔗' },
   
   // ============= APPS =============
-  { id: 'gmail', name: 'Gmail', description: 'Send and receive emails', category: 'Apps', color: '#ea4335', icon: '📧' },
-  { id: 'slack', name: 'Slack', description: 'Send Slack messages', category: 'Apps', color: '#4a154b', icon: '💬' },
-  { id: 'google_sheets', name: 'Google Sheets', description: 'Read/write spreadsheets', category: 'Apps', color: '#0f9d58', icon: '📊' },
-  { id: 'notion', name: 'Notion', description: 'Manage Notion pages', category: 'Apps', color: '#000000', icon: '📓' },
+  { id: 'gmail', name: 'Gmail', description: 'Send and receive emails', category: 'Apps', color: '#ea4335', icon: '📧', actions: [
+    { id: 'gmail_send', name: 'Send Email', description: 'Send an email message' },
+    { id: 'gmail_get', name: 'Get Email', description: 'Retrieve email details' },
+    { id: 'gmail_search', name: 'Search', description: 'Search emails' },
+    { id: 'gmail_draft', name: 'Create Draft', description: 'Create an email draft' },
+    { id: 'gmail_label', name: 'Add Label', description: 'Add label to email' },
+  ]},
+  { id: 'slack', name: 'Slack', description: 'Send Slack messages', category: 'Apps', color: '#4a154b', icon: '💬', actions: [
+    { id: 'slack_send_message', name: 'Send Message', description: 'Send a channel/DM message' },
+    { id: 'slack_update_message', name: 'Update Message', description: 'Update an existing message' },
+    { id: 'slack_get_channel', name: 'Get Channel', description: 'Get channel details' },
+    { id: 'slack_get_user', name: 'Get User', description: 'Get user information' },
+    { id: 'slack_add_reaction', name: 'Add Reaction', description: 'Add emoji reaction' },
+  ]},
+  { id: 'google_sheets', name: 'Google Sheets', description: 'Read/write spreadsheets', category: 'Apps', color: '#0f9d58', icon: '📊', actions: [
+    { id: 'sheets_append', name: 'Append Row', description: 'Append rows to a sheet' },
+    { id: 'sheets_lookup', name: 'Lookup Row', description: 'Look up a row by column value' },
+    { id: 'sheets_read', name: 'Read Rows', description: 'Read rows from a sheet' },
+    { id: 'sheets_update', name: 'Update Row', description: 'Update a row' },
+    { id: 'sheets_delete', name: 'Delete Row', description: 'Delete rows' },
+    { id: 'sheets_clear', name: 'Clear Sheet', description: 'Clear sheet data' },
+  ]},
+  { id: 'notion', name: 'Notion', description: 'Manage Notion pages', category: 'Apps', color: '#000000', icon: '📓', actions: [
+    { id: 'notion_create_page', name: 'Create Page', description: 'Create a new page' },
+    { id: 'notion_get_page', name: 'Get Page', description: 'Get page details' },
+    { id: 'notion_update_page', name: 'Update Page', description: 'Update page properties' },
+    { id: 'notion_get_database', name: 'Get Database', description: 'Query database items' },
+    { id: 'notion_create_database_item', name: 'Create Database Item', description: 'Add item to database' },
+  ]},
   { id: 'airtable', name: 'Airtable', description: 'Airtable database', category: 'Apps', color: '#18bfff', icon: '📊' },
   { id: 'google_calendar', name: 'Google Calendar', description: 'Manage calendar events', category: 'Apps', color: '#4285f4', icon: '📆' },
   { id: 'trello', name: 'Trello', description: 'Manage Trello boards', category: 'Apps', color: '#0079bf', icon: '📋' },
@@ -129,21 +163,42 @@ interface NodePanelProps {
   onClose: () => void;
   onAddNode: (nodeType: NodeType) => void;
   isFirstNode?: boolean;
+  triggersOnly?: boolean;
 }
 
-export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = false }: NodePanelProps) {
+export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = false, triggersOnly = false }: NodePanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedApp, setSelectedApp] = useState<NodeType | null>(null);
+  const [customNodes, setCustomNodes] = useState<CustomNodeMetadata[]>([]);
+  const [showBuilder, setShowBuilder] = useState(false);
 
-  const categories = Array.from(new Set(nodeTypes.map(n => n.category)));
+  useEffect(() => {
+    if (isOpen) {
+      setCustomNodes(getCustomNodes());
+    }
+  }, [isOpen, showBuilder]); // Refresh when builder closes
 
-  const filteredNodes = nodeTypes.filter(node => {
+  const allNodes = [...customNodes, ...nodeTypes];
+
+  const categories = Array.from(new Set(allNodes.map(n => n.category))).filter(cat => {
+    if (triggersOnly) return cat === 'Triggers';
+    return cat !== 'Triggers';
+  });
+
+  const filteredNodes = allNodes.filter(node => {
     const matchesSearch = node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           node.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = !selectedCategory || node.category === selectedCategory;
-    const matchesTriggerConstraint = !isFirstNode || node.category === 'Triggers';
     
-    return matchesSearch && matchesCategory && matchesTriggerConstraint;
+    // Filter by trigger mode
+    if (triggersOnly) {
+      return matchesSearch && node.category === 'Triggers';
+    } else {
+      // For + button, exclude triggers
+      const matchesTriggerConstraint = !isFirstNode || node.category === 'Triggers';
+      return matchesSearch && matchesCategory && matchesTriggerConstraint && node.category !== 'Triggers';
+    }
   });
 
   const groupedNodes = filteredNodes.reduce((acc, node) => {
@@ -155,6 +210,84 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
   }, {} as Record<string, NodeType[]>);
 
   if (!isOpen) return null;
+
+  // If an app with actions is selected, show the actions panel
+  if (selectedApp && selectedApp.actions && selectedApp.actions.length > 0) {
+    return (
+      <div className="absolute top-0 right-0 h-full w-80 bg-card border-l border-border shadow-xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setSelectedApp(null)}
+                className="p-1 hover:bg-muted rounded"
+                title="Back to nodes"
+              >
+                <span className="text-lg">←</span>
+              </button>
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-6 h-6 rounded flex items-center justify-center text-sm"
+                  style={{ backgroundColor: `${selectedApp.color}20` }}
+                >
+                  {selectedApp.icon}
+                </div>
+                <h3 className="font-semibold">{selectedApp.name}</h3>
+              </div>
+            </div>
+            <button 
+              onClick={onClose}
+              className="p-1 hover:bg-muted rounded"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Actions List */}
+        <div className="flex-1 overflow-auto p-2">
+          <div className="space-y-1">
+            {selectedApp.actions.map(action => (
+              <button
+                key={action.id}
+                onClick={() => {
+                  onAddNode({
+                    ...selectedApp,
+                    id: action.id,
+                    name: `${selectedApp.name} - ${action.name}`,
+                    description: action.description,
+                  });
+                  setSelectedApp(null);
+                }}
+                draggable
+                onDragStart={(e) => {
+                  const nodeData = {
+                    ...selectedApp,
+                    id: action.id,
+                    name: `${selectedApp.name} - ${action.name}`,
+                    description: action.description,
+                  };
+                  e.dataTransfer.setData('application/reactflow', JSON.stringify(nodeData));
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left group cursor-grab active:cursor-grabbing"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm group-hover:text-primary transition-colors">
+                    {action.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {action.description}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="absolute top-0 right-0 h-full w-80 bg-card border-l border-border shadow-xl z-50 flex flex-col">
@@ -183,11 +316,11 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
       </div>
 
       {/* Category Tabs */}
-      <div className="flex gap-1 p-2 border-b border-border overflow-x-auto">
+      <div className="flex flex-wrap gap-1.5 p-3 border-b border-border">
         <button
           onClick={() => setSelectedCategory(null)}
           className={cn(
-            "px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors",
+            "px-3 py-1.5 text-xs rounded-full transition-colors",
             !selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"
           )}
         >
@@ -198,7 +331,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
             key={category}
             onClick={() => setSelectedCategory(category)}
             className={cn(
-              "px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors",
+              "px-3 py-1.5 text-xs rounded-full transition-colors",
               selectedCategory === category ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"
             )}
           >
@@ -218,13 +351,24 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
               {nodes.map(node => (
                 <button
                   key={node.id}
-                  onClick={() => onAddNode(node)}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('application/reactflow', JSON.stringify(node));
-                    e.dataTransfer.effectAllowed = 'move';
+                  onClick={() => {
+                    if (node.actions && node.actions.length > 0) {
+                      setSelectedApp(node);
+                    } else {
+                      onAddNode(node);
+                    }
                   }}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors text-left group cursor-grab active:cursor-grabbing"
+                  draggable={!node.actions || node.actions.length === 0}
+                  onDragStart={(e) => {
+                    if (!node.actions || node.actions.length === 0) {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify(node));
+                      e.dataTransfer.effectAllowed = 'move';
+                    }
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors text-left group",
+                    (!node.actions || node.actions.length === 0) ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+                  )}
                 >
                   <div 
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
@@ -240,6 +384,9 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
                       {node.description}
                     </p>
                   </div>
+                  {node.actions && node.actions.length > 0 && (
+                    <span className="text-muted-foreground text-lg">→</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -253,6 +400,24 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
           </div>
         )}
       </div>
+
+      {/* Footer - Node Builder */}
+      <div className="p-3 border-t border-border bg-muted/10">
+        <button
+          onClick={() => setShowBuilder(true)}
+          className="w-full py-2 bg-secondary text-secondary-foreground rounded-md text-xs font-semibold hover:bg-secondary/80 flex items-center justify-center gap-2"
+        >
+          <span>✨</span> Create New Node Type
+        </button>
+      </div>
+
+      <NodeBuilderModal 
+        isOpen={showBuilder} 
+        onClose={() => setShowBuilder(false)}
+        onSave={() => {
+           setCustomNodes(getCustomNodes());
+        }}
+      />
     </div>
   );
 }

@@ -7,6 +7,10 @@ Nexus is a modern, AI-powered n8n clone built with React, TypeScript, and ReactF
 For a detailed explanation of the project structure, components, and architecture, please refer to:
 👉 **[documentation.md](./documentation.md)**
 
+## ✨ Features & Capabilities
+Want to see everything this frontend can do? Check out the full feature list:
+👉 **[FEATURES.md](./FEATURES.md)**
+
 ---
 
 ## 🚀 Quick Start

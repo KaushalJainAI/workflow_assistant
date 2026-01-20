@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronUp, Info, Copy, Check, Settings, Database, ArrowRightLeft, Play } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Info, Copy, Check, Settings, Database, ArrowRightLeft, Play, Save } from 'lucide-react';
+import { useMemo } from 'react';
 import { type Node } from 'reactflow';
 import { getNodeConfig, type ConfigField, type NodeConfig } from '../../lib/nodeConfigs';
 import DataViewer from '../execution/DataViewer';
+import CredentialPicker from './CredentialPicker';
+import ExpressionEditor from './ExpressionEditor';
+import SaveCustomNodeModal from './SaveCustomNodeModal';
 
 interface NodeConfigPanelProps {
   isOpen: boolean;
@@ -18,10 +22,34 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   // Get node configuration based on node type
-  const nodeType = node?.data?.nodeType || '';
-  const nodeConfig: NodeConfig | undefined = getNodeConfig(nodeType);
+  // Get node configuration based on node type
+  // const nodeType = node?.data?.nodeType || '';
+  // const nodeConfig: NodeConfig | undefined = getNodeConfig(nodeType);
+
+  const nodeConfig = useMemo(() => {
+    if (!node) return undefined;
+    
+    // Custom Builder Node
+    if (node.data?.nodeType === 'custom_builder' || node.data?.isBuilderNode === true || (node.data?.fields && node.data?.fields.length > 0)) {
+       return {
+         nodeType: node.data.nodeType,
+         displayName: node.data.label,
+         description: node.data.description || 'Custom Node',
+         fields: node.data.fields || [],
+         inputs: [],
+         outputs: [{ id: 'output-0' }],
+         color: node.data.color,
+         icon: node.data.icon,
+       } as NodeConfig;
+    }
+
+    return getNodeConfig(node.data?.nodeType || '');
+  }, [node]);
+
+  const nodeType = nodeConfig?.nodeType || node?.data?.nodeType || '';
 
   // Initialize form values when node changes
   useEffect(() => {
@@ -78,10 +106,18 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
 
     switch (field.type) {
       case 'text':
+        return (
+          <ExpressionEditor
+            value={value as string}
+            onChange={(v) => handleFieldChange(field.id, v)}
+            placeholder={field.placeholder}
+          />
+        );
+
       case 'password':
         return (
           <input
-            type={field.type}
+            type="password"
             value={value as string}
             onChange={(e) => handleFieldChange(field.id, e.target.value)}
             placeholder={field.placeholder}
@@ -102,12 +138,12 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
 
       case 'textarea':
         return (
-          <textarea
+          <ExpressionEditor
             value={value as string}
-            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+            onChange={(v) => handleFieldChange(field.id, v)}
             placeholder={field.placeholder}
+            multiline
             rows={4}
-            className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
           />
         );
 
@@ -182,6 +218,17 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
               </div>
             </div>
           </div>
+        );
+
+      case 'credential':
+        return (
+          <CredentialPicker
+            value={value as string}
+            onChange={(credId) => handleFieldChange(field.id, credId)}
+            credentialType={field.credentialType}
+            placeholder={field.placeholder || 'Select a credential...'}
+            required={field.required}
+          />
         );
 
       default:
@@ -380,14 +427,37 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
            )}
         </button>
         {activeTab === 'settings' && nodeConfig && (
-          <button
-            onClick={handleSave}
-            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90 shadow-sm transition-all active:scale-95"
-          >
-            Save
-          </button>
+          <div className="flex-1 flex gap-2">
+            <button
+               onClick={() => setShowSaveModal(true)}
+               className="px-3 py-2.5 bg-accent text-accent-foreground rounded-md hover:bg-accent/80 transition-colors"
+               title="Save as Custom Node"
+            >
+              <Save className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleSave}
+              className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90 shadow-sm transition-all active:scale-95"
+            >
+              Save
+            </button>
+          </div>
         )}
       </div>
+
+      <SaveCustomNodeModal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        baseNode={{
+          id: node?.id || '',
+          type: nodeType,
+          config: formValues,
+        }}
+        onSave={() => {
+           // Optionally show a toast here
+           setShowSaveModal(false);
+        }}
+      />
     </div>
   );
 }

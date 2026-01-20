@@ -8,7 +8,10 @@ import {
   Menu,
   Plus,
   FileText,
-  Sparkles
+  Sparkles,
+  CreditCard,
+  BarChart3,
+  Brain
 } from "lucide-react";
 import { useState } from "react";
 
@@ -24,8 +27,11 @@ const Sidebar = ({ onAIBuilderClick, aiPanelOpen }: SidebarProps) => {
     const navItems = [
         { icon: GitGraph, label: "Workflows", path: "/workflows" },
         { icon: Play, label: "Executions", path: "/executions" },
+        { icon: Brain, label: "Orchestrator", path: "/orchestrator" },
+        { icon: BarChart3, label: "Insights", path: "/insights" },
         { icon: FileText, label: "Documents", path: "/documents" },
         { icon: Key, label: "Credentials", path: "/credentials" },
+        { icon: CreditCard, label: "Billing", path: "/billing" },
         { icon: Settings, label: "Settings", path: "/settings" },
     ];
 

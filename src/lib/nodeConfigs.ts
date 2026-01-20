@@ -13,12 +13,13 @@ export interface FieldOption {
 export interface ConfigField {
   id: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'code' | 'json' | 'password';
+  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'code' | 'json' | 'password' | 'credential';
   placeholder?: string;
   defaultValue?: string | number | boolean;
   options?: FieldOption[];
   required?: boolean;
   description?: string;
+  credentialType?: string; // For credential fields - filters by this type
 }
 
 export interface HandleDefinition {
@@ -472,6 +473,14 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     description: 'Send and receive emails via Gmail',
     fields: [
       {
+        id: 'credential',
+        label: 'Gmail Account',
+        type: 'credential',
+        credentialType: 'gmail',
+        required: true,
+        description: 'Select your Gmail credentials',
+      },
+      {
         id: 'operation',
         label: 'Operation',
         type: 'select',
@@ -510,6 +519,14 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     displayName: 'Slack',
     description: 'Send messages to Slack',
     fields: [
+      {
+        id: 'credential',
+        label: 'Slack Workspace',
+        type: 'credential',
+        credentialType: 'slack',
+        required: true,
+        description: 'Select your Slack credentials',
+      },
       {
         id: 'operation',
         label: 'Operation',
@@ -621,6 +638,14 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     displayName: 'OpenAI',
     description: 'Use GPT and AI models',
     fields: [
+      {
+        id: 'credential',
+        label: 'OpenAI API Key',
+        type: 'credential',
+        credentialType: 'openai',
+        required: true,
+        description: 'Select your OpenAI API credentials',
+      },
       {
         id: 'resource',
         label: 'Resource',

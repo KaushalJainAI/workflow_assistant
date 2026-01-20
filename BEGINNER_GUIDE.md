@@ -258,6 +258,29 @@ function undo() {
 
 ---
 
+### Feature 5: Node Builder (Custom Nodes)
+
+**What it does:** Allows you to create your own nodes from scratch!
+
+1.  **Click "Create New Node Type"** in the node panel.
+2.  **Define Inputs:** Add fields like "API Key" or "Search Term".
+3.  **Write Code:** Add the Python logic for the node.
+4.  **Save:** It appears in your palette with your custom icon!
+
+```tsx
+// How we store custom nodes in localStorage
+const customNode = {
+  id: 'my-custom-node',
+  name: 'My Scraper',
+  fields: [
+    { id: 'url', type: 'text', label: 'Target URL' }
+  ],
+  code: 'class MyScraper: ...'
+};
+```
+
+---
+
 ## 🚀 How to Run the Project
 
 1. **Install dependencies:**
