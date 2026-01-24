@@ -14,15 +14,29 @@ import {
   Brain
 } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
 
-interface SidebarProps {
-  onAIBuilderClick?: () => void;
-  aiPanelOpen?: boolean;
-}
 
-const Sidebar = ({ onAIBuilderClick, aiPanelOpen }: SidebarProps) => {
+
+const Sidebar = () => {
     const location = useLocation();
     const [collapsed, setCollapsed] = useState(false);
+    const { user } = useAuth();
+
+    // Generate initials from user name or email
+    const getInitials = () => {
+        if (user?.name) {
+            const parts = user.name.split(' ');
+            if (parts.length >= 2) {
+                return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+            }
+            return user.name.slice(0, 2).toUpperCase();
+        }
+        if (user?.email) {
+            return user.email.slice(0, 2).toUpperCase();
+        }
+        return '??';
+    };
 
     const navItems = [
         { icon: GitGraph, label: "Workflows", path: "/workflows" },
@@ -92,11 +106,11 @@ const Sidebar = ({ onAIBuilderClick, aiPanelOpen }: SidebarProps) => {
 
             {/* AI Builder Button */}
             <div className="p-2">
-                <button
-                    onClick={onAIBuilderClick}
+                <Link
+                    to="/ai-chat"
                     className={cn(
                         "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                        aiPanelOpen 
+                        location.pathname === '/ai-chat'
                             ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium" 
                             : "text-muted-foreground hover:bg-muted hover:text-foreground",
                         collapsed && "justify-center"
@@ -105,25 +119,30 @@ const Sidebar = ({ onAIBuilderClick, aiPanelOpen }: SidebarProps) => {
                 >
                     <Sparkles className="w-5 h-5" />
                     {!collapsed && <span>AI Builder</span>}
-                </button>
+                </Link>
             </div>
 
             {/* User Section */}
             <div className="p-3 border-t border-border">
-                <div className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted cursor-pointer",
-                    collapsed && "justify-center"
-                )}>
+                <Link 
+                    to="/profile"
+                    className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors",
+                        location.pathname === '/profile' && "bg-accent",
+                        collapsed && "justify-center"
+                    )}
+                    title={collapsed ? "Profile" : undefined}
+                >
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-medium text-sm">
-                        JD
+                        {getInitials()}
                     </div>
                     {!collapsed && (
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">John Doe</p>
-                            <p className="text-xs text-muted-foreground truncate">john@example.com</p>
+                            <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
+                            <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
                         </div>
                     )}
-                </div>
+                </Link>
             </div>
         </div>
     );

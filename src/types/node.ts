@@ -9,14 +9,14 @@ export interface NodeProperty {
   name: string;
   displayName: string;
   type: 'string' | 'number' | 'boolean' | 'options' | 'json' | 'code' | 'credential';
-  default?: any;
+  default?: unknown;
   placeholder?: string;
   description?: string;
   required?: boolean;
   options?: NodeOption[]; // For 'options' type
   displayOptions?: {
-    show?: Record<string, any>;
-    hide?: Record<string, any>;
+    show?: Record<string, unknown>;
+    hide?: Record<string, unknown>;
   };
 }
 
@@ -48,6 +48,7 @@ export interface NodeDefinition {
 export interface NodeExecutionData {
   executionTime: number;
   status: 'pending' | 'running' | 'success' | 'error';
-  data: any;
-  error?: any;
+  data: unknown;
+  error?: unknown;
 }
+

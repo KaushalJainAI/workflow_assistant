@@ -15,7 +15,7 @@ import {
 // We'll import our custom data types later
 interface CustomNodeData {
   label: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface GraphState {
@@ -28,7 +28,7 @@ interface GraphState {
   
   addNode: (node: Node<CustomNodeData>) => void;
   removeNode: (id: string) => void;
-  updateNodeData: (id: string, data: any) => void;
+  updateNodeData: (id: string, data: Partial<CustomNodeData>) => void;
   setPannedPosition: (position: XYPosition) => void;
   setNodes: (nodes: Node<CustomNodeData>[]) => void;
   setEdges: (edges: Edge[]) => void;
@@ -82,7 +82,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     });
   },
 
-  setPannedPosition: (position) => {
+  setPannedPosition: () => {
       // Logic for tracking pan position if needed for drops
   }
 }));

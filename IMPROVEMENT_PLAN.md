@@ -20,7 +20,7 @@ Your Nexus clone has solid foundations:
 **Current State:** Clicking a node only shows "Selected: [name]" with delete/settings buttons that do nothing.
 
 **Required Changes:**
-- [ ] Create `NodeConfigPanel.tsx` - a slide-out panel that appears when a node is selected
+- [x] Create `NodeConfigPanel.tsx` - a slide-out panel that appears when a node is selected
 - [ ] Show node-specific configuration fields (based on node type)
 - [ ] Input/output data preview tabs
 - [ ] Expression editor support for dynamic values
@@ -186,7 +186,7 @@ Add shortcuts for common actions:
 **Current State:** No version control.
 
 **Required Changes:**
-- [ ] Save workflow versions on each save
+- [x] Save workflow versions on each save
 - [ ] Version comparison (diff view)
 - [ ] Restore previous versions
 - [ ] Show change history in sidebar
@@ -254,8 +254,8 @@ Add shortcuts for common actions:
 **Current State:** Theme selector exists in Settings but doesn't actually apply.
 
 **Required Changes:**
-- [ ] Implement actual theme switching using CSS variables or Tailwind dark mode
-- [ ] Persist theme preference in localStorage
+- [x] Implement actual theme switching using CSS variables or Tailwind dark mode
+- [x] Persist theme preference in localStorage
 
 ---
 

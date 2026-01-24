@@ -5,8 +5,6 @@ import {
   Bell,
   Shield,
   Palette,
-  Globe,
-  Database,
   Code,
   ChevronRight,
   Moon,
@@ -14,12 +12,33 @@ import {
   Monitor
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { useAuth } from '../contexts/AuthContext';
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api';
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { theme, setTheme } = useTheme();
+  const { user } = useAuth();
+
+  // Helper to get initials from name
+  const getInitials = () => {
+    if (user?.name) {
+      const parts = user.name.split(' ');
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      return user.name.slice(0, 2).toUpperCase();
+    }
+    if (user?.email) {
+      return user.email.slice(0, 2).toUpperCase();
+    }
+    return '??';
+  };
+
+  // Parse name into first and last name
+  const getFirstName = () => user?.name?.split(' ')[0] || '';
+  const getLastName = () => user?.name?.split(' ').slice(1).join(' ') || '';
 
   const tabs = [
     { id: 'general' as const, label: 'General', icon: SettingsIcon },
@@ -84,12 +103,12 @@ export default function Settings() {
             <div>
               <h3 className="text-lg font-medium mb-4">Account Settings</h3>
               <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-                  <User className="w-8 h-8 text-primary" />
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-xl font-bold text-primary">
+                  {getInitials()}
                 </div>
                 <div>
-                  <p className="font-medium">John Doe</p>
-                  <p className="text-sm text-muted-foreground">john.doe@example.com</p>
+                  <p className="font-medium">{user?.name || 'User'}</p>
+                  <p className="text-sm text-muted-foreground">{user?.email || ''}</p>
                 </div>
                 <button className="ml-auto px-4 py-2 border border-input rounded-md hover:bg-muted">
                   Change Avatar
@@ -101,7 +120,7 @@ export default function Settings() {
                     <label className="block text-sm font-medium mb-2">First Name</label>
                     <input 
                       type="text" 
-                      defaultValue="John" 
+                      defaultValue={getFirstName()} 
                       className="w-full px-3 py-2 border border-input rounded-md bg-background"
                     />
                   </div>
@@ -109,7 +128,7 @@ export default function Settings() {
                     <label className="block text-sm font-medium mb-2">Last Name</label>
                     <input 
                       type="text" 
-                      defaultValue="Doe" 
+                      defaultValue={getLastName()} 
                       className="w-full px-3 py-2 border border-input rounded-md bg-background"
                     />
                   </div>
@@ -118,7 +137,7 @@ export default function Settings() {
                   <label className="block text-sm font-medium mb-2">Email</label>
                   <input 
                     type="email" 
-                    defaultValue="john.doe@example.com" 
+                    defaultValue={user?.email || ''} 
                     className="w-full px-3 py-2 border border-input rounded-md bg-background"
                   />
                 </div>

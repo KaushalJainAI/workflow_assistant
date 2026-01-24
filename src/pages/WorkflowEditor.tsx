@@ -19,13 +19,15 @@ import ReactFlow, {
   type Node,
   type NodeTypes,
 } from 'reactflow';
-import { Play, Save, Undo, Redo, Settings, Trash2, Rocket, CheckCircle2, X, History } from 'lucide-react';
+import { Play, Save, Undo, Redo, Settings, Trash2, Rocket, CheckCircle2, X, History, Sparkles, Plus } from 'lucide-react';
+import ChatPanel from '../components/layout/ChatPanel';
 import NodePanel from '../components/workflow/NodePanel';
 import NodeConfigPanel from '../components/workflow/NodeConfigPanel';
 import { useKeyboardShortcuts, getDefaultShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import ImportWorkflowModal from '../components/workflow/ImportWorkflowModal';
 import { validateWorkflow, getValidationSummary, type ValidationError } from '../lib/validateWorkflow';
+import { workflowsService, orchestratorService } from '../api';
 import { downloadWorkflow } from '../lib/workflowSerializer';
 import { useVersionHistory } from '../hooks/useVersionHistory';
 import VersionHistoryPanel from '../components/workflow/VersionHistoryPanel';
@@ -132,7 +134,9 @@ const nodeTypes: NodeTypes = {
 export default function WorkflowEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [workflowName, setWorkflowName] = useState('My Workflow');
+  const [workflowName, setWorkflowName] = useState('Untitled');
+  const [workflowBackendId, setWorkflowBackendId] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [nodePanelOpen, setNodePanelOpen] = useState(false);
   const [triggerPanelOpen, setTriggerPanelOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -144,6 +148,7 @@ export default function WorkflowEditor() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedStateRef = useRef<{ nodes: Node[]; edges: Edge[]; workflowName: string } | null>(null);
   const [pendingSourceNodeId, setPendingSourceNodeId] = useState<string | null>(null);
@@ -152,14 +157,52 @@ export default function WorkflowEditor() {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [validationSummary, setValidationSummary] = useState<string | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const { workflowId } = useParams<{ workflowId: string }>();
 
   // Custom Hooks
   const undoRedo = useUndoRedo({ maxHistory: 50 });
-  const { versions, saveVersion, restoreVersion } = useVersionHistory(workflowId || 'new-workflow');
-  const { activeRequest, requestApproval, requestClarification, reportError, handleResolve, handleReject } = useHumanInTheLoop();
+  const { id: urlWorkflowId } = useParams<{ id: string }>();
+  const { versions, saveVersion } = useVersionHistory(workflowBackendId?.toString() || urlWorkflowId || 'new-workflow');
+  const { activeRequest, handleResolve, handleReject } = useHumanInTheLoop();
   
   const isFirstRender = useRef(true);
+
+  // Load existing workflow from backend when editing
+  useEffect(() => {
+    const loadWorkflow = async () => {
+      if (urlWorkflowId && urlWorkflowId !== 'new') {
+        try {
+          const workflowIdNum = parseInt(urlWorkflowId, 10);
+          if (!isNaN(workflowIdNum)) {
+            const workflow = await workflowsService.get(workflowIdNum);
+            setWorkflowBackendId(workflow.id);
+            setWorkflowName(workflow.name);
+            if (workflow.nodes && workflow.nodes.length > 0) {
+              setNodes(workflow.nodes.map(n => ({
+                ...n,
+                type: n.type || 'custom',
+              })) as Node<any>[]);
+            }
+            if (workflow.edges && workflow.edges.length > 0) {
+              setEdges(workflow.edges.map(e => ({
+                ...e,
+                type: 'deletable',
+                animated: true,
+                style: { stroke: '#888', strokeWidth: 2 },
+              })) as Edge[]);
+            }
+            lastSavedStateRef.current = { 
+              nodes: workflow.nodes as Node<any>[], 
+              edges: workflow.edges as Edge[], 
+              workflowName: workflow.name 
+            };
+          }
+        } catch (error) {
+          console.error('Failed to load workflow:', error);
+        }
+      }
+    };
+    loadWorkflow();
+  }, [urlWorkflowId, setNodes, setEdges]);
 
   // Handler to open node panel from a specific node's + button
   const onAddNodeFromHandle = useCallback((sourceNodeId: string, sourceHandleId: string) => {
@@ -347,17 +390,28 @@ export default function WorkflowEditor() {
     );
   }, [setNodes]);
 
-  const handleDeploy = () => {
+
+  const handleDeploy = async () => {
     setIsDeploying(true);
-    // Simulate deployment
-    setTimeout(() => {
+    try {
+      if (!workflowBackendId) {
+        await handleSave();
+      }
+      
+      if (workflowBackendId) {
+        await workflowsService.update(workflowBackendId, { status: 'active' });
+        setDeploySuccess(true);
+        setTimeout(() => {
+          setShowDeployModal(false);
+          setDeploySuccess(false);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Deploy failed:', error);
+      alert('Deployment failed. Please check console for details.');
+    } finally {
       setIsDeploying(false);
-      setDeploySuccess(true);
-      setTimeout(() => {
-        setShowDeployModal(false);
-        setDeploySuccess(false);
-      }, 2000);
-    }, 2000);
+    }
   };
 
   // ==================== KEYBOARD SHORTCUTS ====================
@@ -377,9 +431,11 @@ export default function WorkflowEditor() {
     return () => clearTimeout(timer);
   }, [nodes, edges, undoRedo]);
 
-  // Handle save
-  const handleSave = useCallback((isAutoSave = false) => {
-    // Simulate save - in real app would call API
+  // Handle save - calls actual backend API
+  const handleSave = useCallback(async (isAutoSave = false) => {
+    if (isSaving) return; // Prevent double saves
+    
+    setIsSaving(true);
     if (isAutoSave) {
       setIsAutoSaving(true);
       setSaveMessage('Auto-saving...');
@@ -387,29 +443,71 @@ export default function WorkflowEditor() {
       setSaveMessage('Saving...');
     }
     
-    // Simulate API call delay
-    setTimeout(() => {
+    try {
+      // Prepare nodes and edges for API (strip React Flow internal properties)
+      const apiNodes = nodes.map(n => ({
+        id: n.id,
+        type: n.type || 'custom',
+        position: n.position,
+        data: n.data,
+      }));
+      
+      const apiEdges = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle,
+        targetHandle: e.targetHandle,
+        animated: e.animated,
+      }));
+      
+      let savedWorkflow;
+      
+      if (workflowBackendId) {
+        // Update existing workflow
+        savedWorkflow = await workflowsService.update(workflowBackendId, {
+          name: workflowName,
+          nodes: apiNodes as any,
+          edges: apiEdges as any,
+        });
+      } else {
+        // Create new workflow
+        savedWorkflow = await workflowsService.create({
+          name: workflowName || 'Untitled',
+          nodes: apiNodes as any,
+          edges: apiEdges as any,
+          status: 'draft',
+        });
+        setWorkflowBackendId(savedWorkflow.id);
+        // Update URL to include the new workflow ID (without full page reload)
+        window.history.replaceState(null, '', `/workflow/${savedWorkflow.id}`);
+      }
+      
       lastSavedStateRef.current = { nodes, edges, workflowName };
       setIsDirty(false);
-      setIsAutoSaving(false);
       setSaveMessage(isAutoSave ? 'Changes saved' : 'Workflow saved!');
       setTimeout(() => setSaveMessage(null), 2000);
-      console.log('Workflow saved:', { workflowName, nodes, edges });
+      console.log('Workflow saved:', savedWorkflow);
       
-      // Save version history
+      // Save version history for manual saves
       if (!isAutoSave) {
-        saveVersion(nodes, edges, workflowName, `Manual save`);
-      } else {
-        // Optional: auto-save versions periodically or on specific triggers
-        // For now we only version manual saves to avoid noise
+        saveVersion(nodes, edges, workflowName, 'Manual save');
       }
 
       // Run validation on save
       const result = validateWorkflow(nodes, edges);
       setValidationErrors(result.errors);
       setValidationSummary(getValidationSummary(result));
-    }, isAutoSave ? 300 : 100);
-  }, [workflowName, nodes, edges]);
+      
+    } catch (error) {
+      console.error('Failed to save workflow:', error);
+      setSaveMessage('Save failed!');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setIsSaving(false);
+      setIsAutoSaving(false);
+    }
+  }, [workflowName, nodes, edges, workflowBackendId, isSaving, saveVersion]);
 
   // Auto-save effect: triggers 2 seconds after the last change
   useEffect(() => {
@@ -514,7 +612,7 @@ export default function WorkflowEditor() {
   }, []);
 
   // Handle test/execute
-  const handleExecute = useCallback(() => {
+  const handleExecute = useCallback(async () => {
     // Validate before execution
     const result = validateWorkflow(nodes, edges);
     setValidationErrors(result.errors);
@@ -525,9 +623,24 @@ export default function WorkflowEditor() {
       return;
     }
 
-    console.log('Executing workflow...', { nodes, edges });
-    // TODO: Implement actual execution
-  }, [nodes, edges]);
+    // Save before executing if dirty or new
+    if (isDirty || !workflowBackendId) {
+      await handleSave();
+    }
+    
+    // Execute if we have an ID
+    if (workflowBackendId) {
+      try {
+        console.log('Executing workflow...', workflowBackendId);
+        const response = await orchestratorService.executeWorkflow(workflowBackendId);
+        alert(`Execution started! ID: ${response.execution_id}`);
+        // Can open execution details or logs here
+      } catch (error) {
+        console.error('Execution failed:', error);
+        alert('Execution failed to start.');
+      }
+    }
+  }, [nodes, edges, isDirty, workflowBackendId, handleSave]);
 
   // Setup keyboard shortcuts
   const shortcuts = useMemo(() => getDefaultShortcuts({
@@ -616,6 +729,15 @@ export default function WorkflowEditor() {
           </button>
           <div className="w-px h-6 bg-border mx-2" />
           <button 
+             onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
+             className={`flex items-center gap-2 px-3 py-1.5 border border-purple-500/50 text-purple-600 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20 ${isAiPanelOpen ? 'bg-purple-50 dark:bg-purple-900/20' : ''}`}
+             title="AI Assistant (Ctrl+I)"
+          >
+            <Sparkles className="w-4 h-4" />
+            AI Assistant
+          </button>
+          <div className="w-px h-6 bg-border mx-2" />
+          <button 
             onClick={() => handleSave(false)}
             className="flex items-center gap-2 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80"
             title="Save (Ctrl+S)"
@@ -653,12 +775,15 @@ export default function WorkflowEditor() {
 
       {/* Canvas */}
       <div 
-        className="flex-1 relative"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
+        className="flex-1 relative flex overflow-hidden"
       >
-        <ReactFlow
-          nodes={nodesWithConnectionInfo}
+        <div 
+           className="flex-1 relative"
+           onDragOver={handleDragOver}
+           onDrop={handleDrop}
+        >
+          <ReactFlow
+            nodes={nodesWithConnectionInfo}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -688,13 +813,12 @@ export default function WorkflowEditor() {
           <Panel position="bottom-center" className="mb-4">
             <button 
               onClick={() => setTriggerPanelOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full shadow-lg hover:from-orange-600 hover:to-red-600 transition-all hover:scale-105"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all font-medium"
             >
-              <span className="text-lg">⚡</span>
+              <Plus className="w-4 h-4" />
               Add Trigger
             </button>
           </Panel>
-          
           {/* Canvas Controls Panel */}
           <Panel position="top-right" className="flex flex-col gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
             <button
@@ -712,7 +836,9 @@ export default function WorkflowEditor() {
               📥 Import
             </button>
           </Panel>
+
         </ReactFlow>
+
 
         {/* Import Modal */}
         <ImportWorkflowModal 
@@ -803,6 +929,18 @@ export default function WorkflowEditor() {
             onClose={() => handleResolve('stop')}
           />
         )} */}
+
+        </div>
+
+        {/* AI Chat Panel (Docked) */}
+        {isAiPanelOpen && (
+          <div className="w-[400px] border-l border-border bg-card shadow-xl z-20 flex flex-col transition-all duration-300">
+            <ChatPanel 
+              isDocked={true} 
+              onClose={() => setIsAiPanelOpen(false)} 
+            />
+          </div>
+        )}
       </div>
 
       {/* Deploy Modal */}

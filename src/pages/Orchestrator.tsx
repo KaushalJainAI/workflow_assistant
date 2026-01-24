@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Brain, 
   Activity, 
   RefreshCw,
-  Play,
-  Pause
+  Loader2,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 import OrchestratorTimeline, { type OrchestratorStep } from '../components/orchestrator/OrchestratorTimeline';
 import OrchestratorThoughts, { type Thought } from '../components/orchestrator/OrchestratorThoughts';
@@ -13,160 +14,141 @@ import ApprovalModal from '../components/modals/ApprovalModal';
 import ClarificationModal from '../components/modals/ClarificationModal';
 import ErrorRecoveryModal from '../components/modals/ErrorRecoveryModal';
 import { cn } from '../lib/utils';
-
-// Mock data for demonstration
-const mockSteps: OrchestratorStep[] = [
-  {
-    id: '1',
-    type: 'thinking',
-    title: 'Analyzing workflow structure',
-    description: 'Examining node connections and data flow patterns',
-    details: ['Found 5 nodes in the workflow', 'Identified 2 conditional branches', 'Detected 1 loop structure'],
-    timestamp: new Date(Date.now() - 120000),
-    duration: 1200,
-  },
-  {
-    id: '2',
-    type: 'planning',
-    title: 'Creating execution plan',
-    description: 'Determining optimal node execution order',
-    details: ['Set HTTP Request as first node', 'Scheduled parallel processing for Transform nodes', 'Added error handling for API calls'],
-    timestamp: new Date(Date.now() - 60000),
-    duration: 800,
-  },
-  {
-    id: '3',
-    type: 'executing',
-    title: 'Running HTTP Request node',
-    description: 'Fetching data from external API',
-    nodeName: 'HTTP Request',
-    timestamp: new Date(Date.now() - 30000),
-  },
-];
-
-const mockThoughts: Thought[] = [
-  {
-    id: '1',
-    type: 'observation',
-    content: 'The workflow has 5 nodes with complex branching logic.',
-    timestamp: new Date(Date.now() - 120000),
-  },
-  {
-    id: '2',
-    type: 'reasoning',
-    content: 'HTTP Request should execute first to fetch the initial data.',
-    timestamp: new Date(Date.now() - 90000),
-  },
-  {
-    id: '3',
-    type: 'decision',
-    content: 'Will run Transform nodes in parallel to optimize performance.',
-    timestamp: new Date(Date.now() - 60000),
-  },
-  {
-    id: '4',
-    type: 'action',
-    content: 'Executing HTTP Request node with configured parameters.',
-    timestamp: new Date(Date.now() - 30000),
-  },
-];
-
-const mockPendingActions: PendingAction[] = [
-  {
-    id: '1',
-    type: 'approval',
-    title: 'Database Write Operation',
-    description: 'This workflow will insert 150 new records into the production database.',
-    workflowName: 'Data Sync Pipeline',
-    nodeName: 'PostgreSQL Insert',
-    timestamp: new Date(Date.now() - 300000),
-    urgency: 'high',
-  },
-  {
-    id: '2',
-    type: 'clarification',
-    title: 'API Selection Required',
-    description: 'Multiple APIs found for email sending. Please select one.',
-    workflowName: 'Email Automation',
-    nodeName: 'Send Email',
-    timestamp: new Date(Date.now() - 600000),
-    urgency: 'medium',
-  },
-];
+import { orchestratorService, type HITLRequest } from '../api';
+import { useHITLWebSocket, type ExecutionEvent } from '../hooks/useWebSocket';
 
 export default function Orchestrator() {
-  const [steps, setSteps] = useState<OrchestratorStep[]>(mockSteps);
-  const [thoughts, setThoughts] = useState<Thought[]>(mockThoughts);
-  const [pendingActions, setPendingActions] = useState<PendingAction[]>(mockPendingActions);
-  const [isThinking] = useState(true);
-  const [isPaused, setIsPaused] = useState(false);
+  // Note: setters are intentionally unused for now - will be used when backend integration is complete
+  const [steps] = useState<OrchestratorStep[]>([]);
+  const [thoughts] = useState<Thought[]>([]);
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPaused] = useState(false);
   const [selectedAction, setSelectedAction] = useState<PendingAction | null>(null);
 
-  // Demo: Add new thoughts periodically
-  useEffect(() => {
-    if (isPaused) return;
-    
-    const interval = setInterval(() => {
-      const newThought: Thought = {
-        id: Date.now().toString(),
-        type: ['observation', 'reasoning', 'decision', 'action'][Math.floor(Math.random() * 4)] as Thought['type'],
-        content: [
-          'Monitoring node execution progress...',
-          'Checking for data validation errors...',
-          'Optimizing data transformation logic...',
-          'Preparing output for next node...',
-        ][Math.floor(Math.random() * 4)],
-        timestamp: new Date(),
-      };
-      setThoughts((prev) => [...prev.slice(-9), newThought]);
-    }, 5000);
+  // Handle HITL WebSocket messages
+  const handleHITLRequest = useCallback((event: ExecutionEvent) => {
+    if (event.type === 'hitl_request') {
+      const request = event.data as unknown as HITLRequest;
+      setPendingActions(prev => [...prev, {
+        id: request.request_id,
+        type: request.request_type,
+        title: request.title,
+        description: request.message,
+        workflowName: request.workflow_name || 'Unknown',
+        nodeName: request.node_id,
+        timestamp: new Date(request.created_at),
+        urgency: 'high',
+      }]);
+    }
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [isPaused]);
+  const { connected: wsConnected, respond: wsRespond } = useHITLWebSocket(handleHITLRequest);
+
+  // Fetch pending HITL requests
+  const fetchPendingRequests = useCallback(async () => {
+    try {
+      const data = await orchestratorService.getPendingHITL();
+      const requests = data?.requests || [];
+      setPendingActions(requests.map(r => ({
+        id: r.request_id,
+        type: r.request_type,
+        title: r.title,
+        description: r.message,
+        workflowName: r.workflow_name || 'Unknown',
+        nodeName: r.node_id,
+        timestamp: new Date(r.created_at),
+        urgency: 'medium',
+      })));
+    } catch (err) {
+      console.error('Failed to fetch HITL requests:', err);
+      setPendingActions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPendingRequests();
+  }, [fetchPendingRequests]);
 
   const handleActionClick = (action: PendingAction) => {
     setSelectedAction(action);
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (selectedAction) {
-      setPendingActions((prev) => prev.filter((a) => a.id !== selectedAction.id));
+      try {
+        await orchestratorService.respondToHITL(selectedAction.id, { action: 'approve' });
+        wsRespond(selectedAction.id, { action: 'approve' });
+        setPendingActions(prev => prev.filter(a => a.id !== selectedAction.id));
+      } catch (err) {
+        console.error('Failed to approve:', err);
+      }
       setSelectedAction(null);
     }
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     if (selectedAction) {
-      setPendingActions((prev) => prev.filter((a) => a.id !== selectedAction.id));
+      try {
+        await orchestratorService.respondToHITL(selectedAction.id, { action: 'reject' });
+        wsRespond(selectedAction.id, { action: 'reject' });
+        setPendingActions(prev => prev.filter(a => a.id !== selectedAction.id));
+      } catch (err) {
+        console.error('Failed to reject:', err);
+      }
       setSelectedAction(null);
     }
   };
 
-  const handleClarificationRespond = (response: string) => {
-    console.log('Clarification response:', response);
+  const handleClarificationRespond = async (response: string) => {
     if (selectedAction) {
-      setPendingActions((prev) => prev.filter((a) => a.id !== selectedAction.id));
+      try {
+        await orchestratorService.respondToHITL(selectedAction.id, { 
+          action: 'respond', 
+          response 
+        });
+        setPendingActions(prev => prev.filter(a => a.id !== selectedAction.id));
+      } catch (err) {
+        console.error('Failed to respond:', err);
+      }
       setSelectedAction(null);
     }
   };
 
-  const handleRetry = () => {
-    console.log('Retrying node...');
-    setSelectedAction(null);
-  };
-
-  const handleSkip = () => {
-    console.log('Skipping node...');
+  const handleRetry = async () => {
     if (selectedAction) {
-      setPendingActions((prev) => prev.filter((a) => a.id !== selectedAction.id));
+      try {
+        await orchestratorService.respondToHITL(selectedAction.id, { action: 'retry' });
+        setPendingActions(prev => prev.filter(a => a.id !== selectedAction.id));
+      } catch (err) {
+        console.error('Failed to retry:', err);
+      }
       setSelectedAction(null);
     }
   };
 
-  const handleStop = () => {
-    console.log('Stopping workflow...');
+  const handleSkip = async () => {
     if (selectedAction) {
-      setPendingActions((prev) => prev.filter((a) => a.id !== selectedAction.id));
+      try {
+        await orchestratorService.respondToHITL(selectedAction.id, { action: 'skip' });
+        setPendingActions(prev => prev.filter(a => a.id !== selectedAction.id));
+      } catch (err) {
+        console.error('Failed to skip:', err);
+      }
+      setSelectedAction(null);
+    }
+  };
+
+  const handleStop = async () => {
+    if (selectedAction) {
+      try {
+        await orchestratorService.respondToHITL(selectedAction.id, { action: 'stop' });
+        setPendingActions(prev => prev.filter(a => a.id !== selectedAction.id));
+      } catch (err) {
+        console.error('Failed to stop:', err);
+      }
       setSelectedAction(null);
     }
   };
@@ -187,38 +169,34 @@ export default function Orchestrator() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Status indicator */}
+            {/* WebSocket status */}
             <div className={cn(
               "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium",
-              isPaused 
-                ? "bg-yellow-500/10 text-yellow-600" 
-                : "bg-green-500/10 text-green-600"
+              wsConnected 
+                ? "bg-green-500/10 text-green-600" 
+                : "bg-yellow-500/10 text-yellow-600"
             )}>
-              <Activity className={cn("w-4 h-4", !isPaused && "animate-pulse")} />
-              {isPaused ? 'Paused' : 'Active'}
+              {wsConnected ? (
+                <CheckCircle className="w-4 h-4" />
+              ) : (
+                <AlertCircle className="w-4 h-4" />
+              )}
+              {wsConnected ? 'Connected' : 'Connecting...'}
             </div>
 
-            {/* Controls */}
+            {/* Pending count */}
+            {pendingActions.length > 0 && (
+              <div className="px-3 py-1.5 bg-primary/10 text-primary rounded-full text-sm font-medium">
+                {pendingActions.length} pending
+              </div>
+            )}
+
             <button
-              onClick={() => setIsPaused(!isPaused)}
+              onClick={fetchPendingRequests}
               className="p-2 hover:bg-muted rounded-lg transition-colors"
-              title={isPaused ? 'Resume' : 'Pause'}
+              title="Refresh"
             >
-              {isPaused ? (
-                <Play className="w-5 h-5" />
-              ) : (
-                <Pause className="w-5 h-5" />
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setThoughts([]);
-                setSteps([]);
-              }}
-              className="p-2 hover:bg-muted rounded-lg transition-colors"
-              title="Clear history"
-            >
-              <RefreshCw className="w-5 h-5" />
+              <RefreshCw className={cn("w-5 h-5", isLoading && "animate-spin")} />
             </button>
           </div>
         </div>
@@ -226,41 +204,47 @@ export default function Orchestrator() {
 
       {/* Content */}
       <div className="p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left column: Timeline */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-card border rounded-xl p-4">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary" />
-                Execution Timeline
-              </h3>
-              {steps.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Brain className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>No activity yet</p>
-                  <p className="text-sm">Execute a workflow to see the orchestrator in action</p>
-                </div>
-              ) : (
-                <OrchestratorTimeline 
-                  steps={steps} 
-                  currentStepId={steps[steps.length - 1]?.id} 
-                />
-              )}
+        {isLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left column: Timeline */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-card border rounded-xl p-4">
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-primary" />
+                  Execution Timeline
+                </h3>
+                {steps.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Brain className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>No activity yet</p>
+                    <p className="text-sm">Execute a workflow to see the orchestrator in action</p>
+                  </div>
+                ) : (
+                  <OrchestratorTimeline 
+                    steps={steps} 
+                    currentStepId={steps[steps.length - 1]?.id} 
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Right column: Thoughts & Pending Actions */}
+            <div className="space-y-6">
+              <OrchestratorThoughts 
+                thoughts={thoughts} 
+                isThinking={!isPaused} 
+              />
+              <PendingApprovals 
+                actions={pendingActions} 
+                onActionClick={handleActionClick} 
+              />
             </div>
           </div>
-
-          {/* Right column: Thoughts & Pending Actions */}
-          <div className="space-y-6">
-            <OrchestratorThoughts 
-              thoughts={thoughts} 
-              isThinking={isThinking && !isPaused} 
-            />
-            <PendingApprovals 
-              actions={pendingActions} 
-              onActionClick={handleActionClick} 
-            />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Modals */}
@@ -276,7 +260,7 @@ export default function Orchestrator() {
       <ClarificationModal
         isOpen={selectedAction?.type === 'clarification'}
         question={selectedAction?.description || ''}
-        options={['SendGrid', 'Mailgun', 'AWS SES']}
+        options={['Option 1', 'Option 2', 'Option 3']}
         onRespond={handleClarificationRespond}
         onClose={() => setSelectedAction(null)}
       />

@@ -1,230 +1,259 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Plus, 
   Search, 
-  MoreVertical, 
-  Play, 
-  Clock, 
-  CheckCircle2, 
-  XCircle,
   FolderOpen,
-  Tag,
-  Filter
+  Clock,
+  Zap,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Trash2,
+  Copy,
+  Play
 } from 'lucide-react';
-
-interface Workflow {
-  id: string;
-  name: string;
-  active: boolean;
-  lastRun?: string;
-  lastStatus?: 'success' | 'error' | 'running';
-  tags: string[];
-  createdAt: string;
-}
-
-const mockWorkflows: Workflow[] = [
-  {
-    id: '1',
-    name: 'Email Automation',
-    active: true,
-    lastRun: '2 hours ago',
-    lastStatus: 'success',
-    tags: ['email', 'automation'],
-    createdAt: '2024-01-10',
-  },
-  {
-    id: '2',
-    name: 'Data Sync Pipeline',
-    active: true,
-    lastRun: '5 minutes ago',
-    lastStatus: 'running',
-    tags: ['sync', 'database'],
-    createdAt: '2024-01-08',
-  },
-  {
-    id: '3',
-    name: 'Slack Notifications',
-    active: false,
-    lastRun: '1 day ago',
-    lastStatus: 'error',
-    tags: ['slack', 'notifications'],
-    createdAt: '2024-01-05',
-  },
-  {
-    id: '4',
-    name: 'Customer Onboarding',
-    active: true,
-    lastRun: '3 hours ago',
-    lastStatus: 'success',
-    tags: ['crm', 'onboarding'],
-    createdAt: '2024-01-03',
-  },
-];
+import { workflowsService, orchestratorService, type WorkflowListItem } from '../api';
 
 export default function WorkflowsDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [workflows] = useState<Workflow[]>(mockWorkflows);
+  const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('');
 
-  const filteredWorkflows = workflows.filter(w => 
-    w.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Fetch workflows from API
+  useEffect(() => {
+    const fetchWorkflows = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await workflowsService.list(statusFilter || undefined);
+        setWorkflows(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load workflows');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchWorkflows();
+  }, [statusFilter]);
+
+  const filteredWorkflows = workflows.filter(w =>
+    w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    w.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getStatusIcon = (status?: 'success' | 'error' | 'running') => {
-    switch (status) {
-      case 'success':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-      case 'error':
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'running':
-        return <Clock className="w-4 h-4 text-blue-500 animate-spin" />;
-      default:
-        return null;
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this workflow?')) return;
+    
+    try {
+      await workflowsService.delete(id);
+      setWorkflows(prev => prev.filter(w => w.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete workflow');
     }
+  };
+
+  const handlePlay = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    try {
+      // In a real app we might want to show a toast or navigate to executions
+      const response = await orchestratorService.executeWorkflow(id);
+      alert(`Execution started! ID: ${response.execution_id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to start execution');
+    }
+  };
+
+  const handleDuplicate = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    try {
+      const workflow = await workflowsService.get(id);
+      const newWorkflow = await workflowsService.create({
+        ...workflow,
+        name: `${workflow.name} (Copy)`,
+        status: 'draft',
+        // Omit id, created_at, updated_at, execution stats
+      });
+      setWorkflows(prev => [{
+        ...newWorkflow,
+        node_count: newWorkflow.nodes?.length || 0,
+        // Ensure other fields are present to satisfy WorkflowListItem
+        last_executed_at: null,
+        execution_count: 0
+      } as WorkflowListItem, ...prev]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to duplicate workflow');
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      case 'inactive': return <XCircle className="w-4 h-4 text-gray-400" />;
+      default: return <Clock className="w-4 h-4 text-yellow-500" />;
+    }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Never';
+    return new Date(dateStr).toLocaleDateString();
   };
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-card">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold">Workflows</h1>
-            <Link 
-              to="/workflows/new"
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Add Workflow
-            </Link>
-          </div>
-          
-          {/* Search and Filters */}
-          <div className="flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search workflows..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+      <div className="border-b border-border bg-card px-6 py-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Zap className="w-6 h-6 text-primary" />
             </div>
-            <button className="flex items-center gap-2 px-3 py-2 border border-input rounded-md hover:bg-muted transition-colors">
-              <FolderOpen className="w-4 h-4" />
-              All Folders
-            </button>
-            <button className="flex items-center gap-2 px-3 py-2 border border-input rounded-md hover:bg-muted transition-colors">
-              <Tag className="w-4 h-4" />
-              Tags
-            </button>
-            <button className="flex items-center gap-2 px-3 py-2 border border-input rounded-md hover:bg-muted transition-colors">
-              <Filter className="w-4 h-4" />
-              Filter
-            </button>
+            <div>
+              <h1 className="text-2xl font-bold">Workflows</h1>
+              <p className="text-sm text-muted-foreground">
+                {workflows.length} workflows • {workflows.filter(w => w.status === 'active').length} active
+              </p>
+            </div>
           </div>
+          <Link
+            to="/workflows/new"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Workflow
+          </Link>
         </div>
 
-        {/* Tabs */}
-        <div className="px-6 flex gap-6 border-t border-border">
-          <button className="py-3 border-b-2 border-primary text-sm font-medium">
-            All ({workflows.length})
-          </button>
-          <button className="py-3 border-b-2 border-transparent text-sm text-muted-foreground hover:text-foreground">
-            Active ({workflows.filter(w => w.active).length})
-          </button>
-          <button className="py-3 border-b-2 border-transparent text-sm text-muted-foreground hover:text-foreground">
-            Inactive ({workflows.filter(w => !w.active).length})
-          </button>
+        {/* Search and filters */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search workflows..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="draft">Draft</option>
+          </select>
         </div>
       </div>
 
-      {/* Workflow List */}
+      {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="space-y-2">
-          {filteredWorkflows.map((workflow) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <XCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">Failed to load workflows</h3>
+            <p className="text-muted-foreground">{error}</p>
+          </div>
+        ) : filteredWorkflows.length === 0 ? (
+          <div className="text-center py-12">
+            <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">No workflows found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchQuery ? 'Try a different search term' : 'Create your first workflow to get started'}
+            </p>
             <Link
-              key={workflow.id}
-              to={`/workflow/${workflow.id}`}
-              className="flex items-center justify-between p-4 bg-card border border-border rounded-lg hover:border-primary/50 hover:shadow-sm transition-all group"
+              to="/workflows/new"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             >
-              <div className="flex items-center gap-4">
-                {/* Active Toggle */}
-                <button 
-                  className={`w-10 h-6 rounded-full transition-colors ${
-                    workflow.active ? 'bg-green-500' : 'bg-muted'
-                  }`}
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    workflow.active ? 'translate-x-5' : 'translate-x-1'
-                  }`} />
-                </button>
+              <Plus className="w-4 h-4" />
+              Create Workflow
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {filteredWorkflows.map((workflow) => (
+              <Link
+                key={workflow.id}
+                to={`/workflow/${workflow.id}`}
+                className="group bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-all"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
+                      style={{ backgroundColor: `${workflow.color}20` }}
+                    >
+                      {workflow.icon || '⚡'}
+                    </div>
+                    <div>
+                      <h3 className="font-medium group-hover:text-primary transition-colors">
+                        {workflow.name}
+                      </h3>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        {getStatusIcon(workflow.status)}
+                        <span className="capitalize">{workflow.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={(e) => handlePlay(e, workflow.id)}
+                      className="p-1 hover:bg-muted rounded"
+                    >
+                      <Play className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => handleDuplicate(e, workflow.id)}
+                      className="p-1 hover:bg-muted rounded"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => { 
+                        e.preventDefault(); 
+                        handleDelete(workflow.id); 
+                      }}
+                      className="p-1 hover:bg-destructive/10 text-destructive rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
 
-                <div>
-                  <h3 className="font-medium group-hover:text-primary transition-colors">
-                    {workflow.name}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    {workflow.tags.map(tag => (
+                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                  {workflow.description || 'No description'}
+                </p>
+
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{workflow.node_count || 0} nodes</span>
+                  <span>{workflow.execution_count} runs</span>
+                  <span>Last run: {formatDate(workflow.last_executed_at)}</span>
+                </div>
+
+                {workflow.tags && workflow.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-3">
+                    {workflow.tags.slice(0, 3).map((tag) => (
                       <span 
-                        key={tag}
-                        className="px-2 py-0.5 text-xs bg-muted rounded-full text-muted-foreground"
+                        key={tag} 
+                        className="px-2 py-0.5 bg-muted text-xs rounded-full"
                       >
                         {tag}
                       </span>
                     ))}
                   </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-6">
-                {/* Last Run Status */}
-                {workflow.lastRun && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    {getStatusIcon(workflow.lastStatus)}
-                    <span>{workflow.lastRun}</span>
-                  </div>
                 )}
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    className="p-2 hover:bg-muted rounded-md"
-                    onClick={(e) => e.preventDefault()}
-                    title="Execute"
-                  >
-                    <Play className="w-4 h-4" />
-                  </button>
-                  <button 
-                    className="p-2 hover:bg-muted rounded-md"
-                    onClick={(e) => e.preventDefault()}
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-
-        {filteredWorkflows.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-              <Search className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium mb-2">No workflows found</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchQuery ? 'Try a different search term' : 'Create your first workflow to get started'}
-            </p>
-            <Link 
-              to="/workflows/new"
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              <Plus className="w-4 h-4" />
-              Add Workflow
-            </Link>
+              </Link>
+            ))}
           </div>
         )}
       </div>
