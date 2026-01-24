@@ -1,5 +1,6 @@
 import { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -408,7 +409,7 @@ export default function WorkflowEditor() {
       }
     } catch (error) {
       console.error('Deploy failed:', error);
-      alert('Deployment failed. Please check console for details.');
+      toast.error('Deployment failed. Please check console for details.');
     } finally {
       setIsDeploying(false);
     }
@@ -619,7 +620,7 @@ export default function WorkflowEditor() {
     setValidationSummary(getValidationSummary(result));
 
     if (!result.isValid) {
-      alert(`Cannot execute workflow:\n${result.errors.map(e => e.message).join('\n')}`);
+      toast.error(`Cannot execute workflow:\n${result.errors.map(e => e.message).join('\n')}`);
       return;
     }
 
@@ -633,11 +634,11 @@ export default function WorkflowEditor() {
       try {
         console.log('Executing workflow...', workflowBackendId);
         const response = await orchestratorService.executeWorkflow(workflowBackendId);
-        alert(`Execution started! ID: ${response.execution_id}`);
+        toast.success(`Execution started! ID: ${response.execution_id}`);
         // Can open execution details or logs here
       } catch (error) {
         console.error('Execution failed:', error);
-        alert('Execution failed to start.');
+        toast.error('Execution failed to start.');
       }
     }
   }, [nodes, edges, isDirty, workflowBackendId, handleSave]);

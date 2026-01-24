@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { 
   Plus, 
   Search, 
@@ -203,13 +204,13 @@ export default function Credentials() {
         if (viewingCredential?.id === id) {
             setViewingCredential(prev => prev ? { ...prev, is_verified: true } : null);
         }
-        alert('Credential verified successfully!');
+        toast.success('Credential verified successfully!');
       } else {
-        alert(`Verification failed: ${result.message}`);
+        toast.error(`Verification failed: ${result.message}`);
       }
     } catch (err) {
       console.error('Verification failed', err);
-      alert('Verification failed. See console for details.');
+      toast.error('Verification failed. See console for details.');
     }
   };
 
@@ -263,9 +264,10 @@ export default function Credentials() {
       setIsCreatingType(false);
       setCredentialTypes(prev => [...prev, newType]);
       handleSelectType(newType);
+      toast.success('Credential type created successfully');
     } catch (err) {
       console.error('Failed to create type', err);
-      // Show error
+      toast.error('Failed to create credential type');
     }
   };
 
@@ -281,9 +283,10 @@ export default function Credentials() {
       if (selectedType?.id === typeId) {
         setSelectedType(null);
       }
+      toast.success('Credential type deleted');
     } catch (err) {
       console.error('Failed to delete credential type', err);
-      alert('Failed to delete credential type. It may be in use.');
+      toast.error('Failed to delete credential type. It may be in use.');
     }
   };
 

@@ -13,6 +13,7 @@ import {
   Copy,
   Play
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { workflowsService, orchestratorService, type WorkflowListItem } from '../api';
 
 export default function WorkflowsDashboard() {
@@ -51,8 +52,10 @@ export default function WorkflowsDashboard() {
     try {
       await workflowsService.delete(id);
       setWorkflows(prev => prev.filter(w => w.id !== id));
+      toast.success('Workflow deleted successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete workflow');
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : 'Failed to delete workflow');
     }
   };
 
@@ -61,9 +64,10 @@ export default function WorkflowsDashboard() {
     try {
       // In a real app we might want to show a toast or navigate to executions
       const response = await orchestratorService.executeWorkflow(id);
-      alert(`Execution started! ID: ${response.execution_id}`);
+      toast.success(`Execution started! ID: ${response.execution_id}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to start execution');
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : 'Failed to start execution');
     }
   };
 
@@ -84,8 +88,10 @@ export default function WorkflowsDashboard() {
         last_executed_at: null,
         execution_count: 0
       } as WorkflowListItem, ...prev]);
+      toast.success('Workflow duplicated successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to duplicate workflow');
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : 'Failed to duplicate workflow');
     }
   };
 

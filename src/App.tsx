@@ -17,7 +17,7 @@ import Billing from './pages/Billing';
 import Insights from './pages/Insights';
 import Orchestrator from './pages/Orchestrator';
 import Profile from './pages/Profile';
-import { ToastContainer } from './components/ui/Toast';
+import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Protected route wrapper
@@ -84,7 +84,7 @@ function App() {
             </Route>
           </Routes>
         </Router>
-        <ToastContainer />
+        <Toaster richColors position="top-right" theme="dark" />
       </AuthProvider>
     </ThemeProvider>
   );

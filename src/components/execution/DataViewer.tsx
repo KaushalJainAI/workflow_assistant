@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Database, ArrowRightLeft, Copy, Check, Download, PinIcon, Table as TableIcon, Code, Eye, Save, X } from 'lucide-react';
 import JsonTree from './JsonTree';
 import TableView from './TableView';
+import { toast } from 'sonner';
 
 interface DataViewerProps {
   inputData?: unknown;
@@ -71,7 +72,7 @@ export default function DataViewer({
       }
       setIsEditing(false);
     } catch (e) {
-      alert('Invalid JSON');
+      toast.error('Invalid JSON');
     }
   };
 
