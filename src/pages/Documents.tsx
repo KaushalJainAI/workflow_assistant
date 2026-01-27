@@ -156,17 +156,42 @@ export default function Documents() {
   };
 
   // ... (handleShare and helpers remain mostly same, simplified for brevity)
-  const handleShare = async (id: number) => {
-      try {
-        const result = await documentsService.toggleSharing(id);
-        setDocuments(prev => prev.map(d => 
-          d.id === id ? { ...d, is_shared: result.is_shared, shared_at: result.shared_at } : d
-        ));
-        
-        const action = result.is_shared ? 'shared with' : 'unshared from';
-        toast.success('Sharing updated', `Document ${action} platform knowledge base`);
-      } catch (err) {
-        toast.error('Update failed', err instanceof Error ? err.message : 'Failed to update sharing settings');
+  const [shareConfirmation, setShareConfirmation] = useState<{ isOpen: boolean; doc: Document | null }>({ isOpen: false, doc: null });
+
+  const confirmShare = async () => {
+    const doc = shareConfirmation.doc;
+    if (!doc) return;
+
+    try {
+      const result = await documentsService.toggleSharing(doc.id);
+      setDocuments(prev => prev.map(d => 
+        d.id === doc.id ? { ...d, is_shared: result.is_shared, shared_at: result.shared_at } : d
+      ));
+      
+      const action = result.is_shared ? 'shared with' : 'unshared from';
+      toast.success('Sharing updated', `Document ${action} platform knowledge base`);
+    } catch (err) {
+      toast.error('Update failed', err instanceof Error ? err.message : 'Failed to update sharing settings');
+    } finally {
+      setShareConfirmation({ isOpen: false, doc: null });
+    }
+  };
+
+  const handleShare = async (doc: Document) => {
+      // If already shared, we can unshare immediately (or add a simple confirm if desired)
+      if (doc.is_shared) {
+          try {
+            const result = await documentsService.toggleSharing(doc.id);
+            setDocuments(prev => prev.map(d => 
+              d.id === doc.id ? { ...d, is_shared: result.is_shared, shared_at: result.shared_at } : d
+            ));
+            toast.success('Sharing updated', 'Document unshared from platform knowledge base');
+          } catch (err) {
+            toast.error('Update failed', err instanceof Error ? err.message : 'Failed to update sharing settings');
+          }
+      } else {
+          // Open confirmation modal for making it global
+          setShareConfirmation({ isOpen: true, doc });
       }
     };
 
@@ -334,7 +359,7 @@ export default function Documents() {
                   </button>
                   <button 
                     className={`p-1.5 rounded hover:bg-muted ${doc.is_shared ? 'text-blue-500' : 'text-muted-foreground'}`}
-                    onClick={(e) => { e.stopPropagation(); handleShare(doc.id); }}
+                    onClick={(e) => { e.stopPropagation(); handleShare(doc); }}
                     title={doc.is_shared ? "Stop sharing" : "Share with platform"}
                     disabled={!!status}
                   >
@@ -402,7 +427,7 @@ export default function Documents() {
                   </button>
                   <button 
                     className={`p-2 rounded-md hover:bg-muted transition-colors ${doc.is_shared ? 'text-blue-500 bg-blue-500/10' : 'text-muted-foreground'}`}
-                    onClick={() => handleShare(doc.id)}
+                    onClick={() => handleShare(doc)}
                     title={doc.is_shared ? "Stop sharing with platform" : "Share with platform"}
                     disabled={!!status}
                   >
@@ -468,6 +493,63 @@ export default function Documents() {
                   Supports PDF, JSON, CSV, TXT, and more
                 </p>
               </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Confirmation Modal */}
+      {shareConfirmation.isOpen && shareConfirmation.doc && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 transition-opacity animate-in fade-in duration-200"
+          onClick={() => setShareConfirmation({ isOpen: false, doc: null })}
+        >
+          <div 
+            className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 animate-in zoom-in-95 duration-200 bg-background"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-border flex items-center gap-3">
+              <div className="p-2 bg-blue-500/10 rounded-full">
+                <Globe className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Make Document Global?</h2>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md p-3 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
+                <div className="text-sm text-yellow-700 dark:text-yellow-400">
+                  <p className="font-semibold mb-1">Policy Warning</p>
+                  You are about to make <strong>{shareConfirmation.doc.title}</strong> accessible to the entire organization.
+                </div>
+              </div>
+
+              <div className="text-sm text-muted-foreground space-y-2">
+                <p>Please confirm that:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>This document does not contain Personally Identifiable Information (PII) or sensitive secrets.</li>
+                  <li>You are authorized to share this content broadly.</li>
+                  <li>This action will be logged in the system audit logs.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-border flex justify-end gap-3 bg-muted/10">
+              <button 
+                onClick={() => setShareConfirmation({ isOpen: false, doc: null })}
+                className="px-4 py-2 border border-input rounded-md hover:bg-muted font-medium"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmShare}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium flex items-center gap-2"
+              >
+                <Globe className="w-4 h-4" />
+                Confirm & Share
+              </button>
             </div>
           </div>
         </div>

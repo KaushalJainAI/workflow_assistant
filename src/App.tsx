@@ -17,6 +17,8 @@ import Billing from './pages/Billing';
 import Insights from './pages/Insights';
 import Orchestrator from './pages/Orchestrator';
 import Profile from './pages/Profile';
+import Templates from './pages/Templates';
+import TemplateDetail from './pages/templates/TemplateDetail';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -71,6 +73,8 @@ function App() {
                 <Route path="/workflows" element={<WorkflowsDashboard />} />
                 <Route path="/workflow/:id" element={<WorkflowEditor />} />
                 <Route path="/workflows/new" element={<WorkflowEditor />} />
+                <Route path="/templates" element={<Templates />} />
+                <Route path="/templates/:id" element={<TemplateDetail />} />
                 <Route path="/ai-chat" element={<AIChat />} />
                 <Route path="/executions" element={<Executions />} />
                 <Route path="/documents" element={<Documents />} />

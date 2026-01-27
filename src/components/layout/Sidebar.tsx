@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { 
   GitGraph, 
@@ -11,16 +11,22 @@ import {
   Sparkles,
   CreditCard,
   BarChart3,
-  Brain
+  Brain,
+  Layout,
+  Loader2
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { workflowsService } from "../../api";
+import { toast } from "sonner";
 
 
 
 const Sidebar = () => {
     const location = useLocation();
+    const navigate = useNavigate();
     const [collapsed, setCollapsed] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
     const { user } = useAuth();
 
     // Generate initials from user name or email
@@ -40,6 +46,7 @@ const Sidebar = () => {
 
     const navItems = [
         { icon: GitGraph, label: "Workflows", path: "/workflows" },
+        { icon: Layout, label: "Templates", path: "/templates" },
         { icon: Play, label: "Executions", path: "/executions" },
         { icon: Brain, label: "Orchestrator", path: "/orchestrator" },
         { icon: BarChart3, label: "Insights", path: "/insights" },
@@ -52,7 +59,7 @@ const Sidebar = () => {
     return (
         <div className={cn(
             "h-screen bg-card border-r border-border flex flex-col transition-all duration-300",
-            collapsed ? "w-16" : "w-64"
+            collapsed ? "w-16" : "w-56"
         )}>
             <div className="p-4 flex items-center justify-between border-b border-border">
                 {!collapsed && (
@@ -72,16 +79,42 @@ const Sidebar = () => {
             </div>
 
             <div className="p-3">
-                <Link 
-                    to="/workflows/new"
+            <div className="p-3">
+                <button
+                    onClick={async () => {
+                        try {
+                            setIsCreating(true);
+                            // Create a new draft workflow with default name
+                            const newWorkflow = await workflowsService.create({
+                                name: 'Untitled Workflow', // User requested "Untitled" (using standard "Untitled Workflow")
+                                description: 'A new empty workflow',
+                                status: 'draft',
+                                nodes: [], // Explicitly empty
+                                edges: []
+                            });
+                            navigate(`/workflow/${newWorkflow.id}`);
+                        } catch (error) {
+                            console.error('Failed to create workflow:', error);
+                            toast.error('Failed to create new workflow');
+                        } finally {
+                            setIsCreating(false);
+                        }
+                    }}
+                    disabled={isCreating}
                     className={cn(
                         "w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 py-2.5 rounded-lg transition-all font-medium",
-                        collapsed ? "px-0" : "px-4"
+                        collapsed ? "px-0" : "px-4",
+                        isCreating && "opacity-80 cursor-wait"
                     )}
                 >
-                    <Plus className="w-5 h-5" />
-                    {!collapsed && <span>New Workflow</span>}
-                </Link>
+                    {isCreating ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                        <Plus className="w-5 h-5" />
+                    )}
+                    {!collapsed && <span>{isCreating ? 'Creating...' : 'New Workflow'}</span>}
+                </button>
+            </div>
             </div>
 
             <nav className="flex-1 p-2 space-y-1">

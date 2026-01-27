@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Plus, 
   Search, 
@@ -17,9 +17,11 @@ import { toast } from 'sonner';
 import { workflowsService, orchestratorService, type WorkflowListItem } from '../api';
 
 export default function WorkflowsDashboard() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
 
@@ -40,6 +42,25 @@ export default function WorkflowsDashboard() {
 
     fetchWorkflows();
   }, [statusFilter]);
+
+  const handleCreateWorkflow = async () => {
+    try {
+      setIsCreating(true);
+      const newWorkflow = await workflowsService.create({
+        name: 'Untitled Workflow',
+        description: 'A new empty workflow',
+        status: 'draft',
+        nodes: [], // Explicitly empty
+        edges: []
+      });
+      navigate(`/workflow/${newWorkflow.id}`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to create workflow');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const filteredWorkflows = workflows.filter(w =>
     w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -124,13 +145,18 @@ export default function WorkflowsDashboard() {
               </p>
             </div>
           </div>
-          <Link
-            to="/workflows/new"
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          <button
+            onClick={handleCreateWorkflow}
+            disabled={isCreating}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <Plus className="w-4 h-4" />
-            New Workflow
-          </Link>
+            {isCreating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+            {isCreating ? 'Creating...' : 'New Workflow'}
+          </button>
         </div>
 
         {/* Search and filters */}
@@ -177,13 +203,18 @@ export default function WorkflowsDashboard() {
             <p className="text-muted-foreground mb-4">
               {searchQuery ? 'Try a different search term' : 'Create your first workflow to get started'}
             </p>
-            <Link
-              to="/workflows/new"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            <button
+              onClick={handleCreateWorkflow}
+              disabled={isCreating}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <Plus className="w-4 h-4" />
-              Create Workflow
-            </Link>
+              {isCreating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              {isCreating ? 'Creating Workflow...' : 'Create Workflow'}
+            </button>
           </div>
         ) : (
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">

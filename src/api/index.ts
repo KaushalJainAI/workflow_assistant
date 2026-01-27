@@ -37,12 +37,6 @@ export {
   type CreateCredentialData,
 } from './credentials';
 export { 
-  default as logsService,
-  type ExecutionLog,
-  type ExecutionDetail,
-  type NodeLog,
-  type ExecutionStatistics,
-  type WorkflowMetrics,
-  type CostBreakdown,
   type AuditEntry,
 } from './logs';
+export { default as nodeService, type NodeSchema, type NodeField, type NodeHandle } from './nodeService';

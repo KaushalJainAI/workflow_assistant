@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 
+
 /**
  * Keyboard shortcut definition
  */
@@ -12,6 +13,7 @@ export interface KeyboardShortcut {
   action: () => void;
   description: string;
 }
+
 
 /**
  * Default keyboard shortcuts for the workflow editor
@@ -33,6 +35,7 @@ export function getDefaultShortcuts(handlers: {
 }): KeyboardShortcut[] {
   const shortcuts: KeyboardShortcut[] = [];
 
+
   if (handlers.onSave) {
     shortcuts.push({
       key: 's',
@@ -42,6 +45,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onUndo) {
     shortcuts.push({
       key: 'z',
@@ -50,6 +54,7 @@ export function getDefaultShortcuts(handlers: {
       description: 'Undo',
     });
   }
+
 
   if (handlers.onRedo) {
     shortcuts.push({
@@ -68,6 +73,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onDelete) {
     shortcuts.push({
       key: 'Delete',
@@ -81,6 +87,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onDuplicate) {
     shortcuts.push({
       key: 'd',
@@ -89,6 +96,7 @@ export function getDefaultShortcuts(handlers: {
       description: 'Duplicate selected node',
     });
   }
+
 
   if (handlers.onCopy) {
     shortcuts.push({
@@ -99,6 +107,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onPaste) {
     shortcuts.push({
       key: 'v',
@@ -108,6 +117,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onSelectAll) {
     shortcuts.push({
       key: 'a',
@@ -116,6 +126,7 @@ export function getDefaultShortcuts(handlers: {
       description: 'Select all nodes',
     });
   }
+
 
   if (handlers.onZoomIn) {
     shortcuts.push({
@@ -132,6 +143,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onZoomOut) {
     shortcuts.push({
       key: '-',
@@ -140,6 +152,7 @@ export function getDefaultShortcuts(handlers: {
       description: 'Zoom out',
     });
   }
+
 
   if (handlers.onZoomReset) {
     shortcuts.push({
@@ -150,6 +163,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onExecute) {
     shortcuts.push({
       key: 'Enter',
@@ -159,6 +173,7 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   if (handlers.onEscape) {
     shortcuts.push({
       key: 'Escape',
@@ -167,8 +182,10 @@ export function getDefaultShortcuts(handlers: {
     });
   }
 
+
   return shortcuts;
 }
+
 
 /**
  * Hook to register keyboard shortcuts
@@ -180,6 +197,7 @@ export function useKeyboardShortcuts(
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (!enabled) return;
+
 
       // Skip if user is typing in an input/textarea
       const target = event.target as HTMLElement;
@@ -194,14 +212,26 @@ export function useKeyboardShortcuts(
         }
       }
 
-      for (const shortcut of shortcuts) {
-        const keyMatches = event.key.toLowerCase() === shortcut.key.toLowerCase() ||
-                          event.key === shortcut.key;
-        const ctrlMatches = !!shortcut.ctrl === (event.ctrlKey || event.metaKey);
-        const shiftMatches = !!shortcut.shift === event.shiftKey;
-        const altMatches = !!shortcut.alt === event.altKey;
 
-        if (keyMatches && ctrlMatches && shiftMatches && altMatches) {
+      for (const shortcut of shortcuts) {
+        // Check if the key matches (case-insensitive for letters)
+        const keyMatches = 
+          event.key.toLowerCase() === shortcut.key.toLowerCase() ||
+          event.key === shortcut.key;
+        
+        if (!keyMatches) continue;
+        
+        // Check modifiers - must match exactly
+        // If shortcut doesn't specify a modifier, that modifier must NOT be pressed
+        const hasCtrl = event.ctrlKey || event.metaKey;
+        const hasShift = event.shiftKey;
+        const hasAlt = event.altKey;
+        
+        const ctrlMatches = shortcut.ctrl ? hasCtrl : !hasCtrl;
+        const shiftMatches = shortcut.shift ? hasShift : !hasShift;
+        const altMatches = shortcut.alt ? hasAlt : !hasAlt;
+
+        if (ctrlMatches && shiftMatches && altMatches) {
           event.preventDefault();
           event.stopPropagation();
           shortcut.action();
@@ -212,13 +242,15 @@ export function useKeyboardShortcuts(
     [shortcuts, enabled]
   );
 
+
   useEffect(() => {
     if (enabled) {
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
+      document.addEventListener('keydown', handleKeyDown, { capture: true });
+      return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
     }
   }, [handleKeyDown, enabled]);
 }
+
 
 /**
  * Hook to get keyboard shortcut labels for display
@@ -245,5 +277,6 @@ export function useShortcutLabel(shortcut: KeyboardShortcut): string {
   
   return parts.join('+');
 }
+
 
 export default useKeyboardShortcuts;

@@ -20,11 +20,12 @@ import ReactFlow, {
   type Node,
   type NodeTypes,
 } from 'reactflow';
-import { Play, Save, Undo, Redo, Settings, Trash2, Rocket, CheckCircle2, X, History, Sparkles, Plus } from 'lucide-react';
+import { Play, Save, Undo, Redo, Settings, Trash2, Rocket, CheckCircle2, X, History, Sparkles, Plus, AlertCircle, AlertTriangle } from 'lucide-react';
 import ChatPanel from '../components/layout/ChatPanel';
 import NodePanel from '../components/workflow/NodePanel';
 import NodeConfigPanel from '../components/workflow/NodeConfigPanel';
 import { useKeyboardShortcuts, getDefaultShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useNodeTypes } from '../hooks/useNodeTypes';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import ImportWorkflowModal from '../components/workflow/ImportWorkflowModal';
 import { validateWorkflow, getValidationSummary, type ValidationError } from '../lib/validateWorkflow';
@@ -32,6 +33,7 @@ import { workflowsService, orchestratorService } from '../api';
 import { downloadWorkflow } from '../lib/workflowSerializer';
 import { useVersionHistory } from '../hooks/useVersionHistory';
 import VersionHistoryPanel from '../components/workflow/VersionHistoryPanel';
+import WorkflowValidationPanel from '../components/workflow/WorkflowValidationPanel';
 import { useHumanInTheLoop } from '../hooks/useHumanInTheLoop';
 import ApprovalModal from '../components/modals/ApprovalModal';
 import ClarificationModal from '../components/modals/ClarificationModal';
@@ -94,31 +96,9 @@ const DeletableEdge = ({
   );
 };
 
-const initialNodes: Node<any>[] = [
-  { 
-    id: '1', 
-    position: { x: 100, y: 200 }, 
-    data: { label: 'Manual Trigger', icon: '▶️', color: '#ff6d5a', nodeType: 'manual_trigger' }, 
-    type: 'generic',
-  },
-  { 
-    id: '2', 
-    position: { x: 350, y: 200 }, 
-    data: { label: 'HTTP Request', icon: '🌐', color: '#7b68ee', nodeType: 'http_request' },
-    type: 'generic',
-  },
-  { 
-    id: '3', 
-    position: { x: 600, y: 200 }, 
-    data: { label: 'Set Data', icon: '📝', color: '#20b2aa', nodeType: 'set' },
-    type: 'generic',
-  },
-];
+const initialNodes: Node<any>[] = [];
 
-const initialEdges: Edge[] = [
-  { id: 'e1-2', source: '1', target: '2', type: 'deletable', animated: true, style: { stroke: '#888', strokeWidth: 2 } },
-  { id: 'e2-3', source: '2', target: '3', type: 'deletable', animated: true, style: { stroke: '#888', strokeWidth: 2 } },
-];
+const initialEdges: Edge[] = [];
 
 const edgeTypes = {
   deletable: DeletableEdge,
@@ -135,6 +115,7 @@ const nodeTypes: NodeTypes = {
 export default function WorkflowEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const { getNodeConfigSync } = useNodeTypes();
   const [workflowName, setWorkflowName] = useState('Untitled');
   const [workflowBackendId, setWorkflowBackendId] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -156,7 +137,9 @@ export default function WorkflowEditor() {
   const [pendingSourceHandleId, setPendingSourceHandleId] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [validationWarnings, setValidationWarnings] = useState<ValidationError[]>([]);
   const [validationSummary, setValidationSummary] = useState<string | null>(null);
+  const [validationPanelOpen, setValidationPanelOpen] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
 
   // Custom Hooks
@@ -177,13 +160,15 @@ export default function WorkflowEditor() {
             const workflow = await workflowsService.get(workflowIdNum);
             setWorkflowBackendId(workflow.id);
             setWorkflowName(workflow.name);
-            if (workflow.nodes && workflow.nodes.length > 0) {
+            
+            // Always set nodes/edges if provided, even if empty (to respect cleared state)
+            if (workflow.nodes) {
               setNodes(workflow.nodes.map(n => ({
                 ...n,
                 type: n.type || 'custom',
               })) as Node<any>[]);
             }
-            if (workflow.edges && workflow.edges.length > 0) {
+            if (workflow.edges) {
               setEdges(workflow.edges.map(e => ({
                 ...e,
                 type: 'deletable',
@@ -264,19 +249,22 @@ export default function WorkflowEditor() {
   }, []);
 
   const handleAddNode = useCallback((nodeType: any) => {
+    console.log('handleAddNode called with:', nodeType);
+
     // Determine the correct node type based on the node id
-    const typeId = nodeType.baseNodeTypeId || nodeType.id;
+    const typeId = nodeType.baseNodeTypeId || nodeType.id || 'unknown';
     let type = 'custom';
-    if (typeId.includes('trigger')) {
-      type = 'trigger';
-    } else if (typeId === 'if') {
-      type = 'conditional';
-    } else if (typeId === 'switch') {
-      type = 'switch';
+    if (typeId && typeof typeId === 'string') {
+       if (typeId.includes('trigger')) type = 'trigger';
+       else if (typeId === 'if') type = 'conditional';
+       else if (typeId === 'switch') type = 'switch';
     }
 
+    console.log('Determined node type:', { typeId, type });
+
     // If adding from a node's + button, position to the right of that node
-    let position = { x: Math.random() * 400 + 200, y: Math.random() * 200 + 100 };
+    let position = { x: 100, y: 200 };
+    
     if (pendingSourceNodeId) {
       const sourceNode = nodes.find(n => n.id === pendingSourceNodeId);
       if (sourceNode) {
@@ -285,7 +273,19 @@ export default function WorkflowEditor() {
           y: sourceNode.position.y,
         };
       }
+    } else if (nodes.length > 0) {
+      // If adding generic node, place it offset from the last node or center
+      // Simple strategy: find the right-most node and place it 100px down/right
+      const lastNode = nodes[nodes.length - 1];
+      if (lastNode && lastNode.position) {
+          position = {
+            x: lastNode.position.x + 50,
+            y: lastNode.position.y + 50,
+          };
+      }
     }
+
+    console.log('Adding node:', { type, typeId, position });
 
     const newNodeId = `node-${Date.now()}`;
     const newNode: Node<any> = {
@@ -320,7 +320,9 @@ export default function WorkflowEditor() {
     }
 
     setNodePanelOpen(false);
-  }, [setNodes, setEdges, pendingSourceNodeId, nodes]);
+    setTriggerPanelOpen(false);
+  }, [setNodes, setEdges, pendingSourceNodeId, pendingSourceHandleId, nodes]);
+
 
   const handleDeleteNode = useCallback(() => {
     if (selectedNode) {
@@ -496,9 +498,26 @@ export default function WorkflowEditor() {
       }
 
       // Run validation on save
-      const result = validateWorkflow(nodes, edges);
+      const result = await validateWorkflow(nodes, edges, { getNodeConfigFn: getNodeConfigSync });
       setValidationErrors(result.errors);
+      setValidationWarnings(result.warnings);
       setValidationSummary(getValidationSummary(result));
+      if (result.errors.length > 0 || result.warnings.length > 0) {
+        setValidationPanelOpen(true);
+      }
+      
+      // Update nodes with validation status
+      setNodes(currentNodes => currentNodes.map(node => {
+        const error = result.errors.find(e => e.nodeId === node.id);
+        const warning = result.warnings.find(w => w.nodeId === node.id);
+        return {
+           ...node,
+           data: {
+              ...node.data,
+              validationError: error || warning
+           }
+        };
+      }));
       
     } catch (error) {
       console.error('Failed to save workflow:', error);
@@ -612,12 +631,129 @@ export default function WorkflowEditor() {
     setNodePanelOpen(false);
   }, []);
 
-  // Handle test/execute
+
+
+  // Execution State
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [lastExecutionData, setLastExecutionData] = useState<Record<string, any>>({});
+  
+  // WebSocket Connection
+  const wsUrl = executionId ? `ws://localhost:8000/ws/execution/${executionId}/` : null;
+  
+  useEffect(() => {
+    if (!wsUrl) return;
+
+    console.log('Connecting to WebSocket:', wsUrl);
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'execution.event') {
+           const eventData = message.data;
+           if (eventData.type === 'node_complete') {
+             const { node_id, output, status } = eventData.data || eventData; // Handle both wrapper formats
+             
+             // Update node output data
+             setNodes(nds => nds.map(n => {
+               if (n.id === node_id) {
+                 return {
+                   ...n,
+                   data: {
+                     ...n.data,
+                     outputData: output.data || output, // Normalize output wrapper
+                     executionStatus: status
+                   }
+                 };
+               }
+               return n;
+             }));
+
+             // Trigger downstream updates (store last execution data for reference)
+             setLastExecutionData(prev => ({ ...prev, [node_id]: output }));
+           }
+        }
+      } catch (e) {
+        console.error('Failed to parse WebSocket message', e);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.error('WebSocket error:', e);
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [wsUrl, setNodes]);
+
+  // Propagate inputs based on upstream outputs
+  // This runs whenever lastExecutionData updates (meaning a node finished)
+  useEffect(() => {
+     if (Object.keys(lastExecutionData).length === 0) return;
+
+     setNodes(nds => nds.map(node => {
+        // Find upstream nodes
+        const incomingEdges = edges.filter(e => e.target === node.id);
+        if (incomingEdges.length === 0) return node;
+
+        // Collect matching outputs
+        const inputs: any[] = [];
+        incomingEdges.forEach(edge => {
+           const sourceOutput = lastExecutionData[edge.source];
+           if (sourceOutput) {
+              inputs.push(sourceOutput);
+           }
+        });
+
+        if (inputs.length > 0) {
+           // We have new inputs for this node
+           return {
+              ...node,
+              data: {
+                 ...node.data,
+                 inputData: inputs
+              }
+           };
+        }
+        return node;
+     }));
+  }, [lastExecutionData, edges, setNodes]);
+
   const handleExecute = useCallback(async () => {
     // Validate before execution
-    const result = validateWorkflow(nodes, edges);
+    const result = await validateWorkflow(nodes, edges);
     setValidationErrors(result.errors);
+    setValidationWarnings(result.warnings);
     setValidationSummary(getValidationSummary(result));
+
+    // Update nodes with validation status
+    setNodes(currentNodes => currentNodes.map(node => {
+      const error = result.errors.find(e => e.nodeId === node.id);
+      const warning = result.warnings.find(w => w.nodeId === node.id);
+      return {
+          ...node,
+          data: {
+            ...node.data,
+            validationError: error || warning,
+            // Clear previous execution data
+            outputData: undefined,
+            inputData: undefined,
+            executionStatus: 'pending'
+          }
+      };
+    }));
+    
+    // Clear previous execution state
+    setLastExecutionData({});
+
+    if (result.errors.length > 0 || result.warnings.length > 0) {
+      setValidationPanelOpen(true);
+    }
 
     if (!result.isValid) {
       toast.error(`Cannot execute workflow:\n${result.errors.map(e => e.message).join('\n')}`);
@@ -635,14 +771,14 @@ export default function WorkflowEditor() {
         console.log('Executing workflow...', workflowBackendId);
         const response = await orchestratorService.executeWorkflow(workflowBackendId);
         toast.success(`Execution started! ID: ${response.execution_id}`);
-        // Can open execution details or logs here
+        setExecutionId(response.execution_id);
       } catch (error) {
         console.error('Execution failed:', error);
         toast.error('Execution failed to start.');
       }
     }
   }, [nodes, edges, isDirty, workflowBackendId, handleSave]);
-
+  
   // Setup keyboard shortcuts
   const shortcuts = useMemo(() => getDefaultShortcuts({
     onSave: handleSave,
@@ -660,8 +796,20 @@ export default function WorkflowEditor() {
 
   // ==================== END KEYBOARD SHORTCUTS ====================
 
+  // Derive the actual node object from the state to ensure we always have the latest data
+  // (inputs, outputs, execution status) even if selectedNode state is stale
+  const liveSelectedNode = useMemo(() => {
+    if (!selectedNode) return null;
+    return nodes.find(n => n.id === selectedNode.id) || selectedNode;
+  }, [nodes, selectedNode]);
+
   return (
     <div className="w-full h-full flex flex-col">
+      {/* ... existing JSX ... */}
+      
+      {/* Node Config Panel (MOVED TO FLEX CONTAINER) */}
+      
+      {/* Top Toolbar */}
       {/* Top Toolbar */}
       <div className="h-14 border-b border-border bg-card flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
@@ -765,177 +913,252 @@ export default function WorkflowEditor() {
         
         {/* Validation Status */}
         {validationSummary && (
-          <div className={`
-            px-3 py-1 text-xs rounded-full mr-4 hidden md:block
-            ${validationErrors.length > 0 ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}
+          <button 
+            onClick={() => setValidationPanelOpen(!validationPanelOpen)}
+            className={`
+            px-3 py-1 text-xs rounded-full mr-4 hidden md:flex items-center gap-2 cursor-pointer hover:bg-opacity-80 transition-all
+            ${validationErrors.length > 0 ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 
+              validationWarnings.length > 0 ? 'bg-yellow-500/10 text-yellow-600 border border-yellow-500/20' :
+              'bg-green-500/10 text-green-500 border border-green-500/20'}
           `}>
+             {validationErrors.length > 0 ? (
+                <AlertCircle className="w-3 h-3" />
+              ) : validationWarnings.length > 0 ? (
+                <AlertTriangle className="w-3 h-3" />
+              ) : (
+                <CheckCircle2 className="w-3 h-3" />
+              )}
             {validationSummary}
-          </div>
+          </button>
         )}
       </div>
 
       {/* Canvas */}
+      {/* Canvas Area */}
       <div 
         className="flex-1 relative flex overflow-hidden"
       >
-        <div 
-           className="flex-1 relative"
-           onDragOver={handleDragOver}
-           onDrop={handleDrop}
-        >
+        {/* Left Column: Flow Graph + Validation Panel */}
+        <div className="flex-1 flex flex-col min-w-0 bg-background transition-all duration-300">
+          <div 
+             className="flex-1 relative min-h-0"
+             onDragOver={handleDragOver}
+             onDrop={handleDrop}
+          >
           <ReactFlow
             nodes={nodesWithConnectionInfo}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={onNodeClick}
-          onNodeDoubleClick={onNodeDoubleClick}
-          onPaneClick={onPaneClick}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          snapToGrid
-          snapGrid={[15, 15]}
-          defaultEdgeOptions={{
-            animated: true,
-            style: { stroke: '#888', strokeWidth: 2 }
-          }}
-        >
-          <Controls className="bg-card border border-border shadow-lg rounded-lg" />
-          <MiniMap 
-            className="bg-card border border-border rounded-lg" 
-            nodeColor={(node) => node.data?.color || '#7b68ee'}
-            maskColor="rgba(0, 0, 0, 0.1)"
-          />
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#ddd" />
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
+            onPaneClick={onPaneClick}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            snapToGrid
+            snapGrid={[15, 15]}
+            defaultEdgeOptions={{
+              animated: true,
+              style: { stroke: '#888', strokeWidth: 2 }
+            }}
+            translateExtent={[[-2000, -2000], [5000, 5000]]}
+            nodeExtent={[[-2000, -2000], [5000, 5000]]}
+            minZoom={0.1}
+            maxZoom={4}
+            preventScrolling={true}
+          >
+
+              <Controls className="bg-card border border-border shadow-lg rounded-lg" />
+              <MiniMap 
+                className="bg-card border border-border rounded-lg shadow-sm"
+                style={{ height: 100, width: 150 }} 
+                nodeColor={(node) => node.data?.color || '#7b68ee'}
+                maskColor="rgba(0, 0, 0, 0.1)"
+              />
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#ddd" />
+              
+              {/* Empty Canvas Message - Only show when no nodes exist */}
+              {nodes.length === 0 && (
+                <Panel position="top-center" className="mt-20">
+                  <div className="flex flex-col items-center gap-4 bg-card border border-border rounded-lg p-8 shadow-lg max-w-sm">
+                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                      <Plus className="w-8 h-8 text-primary" />
+                    </div>
+                    
+                    <div className="text-center space-y-1">
+                      <h3 className="text-lg font-semibold">No nodes yet</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Add a trigger to start building your workflow
+                      </p>
+                    </div>
+                    
+                    <button 
+                      onClick={() => {
+                        setTriggerPanelOpen(true);
+                        setNodePanelOpen(false);
+                        setPendingSourceNodeId(null);
+                      }}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-medium shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Trigger
+                    </button>
+                  </div>
+                </Panel>
+              )}
+
+              {/* Add Buttons - Only show when nodes exist */}
+              {nodes.length > 0 && (
+                <Panel position="bottom-center" className="mb-4 flex gap-2">
+                  <button 
+                    onClick={() => {
+                      setTriggerPanelOpen(true);
+                      setNodePanelOpen(false);
+                      setPendingSourceNodeId(null);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all font-medium"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Trigger
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setNodePanelOpen(true);
+                      setTriggerPanelOpen(false);
+                      setPendingSourceNodeId(null);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-full shadow-lg hover:bg-secondary/80 transition-all font-medium"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Node
+                  </button>
+                </Panel>
+              )}
+              {/* Canvas Controls Panel */}
+              <Panel position="top-right" className="flex flex-col gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                <button
+                  onClick={() => downloadWorkflow(nodes, edges, workflowName)}
+                  className="p-2 hover:bg-muted rounded-md text-xs"
+                  title="Export Workflow"
+                >
+                  <span className="text-xl">📤</span>
+                </button>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="p-2 hover:bg-muted rounded-md text-xs"
+                  title="Import Workflow"
+                >
+                  <span className="text-xl">📥</span>
+                </button>
+              </Panel>
+
+            </ReactFlow>
+
+
+            {/* Import Modal */}
+            <ImportWorkflowModal 
+              isOpen={showImportModal}
+              onClose={() => setShowImportModal(false)}
+              onImport={(newNodes, newEdges, name) => {
+                setNodes(newNodes);
+                setEdges(newEdges);
+                setWorkflowName(name);
+                setShowImportModal(false);
+              }}
+            />
+
+            {/* Consolidated Node Panel */}
+            <NodePanel 
+              isOpen={nodePanelOpen || triggerPanelOpen} 
+              onClose={() => {
+                setNodePanelOpen(false);
+                setTriggerPanelOpen(false);
+                setPendingSourceNodeId(null);
+                setPendingSourceHandleId(null);
+              }}
+              onAddNode={handleAddNode}
+              triggersOnly={triggerPanelOpen}
+              showAll={nodePanelOpen && !pendingSourceNodeId && !triggerPanelOpen}
+              isFirstNode={nodes.length === 0}
+            />
+
+
+
+            {/* Version History Panel */}
+            <VersionHistoryPanel 
+              isOpen={showVersionHistory}
+              onClose={() => setShowVersionHistory(false)}
+              versions={versions}
+              onRestore={(version) => {
+                if (confirm('Restoring will overwrite current changes. Continue?')) {
+                  setNodes(version.nodes);
+                  setEdges(version.edges);
+                  setWorkflowName(version.name);
+                  setShowVersionHistory(false);
+                }
+              }}
+            />
+
+            {/* HITL Modals */}
+            {activeRequest?.type === 'approval' && (
+              <ApprovalModal
+                isOpen={true}
+                title={activeRequest.title || 'Approval Required'}
+                description={activeRequest.description || ''}
+                data={activeRequest.data}
+                onApprove={() => handleResolve(true)}
+                onReject={() => handleReject()}
+                onClose={() => handleReject()}
+              />
+            )}
+
+            {activeRequest?.type === 'clarification' && (
+              <ClarificationModal
+                isOpen={true}
+                question={activeRequest.question || ''}
+                options={activeRequest.options}
+                onRespond={handleResolve}
+                onClose={() => handleReject()}
+              />
+            )}
+          </div>
           
-          {/* Add Trigger Button */}
-          <Panel position="bottom-center" className="mb-4">
-            <button 
-              onClick={() => setTriggerPanelOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Add Trigger
-            </button>
-          </Panel>
-          {/* Canvas Controls Panel */}
-          <Panel position="top-right" className="flex flex-col gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
-            <button
-              onClick={() => downloadWorkflow(nodes, edges, workflowName)}
-              className="p-2 hover:bg-muted rounded-md text-xs"
-              title="Export Workflow"
-            >
-              📤 Export
-            </button>
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="p-2 hover:bg-muted rounded-md text-xs"
-              title="Import Workflow"
-            >
-              📥 Import
-            </button>
-          </Panel>
-
-        </ReactFlow>
-
-
-        {/* Import Modal */}
-        <ImportWorkflowModal 
-          isOpen={showImportModal}
-          onClose={() => setShowImportModal(false)}
-          onImport={(newNodes, newEdges, name) => {
-            setNodes(newNodes);
-            setEdges(newEdges);
-            setWorkflowName(name);
-            setShowImportModal(false);
-          }}
-        />
-
-        {/* Node Panel (for non-triggers from + button) */}
-        <NodePanel 
-          isOpen={nodePanelOpen} 
-          onClose={() => {
-            setNodePanelOpen(false);
-            setPendingSourceNodeId(null);
-            setPendingSourceHandleId(null);
-          }}
-          onAddNode={handleAddNode}
-          triggersOnly={false}
-        />
-
-        {/* Trigger Panel (for triggers only) */}
-        <NodePanel 
-          isOpen={triggerPanelOpen} 
-          onClose={() => setTriggerPanelOpen(false)}
-          onAddNode={handleAddNode}
-          triggersOnly={true}
-        />
-
-        {/* Node Config Panel */}
-        <NodeConfigPanel
-          isOpen={configPanelOpen}
-          node={selectedNode}
-          onClose={() => setConfigPanelOpen(false)}
-          onUpdateNode={handleUpdateNode}
-        />
-
-        {/* Version History Panel */}
-        <VersionHistoryPanel 
-          isOpen={showVersionHistory}
-          onClose={() => setShowVersionHistory(false)}
-          versions={versions}
-          onRestore={(version) => {
-            if (confirm('Restoring will overwrite current changes. Continue?')) {
-              setNodes(version.nodes);
-              setEdges(version.edges);
-              setWorkflowName(version.name);
-              setShowVersionHistory(false);
-            }
-          }}
-        />
-
-        {/* HITL Modals */}
-        {activeRequest?.type === 'approval' && (
-          <ApprovalModal
-            isOpen={true}
-            title={activeRequest.title || 'Approval Required'}
-            description={activeRequest.description || ''}
-            data={activeRequest.data}
-            onApprove={() => handleResolve(true)}
-            onReject={() => handleReject()}
-            onClose={() => handleReject()}
+          {/* Validation Panel - Positioned below canvas so it shrinks the canvas when open */}
+          <WorkflowValidationPanel 
+            isOpen={validationPanelOpen}
+            onToggle={() => setValidationPanelOpen(!validationPanelOpen)}
+            errors={validationErrors}
+            warnings={validationWarnings}
+            onSelectNode={(nodeId) => {
+              // Select the node
+              setNodes(nds => nds.map(n => ({
+                ...n,
+                selected: n.id === nodeId
+              })));
+              
+              // Find the node to set as selected for config panel if needed
+              const node = nodes.find(n => n.id === nodeId);
+              if (node) setSelectedNode(node);
+            }}
           />
-        )}
-
-        {activeRequest?.type === 'clarification' && (
-          <ClarificationModal
-            isOpen={true}
-            question={activeRequest.question || ''}
-            options={activeRequest.options}
-            onRespond={handleResolve}
-            onClose={() => handleReject()}
-          />
-        )}
-
-        {/* {activeRequest?.type === 'error' && (
-          <ErrorRecoveryModal
-            isOpen={true}
-            error={activeRequest.error || 'Unknown error'}
-            nodeName={activeRequest.nodeName || 'Unknown Node'}
-            onRetry={() => handleResolve('retry')}
-            onSkip={() => handleResolve('skip')}
-            onStop={() => handleResolve('stop')}
-            onClose={() => handleResolve('stop')}
-          />
-        )} */}
-
         </div>
+
+        {configPanelOpen && liveSelectedNode && (
+          <div className="shrink-0 relative z-30 transition-all duration-300">
+            <NodeConfigPanel
+              isOpen={configPanelOpen}
+              node={liveSelectedNode}
+              onClose={() => setConfigPanelOpen(false)}
+              onUpdateNode={handleUpdateNode}
+            />
+          </div>
+        )}
 
         {/* AI Chat Panel (Docked) */}
         {isAiPanelOpen && (
-          <div className="w-[400px] border-l border-border bg-card shadow-xl z-20 flex flex-col transition-all duration-300">
+          <div className="w-[320px] border-l border-border bg-card shadow-xl z-20 flex flex-col transition-all duration-300 shrink-0">
             <ChatPanel 
               isDocked={true} 
               onClose={() => setIsAiPanelOpen(false)} 
@@ -943,6 +1166,8 @@ export default function WorkflowEditor() {
           </div>
         )}
       </div>
+
+
 
       {/* Deploy Modal */}
       {showDeployModal && (

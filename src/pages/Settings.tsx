@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Settings as SettingsIcon,
   User,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
+import { authService } from '../api/auth';
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api';
 
@@ -20,6 +21,39 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { theme, setTheme } = useTheme();
   const { user } = useAuth();
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'api') {
+      loadApiKey();
+    }
+  }, [activeTab]);
+
+  const loadApiKey = async () => {
+    try {
+      const data = await authService.getApiKey();
+      setApiKey(data.key);
+    } catch (error) {
+      console.error('Failed to load API key:', error);
+    }
+  };
+
+  const handleRegenerateKey = async () => {
+    if (!confirm('Are you sure? This will invalidate your old key.')) return;
+    try {
+      const data = await authService.regenerateApiKey();
+      setApiKey(data.key);
+    } catch (error) {
+      console.error('Failed to regenerate API key:', error);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   // Helper to get initials from name
   const getInitials = () => {
@@ -39,6 +73,27 @@ export default function Settings() {
   // Parse name into first and last name
   const getFirstName = () => user?.name?.split(' ')[0] || '';
   const getLastName = () => user?.name?.split(' ').slice(1).join(' ') || '';
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      await authService.uploadAvatar(file);
+      // We should ideally reload the profile to get the new avatar URL
+      // assuming useAuth exposes a reload method or we force a refresh
+      window.location.reload(); 
+    } catch (error) {
+      console.error('Failed to upload avatar:', error);
+      alert('Failed to upload avatar'); // Simple alert for now
+    }
+  };
 
   const tabs = [
     { id: 'general' as const, label: 'General', icon: SettingsIcon },
@@ -110,9 +165,19 @@ export default function Settings() {
                   <p className="font-medium">{user?.name || 'User'}</p>
                   <p className="text-sm text-muted-foreground">{user?.email || ''}</p>
                 </div>
-                <button className="ml-auto px-4 py-2 border border-input rounded-md hover:bg-muted">
+                <button 
+                  onClick={handleAvatarClick}
+                  className="ml-auto px-4 py-2 border border-input rounded-md hover:bg-muted"
+                >
                   Change Avatar
                 </button>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept="image/*"
+                  onChange={handleFileChange}
+                />
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -198,16 +263,27 @@ export default function Settings() {
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-medium">API Key</p>
-                    <button className="text-sm text-primary hover:underline">Regenerate</button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 p-2 bg-background border border-input rounded text-sm font-mono">
-                      nx_••••••••••••••••••••••••••••••••
-                    </code>
-                    <button className="px-3 py-2 border border-input rounded-md hover:bg-muted text-sm">
-                      Copy
+                    <button 
+                      onClick={handleRegenerateKey}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Regenerate
                     </button>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 p-2 bg-background border border-input rounded text-sm font-mono overflow-hidden text-ellipsis">
+                      {apiKey || '••••••••••••••••••••••••••••••••'}
+                    </code>
+                    <button 
+                      onClick={() => apiKey && copyToClipboard(apiKey)}
+                      className="px-3 py-2 border border-input rounded-md hover:bg-muted text-sm whitespace-nowrap"
+                    >
+                      {isCopied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Keep this key secret. It allows full access to your account.
+                  </p>
                 </div>
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <p className="font-medium mb-2">Webhook URL</p>

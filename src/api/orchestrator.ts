@@ -128,6 +128,19 @@ export const orchestratorService = {
     await apiClient.post(`/orchestrator/executions/${executionId}/stop/`);
   },
 
+  /**
+   * Execute partial workflow (single node)
+   */
+  async executePartial(workflowId: number | null, nodeId: string, inputs: Record<string, unknown>, config: Record<string, unknown> | null): Promise<Record<string, unknown>> {
+    const response = await apiClient.post('/orchestrator/workflows/execute_partial/', {
+      workflow_id: workflowId,
+      node_id: nodeId,
+      inputs,
+      config
+    });
+    return response.data;
+  },
+
   // ========== HITL ==========
 
   /**

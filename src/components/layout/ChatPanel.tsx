@@ -318,14 +318,17 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
           <div className="px-4 pb-2">
             <div className="max-w-3xl mx-auto">
               <p className="text-sm text-muted-foreground mb-2">Try these examples:</p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 {examplePrompts.map((prompt, index) => (
                   <button
                     key={index}
                     onClick={() => handleExampleClick(prompt)}
-                    className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full text-sm transition-colors text-left"
+                    className="w-full p-3 bg-secondary/20 hover:bg-secondary/50 border border-border/50 hover:border-primary/20 rounded-xl text-sm transition-all text-left shadow-sm hover:shadow group relative overflow-hidden"
                   >
-                    {prompt.slice(0, 50)}...
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                    <span className="relative z-10 text-foreground/80 group-hover:text-foreground">
+                      {prompt}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -334,16 +337,15 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
         )}
 
         {/* Input Area */}
-        <div className="p-4 border-t border-border bg-card">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
+        <div className="p-3 border-t border-border bg-card">
+          <div className="max-w-3xl mx-auto flex gap-2">
+              <div className="flex-1 relative min-w-0">
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Describe the workflow you want to create..."
-                  className="w-full p-3 pr-10 bg-background border border-input rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-ring min-h-[50px] max-h-32 text-sm"
+                  placeholder="Describe workflow..."
+                  className="w-full p-3 pr-10 bg-background border border-input rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px] max-h-32 text-sm"
                   rows={1}
                 />
                 <button
@@ -357,17 +359,16 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
               <button
                 onClick={handleGenerateWorkflow}
                 disabled={!input.trim() || isLoading || isGenerating}
-                className="px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className={`px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${isDocked ? 'w-10 px-0' : ''}`}
                 title="Generate Workflow"
               >
-                <Wand2 className="w-4 h-4" />
+                <Wand2 className="w-4 h-4 shrink-0" />
                 {!isDocked && "Generate"}
               </button>
             </div>
-            <p className="text-[10px] text-muted-foreground text-center mt-2">
-              AI can make mistakes. Review workflows before deploying.
+            <p className="text-[10px] text-muted-foreground text-center mt-2 px-2 truncate">
+              AI can make mistakes. Review before deploying.
             </p>
-          </div>
         </div>
       </div>
 

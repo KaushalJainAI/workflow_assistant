@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getCustomNodes, type CustomNodeMetadata } from '../../lib/customNodes';
+import { useNodeTypes } from '../../hooks/useNodeTypes';
 import NodeBuilderModal from './NodeBuilderModal';
 
 interface NodeAction {
@@ -11,152 +12,15 @@ interface NodeAction {
 }
 
 interface NodeType {
-  id: string;
+  id: string; // This corresponds to 'nodeType' from backend
   name: string;
   description: string;
   category: string;
   color: string;
   icon: string;
+  inputs?: any[]; // Array of inputs to determine if it's a trigger
   actions?: NodeAction[];
 }
-
-const nodeTypes: NodeType[] = [
-  // ============= TRIGGERS =============
-  { id: 'manual_trigger', name: 'Manual Trigger', description: 'Start workflow manually', category: 'Triggers', color: '#ff6d5a', icon: '▶️' },
-  { id: 'schedule_trigger', name: 'Schedule Trigger', description: 'Run on a schedule', category: 'Triggers', color: '#ff6d5a', icon: '⏰' },
-  { id: 'webhook', name: 'Webhook', description: 'Receive HTTP requests', category: 'Triggers', color: '#ff6d5a', icon: '🔗' },
-  { id: 'email_trigger', name: 'Email Trigger', description: 'Trigger on new emails', category: 'Triggers', color: '#ff6d5a', icon: '📬' },
-  { id: 'file_trigger', name: 'File Trigger', description: 'Watch for file changes', category: 'Triggers', color: '#ff6d5a', icon: '📂' },
-  
-  // ============= CORE =============
-  { id: 'http_request', name: 'HTTP Request', description: 'Make HTTP requests', category: 'Core', color: '#7b68ee', icon: '🌐' },
-  { id: 'code', name: 'Code', description: 'Run custom code', category: 'Core', color: '#7b68ee', icon: '💻' },
-  { id: 'set', name: 'Set', description: 'Set or modify data', category: 'Core', color: '#20b2aa', icon: '📝' },
-  { id: 'if', name: 'IF', description: 'Conditional branching', category: 'Core', color: '#ffa500', icon: '🔀' },
-  { id: 'switch', name: 'Switch', description: 'Multiple branches', category: 'Core', color: '#ffa500', icon: '🎛️' },
-  { id: 'merge', name: 'Merge', description: 'Combine multiple inputs', category: 'Core', color: '#20b2aa', icon: '🔗' },
-  { id: 'split_in_batches', name: 'Split In Batches', description: 'Process in batches', category: 'Core', color: '#20b2aa', icon: '📦' },
-  { id: 'filter', name: 'Filter', description: 'Filter items by condition', category: 'Core', color: '#20b2aa', icon: '🔍' },
-  { id: 'loop', name: 'Loop', description: 'Iterate over items', category: 'Core', color: '#20b2aa', icon: '🔄' },
-  
-  // ============= DATA =============
-  { id: 'function', name: 'Function', description: 'Transform data with JS', category: 'Data', color: '#9370db', icon: '⚡' },
-  { id: 'item_lists', name: 'Item Lists', description: 'Manipulate item lists', category: 'Data', color: '#9370db', icon: '📋' },
-  { id: 'date_time', name: 'Date & Time', description: 'Date/time operations', category: 'Data', color: '#9370db', icon: '📅' },
-  { id: 'json', name: 'JSON', description: 'Parse/stringify JSON', category: 'Data', color: '#9370db', icon: '{ }' },
-  { id: 'xml', name: 'XML', description: 'Parse XML data', category: 'Data', color: '#9370db', icon: '📄' },
-  { id: 'html', name: 'HTML Extract', description: 'Extract data from HTML', category: 'Data', color: '#9370db', icon: '🌐' },
-  { id: 'crypto', name: 'Crypto', description: 'Encrypt/decrypt data', category: 'Data', color: '#9370db', icon: '🔐' },
-  
-  // ============= AI =============
-  { id: 'openai', name: 'OpenAI', description: 'GPT and AI models', category: 'AI', color: '#10a37f', icon: '🤖' },
-  { id: 'anthropic', name: 'Anthropic Claude', description: 'Claude AI assistant', category: 'AI', color: '#6b4c9a', icon: '🧠' },
-  { id: 'openai_assistant', name: 'OpenAI Assistant', description: 'Custom AI assistants', category: 'AI', color: '#10a37f', icon: '🤖' },
-  { id: 'ai_agent', name: 'AI Agent', description: 'Autonomous AI agent', category: 'AI', color: '#ff6b35', icon: '🎯' },
-  { id: 'vector_store', name: 'Vector Store', description: 'Vector embeddings DB', category: 'AI', color: '#764ba2', icon: '📊' },
-  { id: 'embeddings', name: 'Embeddings', description: 'Create text embeddings', category: 'AI', color: '#764ba2', icon: '🔢' },
-  { id: 'huggingface', name: 'Hugging Face', description: 'HF models & datasets', category: 'AI', color: '#ffb347', icon: '🤗' },
-  { id: 'langchain', name: 'LangChain', description: 'LangChain tools', category: 'AI', color: '#1c3c3c', icon: '🔗' },
-  
-  // ============= APPS =============
-  { id: 'gmail', name: 'Gmail', description: 'Send and receive emails', category: 'Apps', color: '#ea4335', icon: '📧', actions: [
-    { id: 'gmail_send', name: 'Send Email', description: 'Send an email message' },
-    { id: 'gmail_get', name: 'Get Email', description: 'Retrieve email details' },
-    { id: 'gmail_search', name: 'Search', description: 'Search emails' },
-    { id: 'gmail_draft', name: 'Create Draft', description: 'Create an email draft' },
-    { id: 'gmail_label', name: 'Add Label', description: 'Add label to email' },
-  ]},
-  { id: 'slack', name: 'Slack', description: 'Send Slack messages', category: 'Apps', color: '#4a154b', icon: '💬', actions: [
-    { id: 'slack_send_message', name: 'Send Message', description: 'Send a channel/DM message' },
-    { id: 'slack_update_message', name: 'Update Message', description: 'Update an existing message' },
-    { id: 'slack_get_channel', name: 'Get Channel', description: 'Get channel details' },
-    { id: 'slack_get_user', name: 'Get User', description: 'Get user information' },
-    { id: 'slack_add_reaction', name: 'Add Reaction', description: 'Add emoji reaction' },
-  ]},
-  { id: 'google_sheets', name: 'Google Sheets', description: 'Read/write spreadsheets', category: 'Apps', color: '#0f9d58', icon: '📊', actions: [
-    { id: 'sheets_append', name: 'Append Row', description: 'Append rows to a sheet' },
-    { id: 'sheets_lookup', name: 'Lookup Row', description: 'Look up a row by column value' },
-    { id: 'sheets_read', name: 'Read Rows', description: 'Read rows from a sheet' },
-    { id: 'sheets_update', name: 'Update Row', description: 'Update a row' },
-    { id: 'sheets_delete', name: 'Delete Row', description: 'Delete rows' },
-    { id: 'sheets_clear', name: 'Clear Sheet', description: 'Clear sheet data' },
-  ]},
-  { id: 'notion', name: 'Notion', description: 'Manage Notion pages', category: 'Apps', color: '#000000', icon: '📓', actions: [
-    { id: 'notion_create_page', name: 'Create Page', description: 'Create a new page' },
-    { id: 'notion_get_page', name: 'Get Page', description: 'Get page details' },
-    { id: 'notion_update_page', name: 'Update Page', description: 'Update page properties' },
-    { id: 'notion_get_database', name: 'Get Database', description: 'Query database items' },
-    { id: 'notion_create_database_item', name: 'Create Database Item', description: 'Add item to database' },
-  ]},
-  { id: 'airtable', name: 'Airtable', description: 'Airtable database', category: 'Apps', color: '#18bfff', icon: '📊' },
-  { id: 'google_calendar', name: 'Google Calendar', description: 'Manage calendar events', category: 'Apps', color: '#4285f4', icon: '📆' },
-  { id: 'trello', name: 'Trello', description: 'Manage Trello boards', category: 'Apps', color: '#0079bf', icon: '📋' },
-  { id: 'asana', name: 'Asana', description: 'Task management', category: 'Apps', color: '#f06a6a', icon: '✅' },
-  { id: 'jira', name: 'Jira', description: 'Issue tracking', category: 'Apps', color: '#0052cc', icon: '🎫' },
-  { id: 'linear', name: 'Linear', description: 'Project management', category: 'Apps', color: '#5e6ad2', icon: '📈' },
-  
-  // ============= COMMUNICATION =============
-  { id: 'telegram', name: 'Telegram', description: 'Send Telegram messages', category: 'Communication', color: '#0088cc', icon: '📱' },
-  { id: 'discord', name: 'Discord', description: 'Discord bot messages', category: 'Communication', color: '#5865f2', icon: '🎮' },
-  { id: 'twilio', name: 'Twilio', description: 'SMS and voice calls', category: 'Communication', color: '#f22f46', icon: '📞' },
-  { id: 'whatsapp', name: 'WhatsApp', description: 'WhatsApp messaging', category: 'Communication', color: '#25d366', icon: '📱' },
-  { id: 'microsoft_teams', name: 'Microsoft Teams', description: 'Teams messages', category: 'Communication', color: '#6264a7', icon: '💼' },
-  { id: 'sendgrid', name: 'SendGrid', description: 'Transactional emails', category: 'Communication', color: '#1a82e2', icon: '✉️' },
-  
-  // ============= MARKETING =============
-  { id: 'mailchimp', name: 'Mailchimp', description: 'Email marketing', category: 'Marketing', color: '#ffe01b', icon: '🐵' },
-  { id: 'hubspot', name: 'HubSpot', description: 'Marketing automation', category: 'Marketing', color: '#ff7a59', icon: '🧲' },
-  { id: 'activecampaign', name: 'ActiveCampaign', description: 'Email automation', category: 'Marketing', color: '#356ae6', icon: '📧' },
-  { id: 'convertkit', name: 'ConvertKit', description: 'Creator marketing', category: 'Marketing', color: '#fb6970', icon: '✍️' },
-  { id: 'google_ads', name: 'Google Ads', description: 'Manage Google Ads', category: 'Marketing', color: '#4285f4', icon: '📢' },
-  { id: 'facebook_ads', name: 'Facebook Ads', description: 'Facebook advertising', category: 'Marketing', color: '#1877f2', icon: '📘' },
-  
-  // ============= CRM =============
-  { id: 'salesforce', name: 'Salesforce', description: 'Salesforce CRM', category: 'CRM', color: '#00a1e0', icon: '☁️' },
-  { id: 'pipedrive', name: 'Pipedrive', description: 'Sales pipeline', category: 'CRM', color: '#017737', icon: '💼' },
-  { id: 'zoho_crm', name: 'Zoho CRM', description: 'Zoho customer data', category: 'CRM', color: '#c8202b', icon: '📊' },
-  { id: 'freshsales', name: 'Freshsales', description: 'Sales CRM', category: 'CRM', color: '#10a37f', icon: '🎯' },
-  
-  // ============= DEVOPS =============
-  { id: 'github', name: 'GitHub', description: 'GitHub integration', category: 'DevOps', color: '#24292e', icon: '🐙' },
-  { id: 'gitlab', name: 'GitLab', description: 'GitLab integration', category: 'DevOps', color: '#fc6d26', icon: '🦊' },
-  { id: 'docker', name: 'Docker', description: 'Container operations', category: 'DevOps', color: '#2496ed', icon: '🐳' },
-  { id: 'kubernetes', name: 'Kubernetes', description: 'K8s orchestration', category: 'DevOps', color: '#326ce5', icon: '☸️' },
-  { id: 'jenkins', name: 'Jenkins', description: 'CI/CD pipelines', category: 'DevOps', color: '#d33833', icon: '🔧' },
-  { id: 'terraform', name: 'Terraform', description: 'Infrastructure as code', category: 'DevOps', color: '#7b42bc', icon: '🏗️' },
-  
-  // ============= CLOUD =============
-  { id: 'aws_s3', name: 'AWS S3', description: 'S3 file storage', category: 'Cloud', color: '#ff9900', icon: '📦' },
-  { id: 'aws_lambda', name: 'AWS Lambda', description: 'Serverless functions', category: 'Cloud', color: '#ff9900', icon: '⚡' },
-  { id: 'gcp', name: 'Google Cloud', description: 'GCP services', category: 'Cloud', color: '#4285f4', icon: '☁️' },
-  { id: 'azure', name: 'Microsoft Azure', description: 'Azure services', category: 'Cloud', color: '#0089d6', icon: '☁️' },
-  { id: 'cloudflare', name: 'Cloudflare', description: 'CDN and security', category: 'Cloud', color: '#f48120', icon: '🌐' },
-  
-  // ============= FILES =============
-  { id: 'google_drive', name: 'Google Drive', description: 'Drive file storage', category: 'Files', color: '#4285f4', icon: '📁' },
-  { id: 'dropbox', name: 'Dropbox', description: 'Dropbox files', category: 'Files', color: '#0061ff', icon: '📦' },
-  { id: 'onedrive', name: 'OneDrive', description: 'Microsoft OneDrive', category: 'Files', color: '#0078d4', icon: '☁️' },
-  { id: 'ftp', name: 'FTP', description: 'FTP file transfer', category: 'Files', color: '#666666', icon: '📁' },
-  { id: 'sftp', name: 'SFTP', description: 'Secure file transfer', category: 'Files', color: '#666666', icon: '🔐' },
-  
-  // ============= DATABASES =============
-  { id: 'postgres', name: 'PostgreSQL', description: 'Query PostgreSQL', category: 'Databases', color: '#336791', icon: '🐘' },
-  { id: 'mysql', name: 'MySQL', description: 'Query MySQL', category: 'Databases', color: '#4479a1', icon: '🐬' },
-  { id: 'mongodb', name: 'MongoDB', description: 'Query MongoDB', category: 'Databases', color: '#47a248', icon: '🍃' },
-  { id: 'redis', name: 'Redis', description: 'Redis operations', category: 'Databases', color: '#dc382d', icon: '⚡' },
-  { id: 'elasticsearch', name: 'Elasticsearch', description: 'Search and analytics', category: 'Databases', color: '#005571', icon: '🔍' },
-  { id: 'supabase', name: 'Supabase', description: 'Supabase backend', category: 'Databases', color: '#3ecf8e', icon: '⚡' },
-  { id: 'firebase', name: 'Firebase', description: 'Firebase services', category: 'Databases', color: '#ffca28', icon: '🔥' },
-  
-  // ============= UTILITIES =============
-  { id: 'wait', name: 'Wait', description: 'Pause execution', category: 'Utilities', color: '#888888', icon: '⏸️' },
-  { id: 'error_handler', name: 'Error Handler', description: 'Handle workflow errors', category: 'Utilities', color: '#dc3545', icon: '🚨' },
-  { id: 'sub_workflow', name: 'Sub-Workflow', description: 'Run another workflow', category: 'Utilities', color: '#6c757d', icon: '🔄' },
-  { id: 'write_file', name: 'Write File', description: 'Write to local file', category: 'Utilities', color: '#888888', icon: '✍️' },
-  { id: 'read_file', name: 'Read File', description: 'Read local file', category: 'Utilities', color: '#888888', icon: '📖' },
-  { id: 'execute_command', name: 'Execute Command', description: 'Run shell commands', category: 'Utilities', color: '#333333', icon: '💻' },
-  { id: 'compression', name: 'Compression', description: 'Zip/unzip files', category: 'Utilities', color: '#888888', icon: '📦' },
-];
 
 interface NodePanelProps {
   isOpen: boolean;
@@ -164,48 +28,90 @@ interface NodePanelProps {
   onAddNode: (nodeType: NodeType) => void;
   isFirstNode?: boolean;
   triggersOnly?: boolean;
+  showAll?: boolean;
 }
 
-export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = false, triggersOnly = false }: NodePanelProps) {
+export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = false, triggersOnly = false, showAll = false }: NodePanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedApp, setSelectedApp] = useState<NodeType | null>(null);
   const [customNodes, setCustomNodes] = useState<CustomNodeMetadata[]>([]);
   const [showBuilder, setShowBuilder] = useState(false);
+  
+  const { nodes: backendNodes, loading, error, refresh } = useNodeTypes();
 
   useEffect(() => {
     if (isOpen) {
       setCustomNodes(getCustomNodes());
+      refresh(); // Refresh backend nodes when opening panel
     }
-  }, [isOpen, showBuilder]); // Refresh when builder closes
+  }, [isOpen, showBuilder, refresh]);
 
-  const allNodes = [...customNodes, ...nodeTypes];
+  // Debug logging: helpful to keep but cleaning up mock
+  useEffect(() => {
+    if (isOpen) {
+      console.log('NodePanel Open - Backend Nodes:', backendNodes);
+    }
+  }, [isOpen, backendNodes]);
 
-  const categories = Array.from(new Set(allNodes.map(n => n.category))).filter(cat => {
-    if (triggersOnly) return cat === 'Triggers';
-    return cat !== 'Triggers';
+  // Map backend nodes to local NodeType interface
+  const mappedBackendNodes: NodeType[] = backendNodes.map(node => ({
+      // Handle both camelCase (frontend expected) and snake_case (current backend default)
+      id: node.nodeType || (node as any).node_type || `unknown-${Math.random()}`,
+      name: node.name,
+      description: node.description,
+      category: node.category,
+      color: node.color,
+      icon: node.icon,
+      inputs: node.inputs,
+      actions: []
+  }));
+
+  // Map custom nodes to NodeType
+  const mappedCustomNodes: NodeType[] = customNodes.map(node => ({
+    id: node.id,
+    name: node.name,
+    description: node.description,
+    category: node.category,
+    color: node.color,
+    icon: node.icon,
+    inputs: [], // Custom nodes structure might vary, assume no specific check for now or empty
+    actions: []
+  }));
+
+  // Deduplicate using a Map<string, NodeType>
+  const uniqueNodesMap = new Map<string, NodeType>();
+  [...mappedCustomNodes, ...mappedBackendNodes].forEach(node => {
+    uniqueNodesMap.set(node.id, node);
+  });
+  
+  const allNodes = Array.from(uniqueNodesMap.values());
+
+  const categories = Array.from(new Set(allNodes.map(n => n.category))).filter((cat) => {
+    // Show all categories regardless of triggersOnly per user request
+    return true;
   });
 
   const filteredNodes = allNodes.filter(node => {
-    const matchesSearch = node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          node.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !selectedCategory || node.category === selectedCategory;
+    const matchesSearch = (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (node.description || '').toLowerCase().includes(searchQuery.toLowerCase());
     
-    // Filter by trigger mode
-    if (triggersOnly) {
-      return matchesSearch && node.category === 'Triggers';
-    } else {
-      // For + button, exclude triggers
-      const matchesTriggerConstraint = !isFirstNode || node.category === 'Triggers';
-      return matchesSearch && matchesCategory && matchesTriggerConstraint && node.category !== 'Triggers';
-    }
+    // Per user request: "allow every node to be added"
+    // Removed strict trigger filtering.
+    // Triggers will still be identified but not used for exclusion/inclusion.
+    
+    const matchesCategory = !selectedCategory || node.category === selectedCategory;
+
+    return matchesSearch && matchesCategory;
   });
 
   const groupedNodes = filteredNodes.reduce((acc, node) => {
-    if (!acc[node.category]) {
-      acc[node.category] = [];
+    // Capitalize category for display if needed
+    const displayCategory = node.category.charAt(0).toUpperCase() + node.category.slice(1);
+    if (!acc[displayCategory]) {
+      acc[displayCategory] = [];
     }
-    acc[node.category].push(node);
+    acc[displayCategory].push(node);
     return acc;
   }, {} as Record<string, NodeType[]>);
 

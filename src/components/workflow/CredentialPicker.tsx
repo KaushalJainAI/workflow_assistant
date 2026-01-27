@@ -1,24 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { Key, ChevronDown, Plus, Check, Search } from 'lucide-react';
-
-// Mock credential data for demo - will be replaced with API calls
-const mockCredentials = [
-  { id: 'cred-1', name: 'My Gmail Account', type: 'gmail', icon: '📧' },
-  { id: 'cred-2', name: 'Work Slack', type: 'slack', icon: '💬' },
-  { id: 'cred-3', name: 'OpenAI API', type: 'openai', icon: '🤖' },
-  { id: 'cred-4', name: 'Production DB', type: 'postgres', icon: '🗄️' },
-  { id: 'cred-5', name: 'Google Sheets API', type: 'google_sheets', icon: '📊' },
-  { id: 'cred-6', name: 'Notion Integration', type: 'notion', icon: '📝' },
-  { id: 'cred-7', name: 'MongoDB Atlas', type: 'mongodb', icon: '🍃' },
-  { id: 'cred-8', name: 'Redis Cloud', type: 'redis', icon: '⚡' },
-];
+import { Key, ChevronDown, Plus, Check, Search, Edit } from 'lucide-react';
+import { credentialsService, type Credential } from '../../api/credentials';
 
 interface CredentialPickerProps {
   value?: string;
   onChange: (credentialId: string) => void;
-  credentialType?: string; // Filter by type (e.g., 'gmail', 'slack')
+  credentialType?: string; // Filter by credential_type slug (e.g. 'gmail_oauth')
   placeholder?: string;
   required?: boolean;
+  onCreate?: () => void;
+  onEdit?: (credential: Credential) => void;
 }
 
 export default function CredentialPicker({
@@ -27,20 +18,62 @@ export default function CredentialPicker({
   credentialType,
   placeholder = 'Select a credential...',
   required = false,
+  onCreate,
+  onEdit,
 }: CredentialPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [loading, setLoading] = useState(false);
+  
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Filter credentials by type if specified
-  const filteredCredentials = mockCredentials.filter((cred) => {
-    const matchesType = !credentialType || cred.type === credentialType;
+  useEffect(() => {
+    // Load credentials once or when needed
+    const loadCredentials = async () => {
+      try {
+        setLoading(true);
+        const res = await credentialsService.list();
+        const credsList = res.credentials ?? (Array.isArray(res) ? res : []);
+        setCredentials(credsList);
+      } catch (err) {
+        console.error('Failed to load credentials', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    // Only load if we open or if we have a value but no list yet
+    if (isOpen || (value && credentials.length === 0)) {
+       loadCredentials();
+    }
+  }, [isOpen]);
+
+  // Filter credentials
+  const filteredCredentials = credentials.filter((cred) => {
+    // Since we receive the type SLUG or ID in backend schema, we need to match it.
+    // However, backend credential object has `credential_type` ID. 
+    // We ideally need to map slug -> id or filter by type display/slug if available.
+    // For now, let's assume `credentialType` passed here filters by name/display loosely 
+    // OR matches the logic in the backend. 
+    // Actually, `credentialType` from node config is usually the SLUG (e.g. 'gmail').
+    // The credential object has `credential_type` (int) and `credential_type_display` (string).
+    // We might need to fetch types to map slug -> ID, or rely on naming convention.
+    // Let's rely on loose matching for now or show all if unsure.
+    
+    // If credentialType is provided, filter. 
+    // Best effort: matches credential_type_display (lowercase) or name contains it.
+    // Real fix: `useNodeTypes` should provide the integer ID, OR we fetch types to lookup.
+    
+    // TODO: Improve filtering by fetching Types map. 
+    // For now, let's show all and let user search, or if names match obvious patterns.
+    
     const matchesSearch = cred.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSearch;
+    return matchesSearch;
   });
 
   // Get selected credential
-  const selectedCredential = mockCredentials.find((cred) => cred.id === value);
+  const selectedCredential = credentials.find((cred) => String(cred.id) === String(value));
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -54,8 +87,8 @@ export default function CredentialPicker({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelect = (credentialId: string) => {
-    onChange(credentialId);
+  const handleSelect = (credentialId: number) => {
+    onChange(String(credentialId));
     setIsOpen(false);
     setSearchQuery('');
   };
@@ -63,33 +96,47 @@ export default function CredentialPicker({
   return (
     <div className="relative" ref={dropdownRef}>
       {/* Trigger Button */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`
-          w-full flex items-center justify-between gap-2 px-3 py-2 
-          bg-[var(--bg-tertiary)] border border-[var(--border-primary)] 
-          rounded-lg text-sm transition-all duration-200
-          hover:border-[var(--accent-primary)] focus:outline-none 
-          focus:ring-2 focus:ring-[var(--accent-primary)]/20
-          ${!selectedCredential ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'}
-        `}
-      >
-        <div className="flex items-center gap-2 truncate">
-          {selectedCredential ? (
-            <>
-              <span className="text-base">{selectedCredential.icon}</span>
-              <span className="truncate">{selectedCredential.name}</span>
-            </>
-          ) : (
-            <>
-              <Key className="w-4 h-4 opacity-50" />
-              <span>{placeholder}</span>
-            </>
-          )}
-        </div>
-        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      <div className="flex gap-2">
+        <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className={`
+            flex-1 flex items-center justify-between gap-2 px-3 py-2 
+            bg-[var(--bg-tertiary)] border border-[var(--border-primary)] 
+            rounded-lg text-sm transition-all duration-200
+            hover:border-[var(--accent-primary)] focus:outline-none 
+            focus:ring-2 focus:ring-[var(--accent-primary)]/20
+            ${!selectedCredential ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'}
+            `}
+        >
+            <div className="flex items-center gap-2 truncate">
+            {selectedCredential ? (
+                <>
+                <span className="text-base">🔑</span>
+                <span className="truncate">{selectedCredential.name}</span>
+                </>
+            ) : (
+                <>
+                <Key className="w-4 h-4 opacity-50" />
+                <span>{loading ? 'Loading...' : placeholder}</span>
+                </>
+            )}
+            </div>
+            <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+        
+        {/* Edit Button */}
+        {selectedCredential && onEdit && (
+            <button
+                type="button"
+                onClick={() => onEdit(selectedCredential)}
+                className="p-2 border border-[var(--border-primary)] rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                title="Edit Credential"
+            >
+                <Edit className="w-4 h-4" />
+            </button>
+        )}
+      </div>
 
       {/* Dropdown */}
       {isOpen && (
@@ -113,12 +160,7 @@ export default function CredentialPicker({
           <div className="max-h-48 overflow-y-auto">
             {filteredCredentials.length === 0 ? (
               <div className="px-3 py-4 text-sm text-[var(--text-secondary)] text-center">
-                No credentials found
-                {credentialType && (
-                  <span className="block text-xs mt-1">
-                    Looking for type: {credentialType}
-                  </span>
-                )}
+                {loading ? 'Loading...' : 'No credentials found'}
               </div>
             ) : (
               filteredCredentials.map((cred) => (
@@ -129,31 +171,33 @@ export default function CredentialPicker({
                   className={`
                     w-full flex items-center gap-2 px-3 py-2 text-sm text-left
                     hover:bg-[var(--bg-tertiary)] transition-colors
-                    ${value === cred.id ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]' : 'text-[var(--text-primary)]'}
+                    ${String(value) === String(cred.id) ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]' : 'text-[var(--text-primary)]'}
                   `}
                 >
-                  <span className="text-base">{cred.icon}</span>
+                  <span className="text-base">🔑</span>
                   <span className="flex-1 truncate">{cred.name}</span>
-                  {value === cred.id && <Check className="w-4 h-4" />}
+                  {String(value) === String(cred.id) && <Check className="w-4 h-4" />}
                 </button>
               ))
             )}
           </div>
 
           {/* Create New */}
-          <div className="p-2 border-t border-[var(--border-primary)]">
-            <button
-              type="button"
-              onClick={() => {
-                // TODO: Open create credential modal
-                setIsOpen(false);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 rounded transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create new credential</span>
-            </button>
-          </div>
+          {onCreate && (
+              <div className="p-2 border-t border-[var(--border-primary)]">
+                <button
+                type="button"
+                onClick={() => {
+                    setIsOpen(false);
+                    onCreate();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 rounded transition-colors"
+                >
+                <Plus className="w-4 h-4" />
+                <span>Create new credential</span>
+                </button>
+              </div>
+          )}
         </div>
       )}
 

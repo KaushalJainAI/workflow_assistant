@@ -10,6 +10,7 @@ export interface CredentialType {
   id: number;
   name: string;
   slug: string;
+  service_identifier?: string;
   description: string;
   icon: string;
   auth_method: 'api_key' | 'oauth2' | 'basic' | 'bearer' | 'custom';

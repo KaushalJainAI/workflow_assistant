@@ -157,10 +157,48 @@ export const authService = {
   },
 
   /**
+   * Upload avatar
+   */
+  async uploadAvatar(file: File): Promise<{ avatar_url: string }> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await apiClient.post('/auth/profile/avatar/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  /**
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
     return tokenManager.isAuthenticated();
+  },
+
+  /**
+   * Get current API Key
+   */
+  async getApiKey(): Promise<{ key: string; created_at: string }> {
+    const response = await apiClient.get('/auth/api-keys/');
+    // Assuming the backend returns a list, we take the first one or a specific structure
+    // If backend returns { results: [...] } or just [...]
+    const data = response.data as any;
+    if (Array.isArray(data) && data.length > 0) {
+      return data[0];
+    } else if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+      return data.results[0];
+    }
+    return { key: '', created_at: '' };
+  },
+
+  /**
+   * Regenerate API Key
+   */
+  async regenerateApiKey(): Promise<{ key: string; created_at: string }> {
+    const response = await apiClient.post('/auth/api-keys/');
+    return response.data;
   },
 
   /**

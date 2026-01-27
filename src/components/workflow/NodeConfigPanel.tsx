@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronUp, Info, Copy, Check, Settings, Database, ArrowRightLeft, Play, Save } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Info, Copy, Check, Settings, Database, ArrowRightLeft, Play, Save, ExternalLink } from 'lucide-react';
 import { useMemo } from 'react';
 import { type Node } from 'reactflow';
 import { getNodeConfig, type ConfigField, type NodeConfig } from '../../lib/nodeConfigs';
@@ -7,6 +7,11 @@ import DataViewer from '../execution/DataViewer';
 import CredentialPicker from './CredentialPicker';
 import ExpressionEditor from './ExpressionEditor';
 import SaveCustomNodeModal from './SaveCustomNodeModal';
+import { useNodeTypes } from '../../hooks/useNodeTypes';
+import CredentialModal from '../credentials/CredentialModal';
+import { credentialsService, type CredentialType, type Credential } from '../../api/credentials';
+import { type NodeField } from '../../api/nodeService';
+import orchestratorService from '../../api/orchestrator';
 
 interface NodeConfigPanelProps {
   isOpen: boolean;
@@ -23,12 +28,31 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [credentialTypes, setCredentialTypes] = useState<CredentialType[]>([]);
+  const [userCredentials, setUserCredentials] = useState<Credential[]>([]);
+
+  useEffect(() => {
+    // Fetch credential types and user credentials
+    Promise.all([
+      credentialsService.getTypes(),
+      credentialsService.list()
+    ]).then(([typesRes, credsRes]) => {
+         const types = typesRes.types ?? (Array.isArray(typesRes) ? typesRes : []);
+         setCredentialTypes(types);
+         setUserCredentials(credsRes.credentials || []);
+    }).catch(console.error);
+  }, []);
 
   // Get node configuration based on node type
   // Get node configuration based on node type
   // const nodeType = node?.data?.nodeType || '';
   // const nodeConfig: NodeConfig | undefined = getNodeConfig(nodeType);
 
+  const { getNodeConfigSync } = useNodeTypes();
+  const [showCredentialModal, setShowCredentialModal] = useState(false);
+  const [editingCredential, setEditingCredential] = useState<any>(null);
+
+  // Get node configuration
   const nodeConfig = useMemo(() => {
     if (!node) return undefined;
     
@@ -46,8 +70,13 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
        } as NodeConfig;
     }
 
+    // Try dynamic config first
+    const dynamicConfig = getNodeConfigSync(node.data?.nodeType || '');
+    if (dynamicConfig) return dynamicConfig;
+
+    // Fallback to static config
     return getNodeConfig(node.data?.nodeType || '');
-  }, [node]);
+  }, [node, getNodeConfigSync]);
 
   const nodeType = nodeConfig?.nodeType || node?.data?.nodeType || '';
 
@@ -68,13 +97,31 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
     setFormValues((prev) => ({ ...prev, [fieldId]: value }));
   };
 
-  // Save configuration
-  const handleSave = () => {
+  // Auto-save debounce effect
+  useEffect(() => {
+    if (!node) return;
+
+    const timer = setTimeout(() => {
+       // Only save if values actually changed from node config
+       // This simple check prevents loops, but ideally we check deep equality
+       // For now, we rely on the fact that formValues is the source of truth for the UI
+       onUpdateNode(node.id, {
+         ...node.data,
+         config: formValues,
+       });
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+  }, [formValues, node?.id, onUpdateNode]); // We don't depend on node.data to avoid circular updates if we can help it, but we need node.id
+
+  // Rename handleSave to close or Manual Save
+  const handleForceSave = () => {
     if (node) {
       onUpdateNode(node.id, {
         ...node.data,
         config: formValues,
       });
+      onClose();
     }
   };
 
@@ -100,7 +147,7 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
   };
 
   // Render form field based on type
-  const renderField = (field: ConfigField) => {
+  const renderField = (field: ConfigField | NodeField) => {
     const value = formValues[field.id] ?? '';
     const isExpanded = expandedFields.has(field.id);
 
@@ -154,11 +201,16 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
             onChange={(e) => handleFieldChange(field.id, e.target.value)}
             className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            {field.options?.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            {field.options?.map((option) => {
+              const { value, label } = typeof option === 'string'
+                ? { value: option, label: option }
+                : option;
+              return (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
         );
 
@@ -221,6 +273,43 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
         );
 
       case 'credential':
+        // Check for matching credential if field has a required type
+        const requiredType = field.credentialType;
+        if (requiredType) {
+           // Find the credential type definition that matches this service identifier
+           const typeDef = credentialTypes.find(t => t.service_identifier === requiredType);
+           
+           if (typeDef) {
+               // Check if user has a credential of this type
+               // We verify against userCredentials list fetched from backend
+               const existingCred = userCredentials.find(c => c.credential_type === typeDef.id);
+               
+               if (existingCred) {
+                   return (
+                       <div className="p-3 bg-muted/40 rounded-md border border-border">
+                           <div className="flex items-center gap-2 mb-2">
+                               <div className="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center text-green-500">
+                                   <Check className="w-3 h-3" />
+                               </div>
+                               <span className="text-sm font-medium">Credentials Configured</span>
+                           </div>
+                           <p className="text-xs text-muted-foreground mb-3">
+                               Using <span className="font-semibold">{existingCred.name}</span>
+                           </p>
+                           <a 
+                              href={`/credentials/${existingCred.id}`} 
+                              target="_blank"
+                              rel="noreferrer" 
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
+                           >
+                              Manage Credential <ExternalLink className="w-3 h-3" />
+                           </a>
+                       </div>
+                   );
+               }
+           }
+        }
+
         return (
           <CredentialPicker
             value={value as string}
@@ -228,6 +317,14 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
             credentialType={field.credentialType}
             placeholder={field.placeholder || 'Select a credential...'}
             required={field.required}
+            onCreate={() => {
+                 setEditingCredential(null);
+                 setShowCredentialModal(true);
+            }}
+            onEdit={(cred) => {
+                 setEditingCredential(cred);
+                 setShowCredentialModal(true);
+            }}
           />
         );
 
@@ -245,48 +342,64 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
   };
 
     // State for simulated execution
+
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<unknown>(null);
 
   // Mock input/output data for demonstration
-  const getMockData = (type: string, input: any = null) => {
-    if (type === 'manual_trigger') {
-      return [{ json: { timestamp: new Date().toISOString(), trigger: 'manual' } }];
-    }
-    if (type === 'http_request') {
-      return [{ json: { status: 200, data: { id: 101, name: 'Response Data' }, headers: { 'content-type': 'application/json' } } }];
-    }
-    // Generic transformation
-    return [{ json: { ...input?.[0]?.json, processed: true, processedAt: new Date().toISOString() } }];
-  };
 
-  const handleTestStep = () => {
+
+  const handleTestStep = async () => {
     if (!node) return;
     
     setIsExecuting(true);
-    // Simulate API call
-    setTimeout(() => {
-      const result = getMockData(nodeType, node.data.inputData || [{ json: { sample: 'input' } }]);
-      setExecutionResult(result);
-      setIsExecuting(false);
-      
-      // Update node data with output for persistence (like n8n does temporarily)
-      onUpdateNode(node.id, {
-        ...node.data,
-        outputData: result
-      });
-      
-      // Switch to output tab to show result
-      setActiveTab('output');
-    }, 1500);
+    setExecutionResult(null);
+
+    try {
+        const result = await orchestratorService.executePartial(
+            // If we have a backend workflow ID, pass it. If not (new workflow), pass null.
+            // But we don't have access to workflow ID here directly unless passed in props.
+            // Let's assume we can pass null and rely on config? Or we need workflow ID.
+            // Ideally NodeConfigPanel should receive workflowId.
+            // For now, let's pass null and hope backend handles ephemeral execution with config.
+            null, 
+            node.id,
+            // Pass input data if pinned, otherwise empty
+            node.data.inputData?.[0]?.json || {},
+            // Pass current config
+            formValues
+        );
+        
+        // Wrap result in standard format if not already
+        const formattedResult = Array.isArray(result) ? result : [{ json: result }];
+        
+        setExecutionResult(formattedResult);
+        
+        // Update node data with output
+        onUpdateNode(node.id, {
+            ...node.data,
+            outputData: formattedResult
+        });
+        
+        setActiveTab('output');
+    } catch (error) {
+        console.error("Test step failed", error);
+        // Show error in output
+        setExecutionResult({ error: (error as any).message || 'Execution failed' });
+        setActiveTab('output');
+    } finally {
+        setIsExecuting(false);
+    }
   };
 
   if (!isOpen || !node) return null;
 
+  if (!isOpen || !node) return null;
+
   return (
-    <div className="absolute top-0 right-0 h-full w-[450px] bg-card border-l border-border shadow-xl z-50 flex flex-col transition-all animate-in slide-in-from-right duration-300">
+    <div className="h-full w-[400px] bg-card border-l border-border shadow-xl z-20 flex flex-col transition-all animate-in slide-in-from-right duration-300">
       {/* Header */}
-      <div className="p-4 border-b border-border">
+      <div className="p-3 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <div
@@ -346,7 +459,7 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+      <div className="flex-1 overflow-auto p-3 custom-scrollbar">
         {activeTab === 'settings' && nodeConfig && (
           <div className="space-y-5">
             {nodeConfig.fields.map((field) => (
@@ -404,7 +517,7 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-border flex gap-3 bg-muted/20">
+      <div className="p-3 border-t border-border flex gap-2 bg-muted/20">
         <button
           onClick={handleTestStep}
           disabled={isExecuting}
@@ -436,10 +549,10 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
               <Save className="w-4 h-4" />
             </button>
             <button
-              onClick={handleSave}
+              onClick={handleForceSave}
               className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90 shadow-sm transition-all active:scale-95"
             >
-              Save
+              Done
             </button>
           </div>
         )}
@@ -454,10 +567,29 @@ export default function NodeConfigPanel({ isOpen, node, onClose, onUpdateNode }:
           config: formValues,
         }}
         onSave={() => {
-           // Optionally show a toast here
            setShowSaveModal(false);
         }}
       />
+      
+      {showCredentialModal && (
+        <CredentialModal
+          isOpen={showCredentialModal}
+          onClose={() => setShowCredentialModal(false)}
+          initialData={editingCredential}
+          credentialTypes={credentialTypes}
+          onSave={(newCred) => {
+             setUserCredentials(prev => {
+                const index = prev.findIndex(p => p.id === newCred.id);
+                if (index >= 0) {
+                   const next = [...prev];
+                   next[index] = newCred;
+                   return next;
+                }
+                return [...prev, newCred];
+             });
+          }}
+        />
+      )}
     </div>
   );
 }

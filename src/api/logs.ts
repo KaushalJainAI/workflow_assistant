@@ -8,7 +8,7 @@ import apiClient from './client';
 
 // Execution types
 export interface ExecutionLog {
-  id: number;
+  id?: number;
   execution_id: string;
   workflow_id: number;
   workflow_name: string;
@@ -30,6 +30,7 @@ export interface ExecutionDetail extends ExecutionLog {
 export interface NodeLog {
   id: number;
   node_id: string;
+  node_name?: string;
   node_type: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
   input_data: Record<string, unknown>;
@@ -123,10 +124,10 @@ export const logsService = {
   async listExecutions(params?: {
     workflow_id?: number;
     status?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<{ executions: ExecutionLog[]; total: number }> {
-    const response = await apiClient.get<{ executions: ExecutionLog[]; total: number }>(
+    limit?: number;
+    offset?: number;
+  }): Promise<{ results: ExecutionLog[]; count: number; limit: number; offset: number }> {
+    const response = await apiClient.get<{ results: ExecutionLog[]; count: number; limit: number; offset: number }>(
       '/logs/executions/',
       { params }
     );

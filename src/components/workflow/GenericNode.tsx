@@ -4,7 +4,8 @@ import {
   Play, FileText, Globe, Box, Clock, Hash, CheckSquare, 
   Settings, Mail, MessageSquare, Database, Layout, 
   Zap, List, Calendar, Code, Scissors, Layers, 
-  Search, Lock, HardDrive, Cpu, Shield, Share2, Plus
+  Search, Lock, HardDrive, Cpu, Shield, Share2, Plus,
+  AlertCircle, AlertTriangle, Sparkles
 } from 'lucide-react';
 import { nodeConfigs } from '../../lib/nodeConfigs';
 
@@ -34,6 +35,7 @@ const IconMap: Record<string, any> = {
   Cpu: Cpu,
   Shield: Shield,
   Share2: Share2,
+  Sparkles: Sparkles,
 };
 
 const GenericNode = ({ data, selected, type }: NodeProps) => {
@@ -58,12 +60,26 @@ const GenericNode = ({ data, selected, type }: NodeProps) => {
   return (
     <div 
       className={`px-4 py-3 rounded-lg border-2 shadow-lg transition-all min-w-[140px] relative bg-card ${
-        selected ? 'border-primary shadow-xl scale-105' : 'border-border/50 dark:border-border'
+        selected ? 'border-primary shadow-xl scale-105' : 
+        data.validationError?.type === 'error' ? 'border-destructive shadow-red-500/20 shadow-md' :
+        data.validationError?.type === 'warning' ? 'border-yellow-500 shadow-yellow-500/20 shadow-md' :
+        'border-border/50 dark:border-border'
       }`}
       style={{ 
         minHeight: `${Math.max(40, Math.max(inputs.length, outputs.length) * 25 + 20)}px`,
       }}
     >
+      {/* Validation Indicator */}
+      {data.validationError && (
+        <div className="absolute -top-2 -right-2 z-20 bg-background rounded-full shadow-md">
+          {data.validationError.type === 'error' ? (
+            <AlertCircle className="w-5 h-5 text-destructive fill-background" />
+          ) : (
+            <AlertTriangle className="w-5 h-5 text-yellow-500 fill-background" />
+          )}
+        </div>
+      )}
+
       {/* Decorative top bar for color */}
       <div 
         className="absolute top-0 left-0 right-0 h-1 rounded-t-lg opacity-80"

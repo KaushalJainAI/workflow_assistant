@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { type Node, type Edge } from 'reactflow';
 
+
 /**
  * State snapshot for undo/redo
  */
@@ -10,12 +11,14 @@ interface WorkflowState {
   timestamp: number;
 }
 
+
 /**
  * Undo/Redo hook configuration
  */
 interface UseUndoRedoConfig {
   maxHistory?: number;
 }
+
 
 /**
  * Undo/Redo hook return type
@@ -37,40 +40,37 @@ interface UseUndoRedoReturn {
   getCurrentState: () => WorkflowState | null;
 }
 
+
 /**
  * Hook for managing undo/redo functionality in the workflow editor
- * 
- * @example
- * const { undo, redo, pushState, canUndo, canRedo } = useUndoRedo();
- * 
- * // When user makes a change
- * pushState(nodes, edges);
- * 
- * // When user presses Ctrl+Z
- * const previousState = undo();
- * if (previousState) {
- *   setNodes(previousState.nodes);
- *   setEdges(previousState.edges);
- * }
  */
 export function useUndoRedo(config: UseUndoRedoConfig = {}): UseUndoRedoReturn {
   const { maxHistory = 50 } = config;
   
-  // History stack
-  const [history, setHistory] = useState<WorkflowState[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(-1);
+  // Use refs for immediate access to current values
+  const historyRef = useRef<WorkflowState[]>([]);
+  const currentIndexRef = useRef(-1);
+  
+  // State for triggering re-renders
+  const [, setTick] = useState(0);
+  const forceUpdate = useCallback(() => setTick(t => t + 1), []);
   
   // Flag to prevent recording state changes caused by undo/redo
   const isUndoRedoOperation = useRef(false);
 
+
   /**
    * Push a new state to the history
-   * This should be called after any user action that modifies the workflow
    */
   const pushState = useCallback((nodes: Node[], edges: Edge[]) => {
     // Don't record if this change was caused by undo/redo
     if (isUndoRedoOperation.current) {
       isUndoRedoOperation.current = false;
+      return;
+    }
+
+    // Don't record empty states
+    if (nodes.length === 0 && edges.length === 0) {
       return;
     }
 
@@ -80,75 +80,88 @@ export function useUndoRedo(config: UseUndoRedoConfig = {}): UseUndoRedoReturn {
       timestamp: Date.now(),
     };
 
-    setHistory((prev) => {
-      // If we're not at the end of history, truncate future states
-      const newHistory = prev.slice(0, currentIndex + 1);
-      
-      // Add new state
-      newHistory.push(newState);
-      
-      // Limit history size
-      if (newHistory.length > maxHistory) {
-        newHistory.shift();
-        setCurrentIndex((idx) => Math.max(0, idx)); // Adjust index
-        return newHistory;
-      }
-      
-      setCurrentIndex(newHistory.length - 1);
-      return newHistory;
-    });
-  }, [currentIndex, maxHistory]);
+    // If we're not at the end of history, truncate future states
+    const newHistory = historyRef.current.slice(0, currentIndexRef.current + 1);
+    
+    // Don't add duplicate states
+    const lastState = newHistory[newHistory.length - 1];
+    if (lastState && 
+        JSON.stringify(lastState.nodes) === JSON.stringify(newState.nodes) &&
+        JSON.stringify(lastState.edges) === JSON.stringify(newState.edges)) {
+      return;
+    }
+    
+    // Add new state
+    newHistory.push(newState);
+    
+    // Limit history size
+    if (newHistory.length > maxHistory) {
+      newHistory.shift();
+      currentIndexRef.current = newHistory.length - 1;
+    } else {
+      currentIndexRef.current = newHistory.length - 1;
+    }
+    
+    historyRef.current = newHistory;
+    forceUpdate();
+  }, [maxHistory, forceUpdate]);
+
 
   /**
    * Undo the last action
    */
   const undo = useCallback((): WorkflowState | null => {
-    if (currentIndex <= 0) {
+    if (currentIndexRef.current <= 0) {
       return null;
     }
 
     isUndoRedoOperation.current = true;
-    const newIndex = currentIndex - 1;
-    setCurrentIndex(newIndex);
+    currentIndexRef.current--;
+    forceUpdate();
     
-    return history[newIndex] || null;
-  }, [currentIndex, history]);
+    return historyRef.current[currentIndexRef.current] || null;
+  }, [forceUpdate]);
+
 
   /**
    * Redo the last undone action
    */
   const redo = useCallback((): WorkflowState | null => {
-    if (currentIndex >= history.length - 1) {
+    if (currentIndexRef.current >= historyRef.current.length - 1) {
       return null;
     }
 
     isUndoRedoOperation.current = true;
-    const newIndex = currentIndex + 1;
-    setCurrentIndex(newIndex);
+    currentIndexRef.current++;
+    forceUpdate();
     
-    return history[newIndex] || null;
-  }, [currentIndex, history]);
+    return historyRef.current[currentIndexRef.current] || null;
+  }, [forceUpdate]);
+
 
   /**
    * Clear all history
    */
   const clear = useCallback(() => {
-    setHistory([]);
-    setCurrentIndex(-1);
-  }, []);
+    historyRef.current = [];
+    currentIndexRef.current = -1;
+    forceUpdate();
+  }, [forceUpdate]);
+
 
   /**
    * Get current state without modifying history
    */
   const getCurrentState = useCallback((): WorkflowState | null => {
-    return history[currentIndex] || null;
-  }, [currentIndex, history]);
+    return historyRef.current[currentIndexRef.current] || null;
+  }, []);
+
 
   return {
-    canUndo: currentIndex > 0,
-    canRedo: currentIndex < history.length - 1,
-    historySize: history.length,
-    currentIndex,
+    canUndo: currentIndexRef.current > 0,
+    canRedo: currentIndexRef.current < historyRef.current.length - 1,
+    historySize: historyRef.current.length,
+    currentIndex: currentIndexRef.current,
     undo,
     redo,
     pushState,
@@ -157,43 +170,5 @@ export function useUndoRedo(config: UseUndoRedoConfig = {}): UseUndoRedoReturn {
   };
 }
 
-/**
- * Hook to track specific workflow changes and auto-push to history
- * 
- * This is a convenience wrapper that automatically records state changes
- * with debouncing to avoid recording every micro-change
- */
-export function useAutoHistory(
-  nodes: Node[],
-  edges: Edge[],
-  undoRedo: UseUndoRedoReturn,
-  debounceMs: number = 500
-) {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastStateRef = useRef<string>('');
-
-  const recordChange = useCallback(() => {
-    // Create a hash of current state to detect actual changes
-    const stateHash = JSON.stringify({ nodes, edges });
-    
-    if (stateHash === lastStateRef.current) {
-      return; // No actual change
-    }
-    
-    lastStateRef.current = stateHash;
-
-    // Clear existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    // Debounce the state push
-    timeoutRef.current = setTimeout(() => {
-      undoRedo.pushState(nodes, edges);
-    }, debounceMs);
-  }, [nodes, edges, undoRedo, debounceMs]);
-
-  return { recordChange };
-}
 
 export default useUndoRedo;
