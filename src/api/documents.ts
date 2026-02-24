@@ -18,8 +18,10 @@ export interface Document {
   metadata?: Record<string, any>;
   created_at: string;
   updated_at: string;
-  status: 'pending' | 'processing' | 'indexed' | 'failed' | 'uploading'; // Added status
+  status: 'pending' | 'processing' | 'indexed' | 'failed' | 'uploading';
   error_message?: string;
+  sharing_mode?: 'private' | 'shared_read' | 'shared_write';
+  author_name?: string;
 }
 
 // ... DocumentChunk, SearchResult interfaces ...
@@ -51,10 +53,10 @@ export interface RAGQueryResponse {
 
 export const documentsService = {
   /**
-   * List all documents
+   * List all documents (personal and public)
    */
-  async list(): Promise<{ documents: Document[] }> {
-    const response = await apiClient.get<{ documents: Document[] }>('/inference/documents/');
+  async list(): Promise<{ my_documents: Document[], public_documents: Document[] }> {
+    const response = await apiClient.get<{ my_documents: Document[], public_documents: Document[] }>('/inference/documents/');
     return response.data;
   },
 

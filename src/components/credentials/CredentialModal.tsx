@@ -14,7 +14,9 @@ import {
   Search,
   ExternalLink
 } from 'lucide-react';
-import { credentialsService, type CreateCredentialData, type CredentialType, type Credential } from '../../api/credentials';
+import { credentialsService, type CredentialType, type Credential } from '../../api/credentials';
+import Select from '../ui/Select';
+
 import { toast } from 'sonner';
 
 // Icon mapper
@@ -44,7 +46,6 @@ export default function CredentialModal({
   onClose,
   onSave,
   initialData,
-  preselectedType,
   credentialTypes,
 }: CredentialModalProps) {
   const [name, setName] = useState('');
@@ -53,6 +54,7 @@ export default function CredentialModal({
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Initialize form when opening/changing props
   useEffect(() => {
@@ -74,15 +76,12 @@ export default function CredentialModal({
       } else {
         // Create Mode
         setName('');
-        if (preselectedType) {
-          handleSelectType(preselectedType);
-        } else {
-          setSelectedType(null);
-          setFormData({});
-        }
+        setSelectedType(null);
+        setFormData({});
+        setSearchTerm('');
       }
     }
-  }, [isOpen, initialData, preselectedType, credentialTypes]);
+  }, [isOpen, initialData, credentialTypes]);
 
   const handleSelectType = (type: CredentialType) => {
     setSelectedType(type);
@@ -235,13 +234,31 @@ export default function CredentialModal({
             </div>
           )}
 
-          {/* Type Selection (Create Mode Only) */}
-          {!initialData && !preselectedType && !selectedType && (
+           {/* Type Selection (Create Mode Only) */}
+          {!initialData && !selectedType && (
              <div className="space-y-4">
                <div>
                  <label className="block text-sm font-medium mb-3 text-muted-foreground">Select Credential Type</label>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {credentialTypes.map(type => {
+                 
+                 <div className="relative mb-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input 
+                        type="text"
+                        placeholder="Search for a service or node..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        autoFocus
+                    />
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-1">
+                    {credentialTypes
+                        .filter(type => 
+                            type.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            type.description?.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .map(type => {
                         const Icon = IconMap[type.icon || 'Key'] || Key;
                         return (
                           <button
@@ -254,11 +271,16 @@ export default function CredentialModal({
                              </div>
                              <div>
                                 <div className="font-semibold text-foreground group-hover:text-primary transition-colors mb-1">{type.name}</div>
-                                <div className="text-xs text-muted-foreground leading-relaxed">{type.description}</div>
+                                <div className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{type.description}</div>
                              </div>
                           </button>
                         );
                     })}
+                    {credentialTypes.length > 0 && credentialTypes.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                        <div className="col-span-2 text-center py-8 text-muted-foreground">
+                            <p>No matching services found.</p>
+                        </div>
+                    )}
                  </div>
                </div>
              </div>
@@ -289,16 +311,15 @@ export default function CredentialModal({
                    </label>
                    
                    {field.type === 'select' ? (
-                       <select
+                       <Select
                           value={formData[field.name] || ''}
-                          onChange={(e) => setFormData({...formData, [field.name]: e.target.value})}
-                          className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                       >
-                          <option value="">Select...</option>
-                          {field.options?.map(opt => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                       </select>
+                          onChange={(val) => setFormData({...formData, [field.name]: val})}
+                          options={[
+                            { value: '', label: 'Select...' },
+                            ...(field.options?.map(opt => ({ value: opt.value, label: opt.label })) || [])
+                          ]}
+                          className="w-full"
+                       />
                    ) : field.type === 'textarea' ? (
                         <textarea
                            value={formData[field.name] || ''}

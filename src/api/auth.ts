@@ -208,9 +208,9 @@ export const authService = {
     const refresh = tokenManager.getRefreshToken();
     if (!refresh) throw new Error('No refresh token');
     
-    const response = await apiClient.post<{ access: string }>('/auth/token/refresh/', { refresh });
-    const { access } = response.data;
-    tokenManager.setTokens(access, refresh);
+    const response = await apiClient.post<{ access: string, refresh?: string }>('/auth/token/refresh/', { refresh });
+    const { access, refresh: newRefresh } = response.data;
+    tokenManager.setTokens(access, newRefresh || refresh);
     return access;
   },
 };

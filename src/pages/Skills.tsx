@@ -1,0 +1,462 @@
+import { useState, useEffect, useCallback } from 'react';
+import { 
+  Zap, 
+  Search, 
+  Plus, 
+  FileText, 
+  Share2, 
+  Trash2, 
+  X, 
+  Loader2,
+  Edit3,
+  Eye,
+  Check,
+  Download
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '../lib/utils';
+
+import apiClient from '../api/client';
+
+interface Skill {
+    id: string;
+    title: string;
+    description: string;
+    content: string;
+    author: string;
+    isShared: boolean;
+    updatedAt: string;
+    category: string;
+}
+
+export default function Skills() {
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState<'mine' | 'public'>('mine');
+    const [isLoading, setIsLoading] = useState(true);
+    
+    // Skills Data State
+    const [mySkills, setMySkills] = useState<Skill[]>([]);
+    const [publicSkills, setPublicSkills] = useState<Skill[]>([]);
+    const [totalMy, setTotalMy] = useState(0);
+    const [totalPublic, setTotalPublic] = useState(0);
+
+    // Editor State
+    const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editContent, setEditContent] = useState('');
+    const [editTitle, setEditTitle] = useState('');
+    const [editDescription, setEditDescription] = useState('');
+    const [editCategory, setEditCategory] = useState('General');
+    const [editorMode, setEditorMode] = useState<'split' | 'edit' | 'preview'>('split');
+
+    const fetchSkills = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const response = await apiClient.get('/skills/search/', {
+                params: {
+                    query: searchQuery,
+                    tab: activeTab,
+                    page_size: 20
+                }
+            });
+            
+            if (activeTab === 'mine') {
+                setMySkills(response.data.results);
+                setTotalMy(response.data.total);
+            } else {
+                setPublicSkills(response.data.results);
+                setTotalPublic(response.data.total);
+            }
+        } catch (error) {
+            console.error('Failed to fetch skills:', error);
+            toast.error('Failed to load skills');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [searchQuery, activeTab]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchSkills();
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [fetchSkills]);
+
+    const currentSkills = activeTab === 'mine' ? mySkills : publicSkills;
+
+    const handleCreateSkill = () => {
+        setSelectedSkill(null);
+        setEditTitle('');
+        setEditDescription('');
+        setEditContent('');
+        setEditCategory('General');
+        setIsEditing(true);
+    };
+
+    const handleOpenSkill = (skill: Skill) => {
+        setSelectedSkill(skill);
+        setEditTitle(skill.title);
+        setEditDescription(skill.description);
+        setEditContent(skill.content);
+        setEditCategory(skill.category);
+        setIsEditing(true);
+    };
+
+    const handleSave = async () => {
+        try {
+            const payload = {
+                title: editTitle,
+                description: editDescription,
+                content: editContent,
+                category: editCategory
+            };
+
+            if (selectedSkill) {
+                await apiClient.patch(`/skills/${selectedSkill.id}/`, payload);
+                toast.success('Skill updated successfully');
+            } else {
+                await apiClient.post('/skills/', payload);
+                toast.success('Skill created successfully');
+            }
+            setIsEditing(false);
+            fetchSkills();
+        } catch (error) {
+            console.error('Failed to save skill:', error);
+            toast.error('Failed to save skill');
+        }
+    };
+
+    const handleShare = async (skill: Skill) => {
+        try {
+            const response = await apiClient.post(`/skills/${skill.id}/share/`);
+            toast.success(response.data.message);
+            fetchSkills();
+        } catch (error) {
+            console.error('Failed to share skill:', error);
+            toast.error('Failed to update sharing status');
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (confirm('Are you sure you want to delete this skill?')) {
+            try {
+                await apiClient.delete(`/skills/${id}/`);
+                toast.success('Skill deleted');
+                fetchSkills();
+            } catch (error) {
+                console.error('Failed to delete skill:', error);
+                toast.error('Failed to delete skill');
+            }
+        }
+    };
+
+    const handleIncorporate = async (skill: Skill) => {
+        try {
+            await apiClient.post(`/skills/${skill.id}/fork/`);
+            toast.success('Skill incorporated into your collection!');
+            setActiveTab('mine');
+        } catch (error) {
+            console.error('Failed to incorporate skill:', error);
+            toast.error('Failed to incorporate skill');
+        }
+    };
+
+    // Simple Markdown to HTML-ish renderer (basic support for headers, lists, code)
+    const renderMarkdown = (text: string) => {
+        // This is a very basic renderer for UI purposes
+        const lines = text.split('\n');
+        return lines.map((line, i) => {
+            if (line.startsWith('# ')) return <h1 key={i} className="text-3xl font-bold mb-4 mt-6">{line.substring(2)}</h1>;
+            if (line.startsWith('## ')) return <h2 key={i} className="text-2xl font-bold mb-3 mt-5">{line.substring(3)}</h2>;
+            if (line.startsWith('### ')) return <h3 key={i} className="text-xl font-bold mb-2 mt-4">{line.substring(4)}</h3>;
+            if (line.startsWith('- ')) return <li key={i} className="ml-6 list-disc mb-1">{line.substring(2)}</li>;
+            if (line.startsWith('```')) return null; // Simple skip for code block markers
+            if (line.trim() === '') return <br key={i} />;
+            return <p key={i} className="mb-2 leading-relaxed text-foreground/80">{line}</p>;
+        });
+    };
+
+    return (
+        <div className="flex flex-col h-screen bg-background text-foreground animate-in fade-in duration-500">
+            {/* Header */}
+            <header className="px-8 py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-primary/10 rounded-xl">
+                            <Zap className="w-6 h-6 text-primary" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight">Skills</h1>
+                            <p className="text-xs font-medium text-muted-foreground mt-0.5">
+                                Build, manage, and share AI skills to enhance your workflows
+                            </p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleCreateSkill}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all hover:bg-primary/90 active:scale-95"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Create Skill
+                    </button>
+                </div>
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-8">
+                        <button
+                            onClick={() => {
+                                setActiveTab('mine');
+                                setIsLoading(true);
+                            }}
+                            className={cn(
+                                "pb-3 text-sm font-semibold transition-all relative",
+                                activeTab === 'mine' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                        )}
+                    >
+                        My Skills ({totalMy})
+                        {activeTab === 'mine' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+                    </button>
+                    <button
+                        onClick={() => {
+                            setActiveTab('public');
+                            setIsLoading(true);
+                        }}
+                        className={cn(
+                            "pb-3 text-sm font-semibold transition-all relative",
+                            activeTab === 'public' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                        )}
+                    >
+                        Public Library ({totalPublic})
+                        {activeTab === 'public' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+                    </button>
+                </div>
+
+                <div className="relative w-full md:w-[400px] group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <input 
+                        type="text" 
+                        placeholder="Search skills..."
+                        className="w-full h-11 pl-11 pr-4 rounded-xl bg-background/50 border border-border/60 focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground shadow-sm"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {isLoading && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />}
+                </div>
+            </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto p-10">
+            <div className="max-w-7xl mx-auto">
+                {isLoading && currentSkills.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                        <span className="text-muted-foreground animate-pulse">Loading skills...</span>
+                    </div>
+                ) : !isLoading && currentSkills.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-center max-w-sm mx-auto">
+                        <div className="p-6 bg-muted rounded-full mb-6">
+                            <Search className="w-12 h-12 text-muted-foreground/40" />
+                        </div>
+                        <h3 className="text-xl font-bold text-foreground mb-2">No skills found</h3>
+                        <p className="text-muted-foreground text-sm mb-8">
+                            {searchQuery ? "Try adjusting your search terms." : "You haven't created any skills yet."}
+                        </p>
+                        {!searchQuery && activeTab === 'mine' && (
+                            <button 
+                                onClick={handleCreateSkill}
+                                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Create Your First Skill
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 stagger-children">
+                        {currentSkills.map((skill) => (
+                            <div 
+                                key={skill.id}
+                                onClick={() => handleOpenSkill(skill)}
+                                className="group relative bg-card border border-border/60 rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col h-[240px]"
+                            >
+                                <div className="flex items-start justify-between mb-4">
+                                    <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+                                        <FileText className="w-5 h-5 text-primary" />
+                                    </div>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {activeTab === 'mine' ? (
+                                            <>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleShare(skill); }}
+                                                    className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-primary transition-colors"
+                                                    title="Share"
+                                                >
+                                                    <Share2 className="w-4 h-4" />
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(skill.id); }}
+                                                    className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-destructive transition-colors"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <button 
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    handleIncorporate(skill);
+                                                }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground rounded-lg text-xs font-bold transition-all active:scale-95"
+                                                title="Incorporate to My Skills"
+                                            >
+                                                <Download className="w-3.5 h-3.5" />
+                                                Incorporate
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                <h3 className="font-bold text-lg text-foreground mb-2 line-clamp-1">{skill.title}</h3>
+                                <p className="text-sm text-muted-foreground mb-4 flex-1 line-clamp-3 leading-relaxed">
+                                    {skill.description}
+                                </p>
+                                
+                                <div className="pt-4 border-t border-border/60 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                                    <span className="text-primary/70">{skill.category}</span>
+                                    <span className="text-muted-foreground">By {skill.author}</span>
+                                </div>
+
+                                {skill.isShared && activeTab === 'mine' && (
+                                    <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-green-500 text-white text-[10px] font-bold rounded-lg shadow-sm">
+                                        Shared
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </main>
+
+            {/* Markdown Editor Modal */}
+            {isEditing && (
+                <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
+                    <div className="bg-card border border-border/60 w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in">
+                        {/* Modal Header */}
+                        <div className="p-6 border-b border-border/60 flex items-center justify-between bg-card">
+                            <div className="flex items-center gap-4 flex-1 mr-4">
+                                <div className="p-2 bg-primary/10 rounded-lg">
+                                    <Edit3 className="w-5 h-5 text-primary" />
+                                </div>
+                                <div className="flex-1">
+                                    <input 
+                                        value={editTitle}
+                                        onChange={(e) => setEditTitle(e.target.value)}
+                                        className="bg-transparent border-none p-0 text-xl font-bold focus:ring-0 w-full placeholder:text-muted-foreground"
+                                        placeholder="Skill Title"
+                                    />
+                                    <div className="flex items-center gap-4 mt-1">
+                                        <input 
+                                            value={editDescription}
+                                            onChange={(e) => setEditDescription(e.target.value)}
+                                            className="bg-transparent border-none p-0 text-sm text-muted-foreground focus:ring-0 flex-1"
+                                            placeholder="Short description..."
+                                        />
+                                        <select
+                                            value={editCategory}
+                                            onChange={(e) => setEditCategory(e.target.value)}
+                                            className="bg-muted text-[10px] font-bold uppercase px-2 py-1 rounded-md border-none focus:ring-1 focus:ring-primary/20 cursor-pointer"
+                                        >
+                                            <option value="General">General</option>
+                                            <option value="Data Science">Data Science</option>
+                                            <option value="Automation">Automation</option>
+                                            <option value="Development">Development</option>
+                                            <option value="Marketing">Marketing</option>
+                                            <option value="Security">Security</option>
+                                            <option value="Finance">Finance</option>
+                                            <option value="Communication">Communication</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center bg-muted p-1 rounded-lg mr-4">
+                                    <button 
+                                        onClick={() => setEditorMode('edit')}
+                                        className={cn(
+                                            "p-1.5 px-3 rounded-md text-xs font-bold transition-all flex items-center gap-2",
+                                            editorMode === 'edit' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        <Edit3 className="w-4 h-4" />
+                                        Code
+                                    </button>
+                                    <button 
+                                        onClick={() => setEditorMode('split')}
+                                        className={cn(
+                                            "p-1.5 px-3 rounded-md text-xs font-bold transition-all flex items-center gap-2",
+                                            editorMode === 'split' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        Split
+                                    </button>
+                                    <button 
+                                        onClick={() => setEditorMode('preview')}
+                                        className={cn(
+                                            "p-1.5 px-3 rounded-md text-xs font-bold transition-all flex items-center gap-2",
+                                            editorMode === 'preview' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                        Preview
+                                    </button>
+                                </div>
+                                
+                                <button 
+                                    onClick={handleSave}
+                                    className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/20 active:scale-95 flex items-center gap-2"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    Save Skill
+                                </button>
+                                <button 
+                                    onClick={() => setIsEditing(false)}
+                                    className="p-2 hover:bg-muted rounded-xl transition-colors"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Editor Body */}
+                        <div className="flex-1 flex overflow-hidden">
+                            {(editorMode === 'edit' || editorMode === 'split') && (
+                                <div className={cn(
+                                    "flex-1 overflow-auto bg-zinc-950/50 p-6 font-mono",
+                                    editorMode === 'split' && "border-r border-border/60"
+                                )}>
+                                    <textarea 
+                                        value={editContent}
+                                        onChange={(e) => setEditContent(e.target.value)}
+                                        className="w-full h-full bg-transparent border-none text-blue-400 focus:ring-0 p-0 resize-none font-mono text-sm leading-relaxed"
+                                        style={{ outline: 'none' }}
+                                    />
+                                </div>
+                            )}
+                            {(editorMode === 'preview' || editorMode === 'split') && (
+                                <div className="flex-1 overflow-auto bg-card p-10 prose prose-invert max-w-none">
+                                    <div className="max-w-3xl mx-auto">
+                                        {renderMarkdown(editContent)}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

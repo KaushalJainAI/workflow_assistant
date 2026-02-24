@@ -13,6 +13,7 @@ import {
   Clock,
   RefreshCw
 } from 'lucide-react';
+import Select from '../components/ui/Select';
 
 type LogLevel = 'info' | 'warning' | 'error' | 'debug' | 'success';
 
@@ -134,14 +135,14 @@ export default function Logs() {
 
   const getLevelBadge = (level: LogLevel) => {
     const colors = {
-      info: 'bg-blue-100 text-blue-700',
-      success: 'bg-green-100 text-green-700',
-      warning: 'bg-yellow-100 text-yellow-700',
-      error: 'bg-red-100 text-red-700',
-      debug: 'bg-purple-100 text-purple-700',
+      info: 'bg-blue-500/15 text-blue-400',
+      success: 'bg-emerald-500/15 text-emerald-400',
+      warning: 'bg-amber-500/15 text-amber-400',
+      error: 'bg-red-500/15 text-red-400',
+      debug: 'bg-purple-500/15 text-purple-400',
     };
     return (
-      <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${colors[level]}`}>
+      <span className={`px-2 py-0.5 rounded-md text-xs font-medium uppercase ${colors[level]}`}>
         {level}
       </span>
     );
@@ -163,11 +164,11 @@ export default function Logs() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
+      <div className="border-b border-border/60 bg-card/80 backdrop-blur-xl px-6 py-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Activity className="w-6 h-6 text-primary" />
+            <div className="p-2.5 bg-muted border border-border rounded-xl">
+              <Activity className="w-5 h-5 text-primary" />
             </div>
             <div>
               <h1 className="text-2xl font-bold">Logs</h1>
@@ -179,14 +180,14 @@ export default function Logs() {
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`flex items-center gap-2 px-3 py-2 border rounded-md transition-colors ${
-                autoRefresh ? 'border-primary bg-primary/10 text-primary' : 'border-input hover:bg-muted'
+              className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-all duration-200 ${
+                autoRefresh ? 'border-primary bg-primary/10 text-primary' : 'border-border/60 hover:bg-muted'
               }`}
             >
               <RefreshCw className={`w-4 h-4 ${autoRefresh ? 'animate-spin' : ''}`} />
               Auto-refresh
             </button>
-            <button className="flex items-center gap-2 px-3 py-2 border border-input rounded-md hover:bg-muted">
+            <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
               <Download className="w-4 h-4" />
               Export
             </button>
@@ -202,32 +203,30 @@ export default function Logs() {
               placeholder="Search logs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full pl-10 pr-4 py-2 bg-background/50 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all duration-200"
             />
           </div>
 
-          <div className="relative">
-            <select
+            <Select
               value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="all">All Levels ({logCounts.all})</option>
-              <option value="error">Errors ({logCounts.error})</option>
-              <option value="warning">Warnings ({logCounts.warning})</option>
-              <option value="info">Info ({logCounts.info})</option>
-              <option value="debug">Debug</option>
-              <option value="success">Success</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-muted-foreground" />
-          </div>
+              onChange={setSelectedLevel}
+              options={[
+                { value: 'all', label: `All Levels (${logCounts.all})` },
+                { value: 'error', label: `Errors (${logCounts.error})` },
+                { value: 'warning', label: `Warnings (${logCounts.warning})` },
+                { value: 'info', label: `Info (${logCounts.info})` },
+                { value: 'debug', label: 'Debug' },
+                { value: 'success', label: 'Success' },
+              ]}
+              className="w-[180px]"
+            />
 
-          <button className="flex items-center gap-2 px-3 py-2 border border-input rounded-md hover:bg-muted">
+          <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
             <Filter className="w-4 h-4" />
             More Filters
           </button>
 
-          <button className="flex items-center gap-2 px-3 py-2 border border-input rounded-md hover:bg-muted">
+          <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
             <Clock className="w-4 h-4" />
             Last 24 hours
           </button>
@@ -235,13 +234,13 @@ export default function Logs() {
 
         {/* Quick Stats */}
         <div className="flex gap-4 mt-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-md">
-            <AlertCircle className="w-4 h-4 text-red-500" />
-            <span className="text-sm font-medium text-red-700">{logCounts.error} errors</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-red-400" />
+            <span className="text-sm font-medium text-red-400">{logCounts.error} errors</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50 rounded-md">
-            <AlertTriangle className="w-4 h-4 text-yellow-500" />
-            <span className="text-sm font-medium text-yellow-700">{logCounts.warning} warnings</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 rounded-lg">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <span className="text-sm font-medium text-amber-400">{logCounts.warning} warnings</span>
           </div>
         </div>
       </div>
@@ -252,7 +251,7 @@ export default function Logs() {
           {filteredLogs.map((log) => (
             <div 
               key={log.id} 
-              className="px-6 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+              className="px-6 py-3 hover:bg-muted/40 transition-colors duration-200 cursor-pointer"
               onClick={() => log.details && toggleExpand(log.id)}
             >
               <div className="flex items-start gap-4">
@@ -270,7 +269,7 @@ export default function Logs() {
                   <p className="text-sm">{log.message}</p>
                   
                   {expandedLogs.includes(log.id) && log.details && (
-                    <div className="mt-2 p-3 bg-muted rounded-md">
+                    <div className="mt-2 p-3 bg-muted/60 rounded-lg border border-border/40 animate-scale-in">
                       <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
                         {log.details}
                       </pre>
@@ -293,7 +292,7 @@ export default function Logs() {
         </div>
 
         {filteredLogs.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12">
+          <div className="flex flex-col items-center justify-center py-12 animate-fade-in">
             <Activity className="w-12 h-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No logs found</h3>
             <p className="text-muted-foreground">

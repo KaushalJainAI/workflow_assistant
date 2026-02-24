@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Save, Plus, Trash2, Code, Database, Settings } from 'lucide-react';
 import { saveCustomNode, getCustomCategories } from '../../lib/customNodes';
 import { type ConfigField } from '../../lib/nodeConfigs';
+import Select from '../ui/Select';
 
 interface NodeBuilderModalProps {
   isOpen: boolean;
@@ -207,18 +208,19 @@ export default function NodeBuilderModal({ isOpen, onClose, onSave }: NodeBuilde
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Category</label>
                   {!isNewCategory ? (
-                    <select
+                    <Select
                       value={category}
-                      onChange={(e) => {
-                        if (e.target.value === 'NEW') setIsNewCategory(true);
-                        else setCategory(e.target.value);
+                      onChange={(val) => {
+                        if (val === 'NEW') setIsNewCategory(true);
+                        else setCategory(val);
                       }}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="Custom">Custom</option>
-                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                      <option value="NEW">+ Create New...</option>
-                    </select>
+                      options={[
+                        { value: 'Custom', label: 'Custom' },
+                        ...categories.map(c => ({ value: c, label: c })),
+                        { value: 'NEW', label: '+ Create New...' }
+                      ]}
+                      className="w-full"
+                    />
                   ) : (
                     <div className="flex gap-2">
                       <input
@@ -309,13 +311,12 @@ export default function NodeBuilderModal({ isOpen, onClose, onSave }: NodeBuilde
                         </div>
                         <div className="col-span-3 space-y-1">
                           <label className="text-xs font-medium text-muted-foreground">Type</label>
-                          <select
+                          <Select
                             value={field.type}
-                            onChange={(e) => handleUpdateField(index, { type: e.target.value as any })}
-                            className="w-full px-2 py-1.5 bg-background border border-input rounded text-sm"
-                          >
-                            {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
+                            onChange={(val) => handleUpdateField(index, { type: val as any })}
+                            options={FIELD_TYPES.map(t => ({ value: t, label: t }))}
+                            className="w-full h-8"
+                          />
                         </div>
                         <div className="col-span-2 flex items-center pt-5">
                           <label className="flex items-center gap-2 cursor-pointer">

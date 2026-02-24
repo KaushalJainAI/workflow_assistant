@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { 
   Plus, 
-  Search, 
   MoreVertical,
   Key,
   Globe,
@@ -23,6 +22,9 @@ import {
 import { credentialsService } from '../api/credentials';
 import type { Credential, CredentialType } from '../api/credentials';
 import CredentialModal from '../components/credentials/CredentialModal';
+import PageHeader from '../components/layout/PageHeader';
+import SearchInput from '../components/ui/SearchInput';
+import { cn } from '../lib/utils';
 
 // Icon mapper
 const IconMap: Record<string, any> = {
@@ -41,6 +43,7 @@ export default function Credentials() {
   const [credentialTypes, setCredentialTypes] = useState<CredentialType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'verified' | 'unverified'>('verified');
 
   const [showModal, setShowModal] = useState(false);
   
@@ -133,7 +136,108 @@ export default function Credentials() {
     return <Icon className="w-5 h-5" />;
   };
 
+  const verifiedCredentials = filteredCredentials.filter(c => c.is_verified);
+  const unverifiedCredentials = filteredCredentials.filter(c => !c.is_verified);
+  
+  const displayedCredentials = activeTab === 'verified' ? verifiedCredentials : unverifiedCredentials;
 
+  const renderCredentialCard = (credential: Credential) => (
+    <div
+      key={credential.id}
+      className="group relative bg-card border border-border/60 rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col"
+      onClick={() => setViewingCredential(credential)}
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+            {(() => {
+                const type = credentialTypes.find(t => t.id === credential.credential_type);
+                return renderIcon(type?.icon || 'Key');
+            })()}
+          </div>
+          <div>
+            <h3 className="font-bold text-lg text-foreground mb-1 group-hover:text-primary transition-colors line-clamp-1">
+              {credential.name}
+            </h3>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{credential.credential_type_display}</p>
+          </div>
+        </div>
+        <div className="relative">
+          <button 
+            className="p-1.5 hover:bg-muted rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenDropdown(openDropdown === credential.id ? null : credential.id);
+            }}
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+          
+          {openDropdown === credential.id && (
+            <div className="absolute right-0 top-full mt-1 bg-card border border-border/60 rounded-xl shadow-2xl z-10 py-1 min-w-32 animate-scale-in">
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setViewingCredential(credential);
+                  setOpenDropdown(null);
+                }}
+              >
+                <Eye className="w-4 h-4" />
+                View
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingCredential(credential);
+                  setShowModal(true);
+                  setOpenDropdown(null);
+                }}
+              >
+                <Edit className="w-4 h-4" />
+                Edit
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleVerifyCredential(credential.id);
+                    setOpenDropdown(null);
+                }}
+              >
+                <Shield className="w-4 h-4 text-green-600" />
+                Verify
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-red-600"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteConfirm(credential.id);
+                  setOpenDropdown(null);
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-border/60 flex items-center justify-between text-xs font-medium text-muted-foreground">
+        <div className="flex items-center gap-1.5">
+          {credential.is_verified ? (
+             <Check className="w-3 h-3 text-green-500" />
+          ) : (
+             <Shield className="w-3 h-3" />
+          )}
+          <span className={credential.is_verified ? "text-green-500 font-bold" : ""}>{credential.is_verified ? 'Verified' : 'Unverified'}</span>
+        </div>
+        <span>{new Date(credential.updated_at).toLocaleDateString()}</span>
+      </div>
+    </div>
+  );
 
   if (loading && credentials.length === 0) {
     return <div className="p-6 text-center text-muted-foreground">Loading credentials...</div>;
@@ -142,170 +246,109 @@ export default function Credentials() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Key className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Credentials</h1>
-              <p className="text-sm text-muted-foreground">
-                Manage your external service connections
-              </p>
-            </div>
-          </div>
+      <PageHeader 
+        title="Credentials"
+        subtitle="Manage your external service connections"
+        icon={Key}
+        actions={
           <button 
             onClick={() => {
                 setEditingCredential(null);
                 setShowModal(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all shadow-lg shadow-primary/20 active:scale-95 hover:bg-primary/90"
           >
             <Plus className="w-4 h-4" />
             Add Credential
           </button>
-        </div>
+        }
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-8">
+            <button
+              onClick={() => setActiveTab('verified')}
+              className={cn(
+                "pb-3 text-sm font-semibold transition-all relative flex items-center gap-2",
+                activeTab === 'verified' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Check className="w-4 h-4" />
+              Verified ({verifiedCredentials.length})
+              {activeTab === 'verified' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+            </button>
+            <button
+              onClick={() => setActiveTab('unverified')}
+              className={cn(
+                "pb-3 text-sm font-semibold transition-all relative flex items-center gap-2",
+                activeTab === 'unverified' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Shield className="w-4 h-4" />
+              Unverified ({unverifiedCredentials.length})
+              {activeTab === 'unverified' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+            </button>
+          </div>
 
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search credentials..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+          <div className="flex items-center justify-end">
+            <div className="relative w-full md:w-[400px]">
+              <SearchInput 
+                placeholder="Search credentials..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      </PageHeader>
       
       {error && (
-        <div className="bg-red-50 text-red-600 p-4 border-b border-red-200 flex items-center gap-2">
+        <div className="bg-destructive/10 text-destructive p-4 border-b border-destructive/20 flex items-center gap-2">
            <AlertCircle className="w-5 h-5" />
            {error}
         </div>
       )}
 
       {/* Credentials Grid */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredCredentials.map((credential) => (
-            <div
-              key={credential.id}
-              className="p-4 bg-card border border-border rounded-lg hover:border-primary/50 hover:shadow-sm transition-all group cursor-pointer"
-              onClick={() => setViewingCredential(credential)}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-muted rounded-lg">
-                    {(() => {
-                        const type = credentialTypes.find(t => t.id === credential.credential_type);
-                        return renderIcon(type?.icon || 'Key');
-                    })()}
-                  </div>
-                  <div>
-                    <h3 className="font-medium group-hover:text-primary transition-colors">
-                      {credential.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">{credential.credential_type_display}</p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <button 
-                    className="p-1 hover:bg-muted rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenDropdown(openDropdown === credential.id ? null : credential.id);
-                    }}
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                  
-                  {openDropdown === credential.id && (
-                    <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-10 py-1 min-w-32">
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewingCredential(credential);
-                          setOpenDropdown(null);
-                        }}
-                      >
-                        <Eye className="w-4 h-4" />
-                        View
-                      </button>
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCredential(credential);
-                          setShowModal(true);
-                          setOpenDropdown(null);
-                        }}
-                      >
-                        <Edit className="w-4 h-4" />
-                        Edit
-                      </button>
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleVerifyCredential(credential.id);
-                            setOpenDropdown(null);
-                        }}
-                      >
-                        <Shield className="w-4 h-4 text-green-600" />
-                        Verify
-                      </button>
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-red-600"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowDeleteConfirm(credential.id);
-                          setOpenDropdown(null);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+      <div className="flex-1 overflow-auto p-8 space-y-12 animate-in fade-in duration-500">
+        {displayedCredentials.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 stagger-children">
+              {displayedCredentials.map(renderCredentialCard)}
+          </div>
+        )}
 
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  {credential.is_verified ? (
-                     <Check className="w-3 h-3 text-green-500" />
-                  ) : (
-                     <Shield className="w-3 h-3" />
-                  )}
-                  <span>{credential.is_verified ? 'Verified' : 'Unverified'}</span>
-                </div>
-                <span>{new Date(credential.updated_at).toLocaleDateString()}</span>
-              </div>
+        {/* Empty State */}
+        {displayedCredentials.length === 0 && !loading && (
+          <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+            <div className={cn(
+              "w-20 h-20 rounded-full flex items-center justify-center mb-6",
+              activeTab === 'verified' ? "bg-emerald-500/10" : "bg-muted/30"
+            )}>
+                {activeTab === 'verified' ? (
+                  <Check className="w-10 h-10 text-emerald-500" />
+                ) : (
+                  <Shield className="w-10 h-10 text-muted-foreground/50" />
+                )}
             </div>
-          ))}
-        </div>
-
-        {filteredCredentials.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Key className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No credentials found</h3>
-            <p className="text-muted-foreground mb-4">
-              Add credentials to connect to external services
+            <h3 className="text-xl font-semibold mb-2">
+              {activeTab === 'verified' ? "No verified credentials" : "No unverified credentials"}
+            </h3>
+            <p className="text-muted-foreground mb-6 max-w-sm text-center">
+              {activeTab === 'verified' 
+                ? "You haven't verified any credentials yet. Verify your credentials to ensure they work correctly." 
+                : "All your credentials are verified. Great job!"}
             </p>
-            <button 
-              onClick={() => {
-                  setEditingCredential(null);
-                  setShowModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              <Plus className="w-4 h-4" />
-              Add Credential
-            </button>
+            {activeTab === 'verified' && filteredCredentials.length === 0 && (
+              <button 
+                onClick={() => {
+                    setEditingCredential(null);
+                    setShowModal(true);
+                }}
+                className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/20 active:scale-[0.98] font-semibold"
+              >
+                <Plus className="w-5 h-5" />
+                Add First Credential
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -323,12 +366,12 @@ export default function Credentials() {
 
       {/* View Credential Modal */}
       {viewingCredential && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-lg mx-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in">
              {/* ... View Mode Content Stays ... */}
             <div className="p-6 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-muted rounded-lg">
+                <div className="p-2 bg-muted/80 rounded-lg">
                    {(() => {
                         const type = credentialTypes.find(t => t.id === viewingCredential.credential_type);
                         return renderIcon(type?.icon || 'Key');
@@ -344,7 +387,7 @@ export default function Credentials() {
                   setViewingCredential(null);
                   setVisibleFields(new Set());
                 }}
-                className="p-1.5 hover:bg-muted rounded-md"
+                className="p-1.5 hover:bg-muted rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -395,7 +438,7 @@ export default function Credentials() {
               <div className="flex gap-2">
                 <button 
                     onClick={() => handleVerifyCredential(viewingCredential.id)}
-                    className="flex items-center gap-2 px-4 py-2 border border-green-200 text-green-700 bg-green-50 rounded-md hover:bg-green-100"
+                    className="flex items-center gap-2 px-4 py-2 border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 rounded-lg hover:bg-emerald-500/20 transition-colors"
                 >
                     <Shield className="w-4 h-4" />
                     Verify
@@ -406,7 +449,7 @@ export default function Credentials() {
                     setShowModal(true);
                     setViewingCredential(null);
                   }}
-                  className="flex items-center gap-2 px-4 py-2 border border-input rounded-md hover:bg-muted"
+                  className="flex items-center gap-2 px-4 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors"
                 >
                   <Edit className="w-4 h-4" />
                   Edit
@@ -421,8 +464,8 @@ export default function Credentials() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
             <h3 className="text-lg font-semibold mb-2">Delete Credential?</h3>
             <p className="text-muted-foreground mb-4">
               This action cannot be undone. Workflows using this credential will stop working.
@@ -430,13 +473,13 @@ export default function Credentials() {
             <div className="flex justify-end gap-2">
               <button 
                 onClick={() => setShowDeleteConfirm(null)}
-                className="px-4 py-2 border border-input rounded-md hover:bg-muted"
+                className="px-4 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
               <button 
                 onClick={() => handleDeleteCredential(showDeleteConfirm)}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
               >
                 Delete
               </button>

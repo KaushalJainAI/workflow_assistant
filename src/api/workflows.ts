@@ -33,10 +33,15 @@ export interface Workflow {
   name: string;
   slug: string;
   description: string;
+  context?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   viewport: { x: number; y: number; zoom: number };
   workflow_settings: Record<string, unknown>;
+  supervision_level: 'error_only' | 'full' | 'none';
+  llm_provider: 'openrouter' | 'openai' | 'gemini' | 'ollama' | 'perplexity';
+  llm_model: string;
+  llm_credential_id: number | null;
   status: 'draft' | 'active' | 'inactive';
   icon: string;
   color: string;
@@ -67,8 +72,10 @@ export interface WorkflowListItem {
 export interface CreateWorkflowData {
   name: string;
   description?: string;
+  context?: string;
   nodes?: WorkflowNode[];
   edges?: WorkflowEdge[];
+  workflow_settings?: Record<string, unknown>;
   status?: string;
   icon?: string;
   color?: string;

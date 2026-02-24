@@ -1,187 +1,230 @@
-import { useState, useEffect } from 'react';
-import { Search, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { Search, Loader2, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
-import templatesService, { type WorkflowTemplate } from '../api/templates';
-import workflowsService from '../api/workflows';
+import templatesService, { type PaginatedTemplates } from '../api/templates';
 import TemplateCard from './templates/TemplateCard';
+import Select from '../components/ui/Select';
 
-const FolderIcon = ({ className }: { className?: string }) => (
-  <svg 
-    className={className} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-  >
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-);
+const CATEGORIES = [
+    { id: 'all', label: 'All Templates' },
+    { id: 'marketing', label: 'Marketing' },
+    { id: 'devops', label: 'DevOps' },
+    { id: 'ai_ml', label: 'AI / ML' },
+    { id: 'data', label: 'Data Pipeline' },
+    { id: 'support', label: 'Customer Support' },
+    { id: 'sales', label: 'Sales' },
+];
 
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [data, setData] = useState<PaginatedTemplates | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const navigate = useNavigate();
+  
+  // Filters
+  const [category, setCategory] = useState('all');
+  const [sort, setSort] = useState('usage_count');
+  const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    loadTemplates();
-  }, []);
-
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async (isSearch = false) => {
     try {
-      setLoading(true);
-      const data = await templatesService.list();
-      setTemplates(data || []);
+      if (isSearch) setSearching(true);
+      else setLoading(true);
+      
+      const params = {
+          category: category === 'all' ? undefined : category,
+          sort,
+          page
+      };
+
+      let result: PaginatedTemplates;
+      
+      if (searchQuery.trim()) {
+          result = await templatesService.search({ query: searchQuery, ...params });
+      } else {
+          result = await templatesService.list(params);
+      }
+      
+      setData(result);
     } catch (error) {
       console.error('Failed to load templates', error);
       toast.error('Failed to load templates');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) {
-      loadTemplates();
-      return;
-    }
-
-    try {
-      setSearching(true);
-      const results = await templatesService.search(searchQuery);
-      setTemplates(results);
-    } catch (error) {
-      console.error('Search failed', error);
-      toast.error('Search failed');
-    } finally {
       setSearching(false);
     }
+  }, [category, sort, page, searchQuery]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    loadTemplates(true);
   };
 
-  const useTemplate = async (template: WorkflowTemplate) => {
-    try {
-      // Logic to use template:
-      // Since we don't have a direct "create from template" API endpoint yet that accepts template_id in views.py (we have clone_workflow for existing workflows),
-      // we might need to assume these templates are backed by a real workflow ID if they are "WorkflowTemplate" models that mirror workflows?
-      // Actually, the backend `create_template_from_workflow` stores nodes/edges in WorkflowTemplate model.
-      // But `WorkflowTemplate` model is separate from `Workflow`.
-      // We need an endpoint to create a workflow FROM a template ID.
-      // I missed adding that specific endpoint! I added `clone_workflow` for Workflows.
-      
-      // Let's implement a workaround or mock it for now, 
-      // OR better, create a new workflow using the AI generator endpoint with title "Template: ..." 
-      // or just assume we have `clone_workflow` available if templates are exposed as "read-only workflows".
-      
-      // Checking backend views... `template_list` returns WorkflowTemplate objects.
-      // Does `WorkflowTemplate` have an ID we can use? Yes.
-      // Do we have an endpoint `POST /workflows/from-template/{id}`? No.
-      
-      // I will use `workflowsService.create` and manually copy data if I had it. 
-      // But `template_list` only returns metadata (id, name, desc...). It doesn't return nodes/edges in the list view for performance.
-      
-      // I should update the backend to support "Instantiate Template".
-      // For now, I'll just show a "Coming Soon" or try to use the AI generator with description.
-      
-      // Wait, I can use the AI Generator with description: "Create a workflow that does: [template description]"
-      // That's a clever fallback!
-      
-      toast.promise(
-        async () => {
-           // Fallback: AI Generation using template description
-           // In a real app, I'd add a proper `/orchestrator/workflows/instantiate/{templateId}` endpoint.
-           // For this demo, let's use the create endpoint if we had the full JSON, but we don't.
-           
-           // Actually, let's use the 'generate' endpoint with the template description!
-           // It's "smart" :D
-           const result = await workflowsService.create({
-               name: `Template: ${template.name}`,
-               description: template.description,
-               tags: template.tags,
-               status: 'draft'
-               // We are missing nodes/edges. 
-           });
-           
-           // Wait, creating empty workflow is useless.
-           // Let's assume for this specific USER REQUEST that I should have added the backend support. 
-           // But I can't go back to backend easily without context switching.
-           // I'll simulate it or simple redirect.
-           
-           navigate(`/workflow/${result.id}`);
-           return result;
-        },
-        {
-            loading: 'Creating workflow from template...',
-            success: 'Workflow created!',
-            error: 'Failed to create workflow'
-        }
-      );
-
-    } catch (error) {
-       // handled by promise
-    }
+  const handlePageChange = (newPage: number) => {
+      setPage(newPage);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden relative">
-        <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:20px_20px] pointer-events-none" />
-        
-        <header className="px-8 py-8 border-b border-white/5 z-10 glass-header">
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-300">
-                        Templates Library
-                    </h1>
-                    <p className="text-muted-foreground mt-2">
-                        Jumpstart your automation with pre-built workflows
-                    </p>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+        <header className="px-8 py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
+            <div className="max-w-7xl mx-auto">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                    <div>
+                        <h1 className="text-3xl font-bold text-foreground mb-1">
+                            Template Library
+                        </h1>
+                        <p className="text-muted-foreground">
+                            Explore and deploy pre-built workflows for your automation needs
+                        </p>
+                    </div>
+                    
+                    <form onSubmit={handleSearch} className="relative w-full md:w-[400px]">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <input 
+                            type="text" 
+                            placeholder="Search templates..."
+                            className="w-full h-11 pl-11 pr-4 rounded-xl bg-background/50 border border-border/60 focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground shadow-sm"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </form>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-6">
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
+                        {CATEGORIES.map((cat) => (
+                            <button
+                                key={cat.id}
+                                onClick={() => { setCategory(cat.id); setPage(1); }}
+                                className={cn(
+                                    "px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
+                                    category === cat.id 
+                                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/20" 
+                                        : "bg-card border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
+                                )}
+                            >
+                                {cat.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border/60 text-sm font-medium">
+                            <Filter className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Sort by:</span>
+                            <Select 
+                                value={sort}
+                                onChange={(val) => { setSort(val); setPage(1); }}
+                                options={[
+                                    { value: 'usage_count', label: 'Popularity' },
+                                    { value: 'rating', label: 'Top Rated' },
+                                    { value: 'trending', label: 'Trending' },
+                                    { value: 'newest', label: 'Newest' }
+                                ]}
+                                className="w-[140px] border-none bg-transparent h-auto py-1 px-0 shadow-none hover:bg-transparent"
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <form onSubmit={handleSearch} className="relative max-w-2xl">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <input 
-                    type="text" 
-                    placeholder="Search for templates (e.g., 'Google Sheets to Slack')..."
-                    className="w-full h-12 pl-10 pr-4 rounded-xl bg-white/5 border border-white/10 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all text-foreground placeholder:text-muted-foreground/50"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
-            </form>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-8 z-10 scrollbar-thin scrollbar-thumb-white/10 hover:scrollbar-thumb-white/20">
-            {loading || searching ? (
-                <div className="flex items-center justify-center h-64">
-                    <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-                </div>
-            ) : templates.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-center">
-                    <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                        <FolderIcon className="w-8 h-8 text-muted-foreground" />
+        <main className="flex-1 overflow-y-auto px-8 py-10">
+            <div className="max-w-7xl mx-auto">
+                {loading || searching ? (
+                    <div className="flex flex-col items-center justify-center h-64 gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                        <span className="text-muted-foreground animate-pulse">Searching templates...</span>
                     </div>
-                    <h3 className="text-xl font-medium text-foreground">No templates found</h3>
-                    <p className="text-muted-foreground mt-2 max-w-md">
-                        Try adjusting your search query or generate a new workflow using AI.
-                    </p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {templates.map((template) => (
-                        <TemplateCard 
-                            key={template.id} 
-                            template={template} 
-                            onUse={() => useTemplate(template)}
-                            featured={template.usage_count > 1000} // Example heuristic
-                        />
-                    ))}
-                </div>
-            )}
+                ) : !data || data.results.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-center">
+                        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4 text-muted-foreground">
+                            <Search className="w-8 h-8" />
+                        </div>
+                        <h3 className="text-xl font-medium text-foreground">No templates found</h3>
+                        <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
+                            Try adjusting your filters or using different keywords to find what you need.
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12 stagger-children">
+                            {data.results.map((template) => (
+                                <TemplateCard 
+                                    key={template.id} 
+                                    template={template} 
+                                />
+                            ))}
+                        </div>
+
+                        {/* Pagination */}
+                        {data.pages > 1 && (
+                            <div className="flex flex-col md:flex-row items-center justify-between gap-6 py-10 border-t border-border/60">
+                                <div className="text-sm text-muted-foreground order-2 md:order-1">
+                                    Showing <span className="font-semibold text-foreground">{data.results.length}</span> of <span className="font-semibold text-foreground">{data.count}</span> templates
+                                </div>
+                                
+                                <div className="flex items-center gap-2 order-1 md:order-2">
+                                    <button
+                                        onClick={() => handlePageChange(page - 1)}
+                                        disabled={page === 1}
+                                        className="p-2.5 rounded-lg bg-card border border-border/60 disabled:opacity-30 hover:bg-muted transition-colors shadow-sm"
+                                    >
+                                        <ChevronLeft className="w-5 h-5" />
+                                    </button>
+                                    
+                                    <div className="flex items-center gap-1.5">
+                                        {Array.from({ length: Math.min(5, data.pages) }, (_, i) => {
+                                            // Simple sliding window for pagination
+                                            let pageNum = page - 2 + i;
+                                            if (page <= 2) pageNum = i + 1;
+                                            if (page > data.pages - 2) pageNum = data.pages - 4 + i;
+                                            
+                                            if (pageNum > 0 && pageNum <= data.pages) {
+                                                return (
+                                                    <button
+                                                        key={pageNum}
+                                                        onClick={() => handlePageChange(pageNum)}
+                                                        className={cn(
+                                                            "w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold transition-all",
+                                                            page === pageNum 
+                                                                ? "bg-primary text-primary-foreground shadow-md shadow-primary/20" 
+                                                                : "bg-card border border-border/60 text-muted-foreground hover:bg-muted hover:text-primary transition-all"
+                                                        )}
+                                                    >
+                                                        {pageNum}
+                                                    </button>
+                                                );
+                                            }
+                                            return null;
+                                        })}
+                                    </div>
+
+                                    <button
+                                        onClick={() => handlePageChange(page + 1)}
+                                        disabled={page === data.pages}
+                                        className="p-2.5 rounded-lg bg-card border border-border/60 disabled:opacity-30 hover:bg-muted transition-colors shadow-sm"
+                                    >
+                                        <ChevronRight className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
         </main>
     </div>
   );
+}
+
+// Helper components & icons (keep or replace as needed)
+function cn(...classes: any[]) {
+    return classes.filter(Boolean).join(' ');
 }

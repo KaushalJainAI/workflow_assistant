@@ -20,9 +20,10 @@ import ReactFlow, {
   type Node,
   type NodeTypes,
 } from 'reactflow';
-import { Play, Save, Undo, Redo, Settings, Trash2, Rocket, CheckCircle2, X, History, Sparkles, Plus, AlertCircle, AlertTriangle } from 'lucide-react';
-import ChatPanel from '../components/layout/ChatPanel';
+import { Undo, Redo, Settings, Activity, Rocket, CheckCircle2, X, Plus, Copy } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import NodePanel from '../components/workflow/NodePanel';
+// import { useAssistant } from '../contexts/AssistantContext';
 import NodeConfigPanel from '../components/workflow/NodeConfigPanel';
 import { useKeyboardShortcuts, getDefaultShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useNodeTypes } from '../hooks/useNodeTypes';
@@ -34,9 +35,14 @@ import { downloadWorkflow } from '../lib/workflowSerializer';
 import { useVersionHistory } from '../hooks/useVersionHistory';
 import VersionHistoryPanel from '../components/workflow/VersionHistoryPanel';
 import WorkflowValidationPanel from '../components/workflow/WorkflowValidationPanel';
+import WorkflowSettingsPanel, { type SupervisionLevel } from '../components/workflow/WorkflowSettingsPanel';
 import { useHumanInTheLoop } from '../hooks/useHumanInTheLoop';
 import ApprovalModal from '../components/modals/ApprovalModal';
 import ClarificationModal from '../components/modals/ClarificationModal';
+import { normalizeToItems } from '../types/nodeData';
+import apiClient, { tokenManager } from '../api/client';
+import WorkflowExecutionLog from '../components/workflow/WorkflowExecutionLog';
+import { generateUniqueNodeLabel } from '../lib/utils';
 // import ErrorRecoveryModal from '../components/modals/ErrorRecoveryModal';
 
 import 'reactflow/dist/style.css';
@@ -78,17 +84,16 @@ const DeletableEdge = ({
           style={{
             position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            fontSize: 12,
             pointerEvents: 'all',
           }}
           className="nodrag nopan"
         >
           <button
-            className="w-5 h-5 bg-card border border-border rounded-full text-xs hover:bg-destructive/10 hover:text-destructive flex items-center justify-center transition-all shadow-sm"
+            className="w-6 h-6 bg-card border border-border rounded-full text-xs hover:bg-destructive shadow-sm hover:text-white flex items-center justify-center transition-all duration-200"
             onClick={onEdgeClick}
             title="Remove connection"
           >
-            <X className="w-3 h-3" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </EdgeLabelRenderer>
@@ -127,12 +132,13 @@ export default function WorkflowEditor() {
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploySuccess, setDeploySuccess] = useState(false);
   const [copiedNode, setCopiedNode] = useState<Node | null>(null);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
-  const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
+  // const { closeAssistant } = useAssistant();
+  const [workflowStatus, setWorkflowStatus] = useState<'draft' | 'active' | 'inactive' | 'archived'>('draft');
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedStateRef = useRef<{ nodes: Node[]; edges: Edge[]; workflowName: string } | null>(null);
+  const edgesRef = useRef(edges);
   const [pendingSourceNodeId, setPendingSourceNodeId] = useState<string | null>(null);
   const [pendingSourceHandleId, setPendingSourceHandleId] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -141,12 +147,36 @@ export default function WorkflowEditor() {
   const [validationSummary, setValidationSummary] = useState<string | null>(null);
   const [validationPanelOpen, setValidationPanelOpen] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [supervisionLevel, setSupervisionLevel] = useState<SupervisionLevel>('error_only');
+  const [workflowDescription, setWorkflowDescription] = useState('');
+  const [workflowContext, setWorkflowContext] = useState('');
+  const [showExecutionLog, setShowExecutionLog] = useState(false);
+  const [deployedWebhookUrl, setDeployedWebhookUrl] = useState<string | null>(null);
+  const [isUndeploying, setIsUndeploying] = useState(false);
+  const [availableSkills, setAvailableSkills] = useState<{ id: string; title: string }[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
   // Custom Hooks
+  const { user } = useAuth();
   const undoRedo = useUndoRedo({ maxHistory: 50 });
   const { id: urlWorkflowId } = useParams<{ id: string }>();
   const { versions, saveVersion } = useVersionHistory(workflowBackendId?.toString() || urlWorkflowId || 'new-workflow');
   const { activeRequest, handleResolve, handleReject } = useHumanInTheLoop();
+
+  // Find webhook URL if it exists in nodes
+  const findWebhookUrl = useCallback(() => {
+    const webhookNode = nodes.find(n => n.data?.nodeType === 'webhook_trigger');
+    if (webhookNode && user) {
+      const path = webhookNode.data?.config?.path?.replace(/^\/+/, '') || '';
+      if (path) {
+        // Construct backend URL (usually origin:8000 for local dev)
+        const baseUrl = window.location.origin.replace(':3000', ':8000');
+        return `${baseUrl}/api/webhooks/${user.id}/${path}`;
+      }
+    }
+    return null;
+  }, [nodes, user]);
   
   const isFirstRender = useRef(true);
 
@@ -160,12 +190,16 @@ export default function WorkflowEditor() {
             const workflow = await workflowsService.get(workflowIdNum);
             setWorkflowBackendId(workflow.id);
             setWorkflowName(workflow.name);
+            setWorkflowDescription(workflow.description || '');
+            setWorkflowContext(workflow.context || '');
+            setWorkflowStatus(workflow.status as any || 'draft');
             
             // Always set nodes/edges if provided, even if empty (to respect cleared state)
             if (workflow.nodes) {
-              setNodes(workflow.nodes.map(n => ({
+              setNodes(workflow.nodes.filter((n: any) => n && typeof n === 'object').map((n: any) => ({
                 ...n,
                 type: n.type || 'custom',
+                position: n.position || { x: 100, y: 100 }, // Fallback for missing position
               })) as Node<any>[]);
             }
             if (workflow.edges) {
@@ -176,6 +210,17 @@ export default function WorkflowEditor() {
                 style: { stroke: '#888', strokeWidth: 2 },
               })) as Edge[]);
             }
+            
+            // Load supervision level
+            if (workflow.supervision_level) {
+              setSupervisionLevel(workflow.supervision_level as SupervisionLevel);
+            }
+            
+            // Load selected skills
+            if (workflow.workflow_settings?.skills) {
+              setSelectedSkills(workflow.workflow_settings.skills as string[]);
+            }
+            
             lastSavedStateRef.current = { 
               nodes: workflow.nodes as Node<any>[], 
               edges: workflow.edges as Edge[], 
@@ -190,13 +235,34 @@ export default function WorkflowEditor() {
     loadWorkflow();
   }, [urlWorkflowId, setNodes, setEdges]);
 
+  // Fetch available skills
+  useEffect(() => {
+    const fetchSkills = async () => {
+      try {
+        const response = await apiClient.get('/skills/');
+        // Mapping from Skill model to the simplified {id, title} format
+        setAvailableSkills(response.data.map((s: any) => ({
+          id: s.id.toString(),
+          title: s.title
+        })));
+      } catch (error) {
+        console.error('Failed to fetch skills:', error);
+      }
+    };
+    fetchSkills();
+  }, []);
+
   // Handler to open node panel from a specific node's + button
   const onAddNodeFromHandle = useCallback((sourceNodeId: string, sourceHandleId: string) => {
     setPendingSourceNodeId(sourceNodeId);
     setPendingSourceHandleId(sourceHandleId);
     setTriggerPanelOpen(false); // Close trigger panel if open
+    
+    // Auto-collapse other panels
+    setConfigPanelOpen(false);
+    
     setNodePanelOpen(true);
-  }, []);
+  }, [setConfigPanelOpen]);
 
   // Compute which nodes/handles have outgoing connections
   const nodesWithConnectionInfo = useMemo(() => {
@@ -210,15 +276,17 @@ export default function WorkflowEditor() {
       handleConnections.get(e.source)!.add(e.sourceHandle || 'output-0');
     });
 
-    return nodes.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        nodeId: node.id,
-        connectedHandles: handleConnections.get(node.id) || new Set(),
-        onAddNodeFromHandle,
-      },
-    }));
+    return nodes
+      .filter(node => node && node.position) // Defensive check
+      .map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          nodeId: node.id,
+          connectedHandles: handleConnections.get(node.id) || new Set(),
+          onAddNodeFromHandle,
+        },
+      }));
   }, [nodes, edges, onAddNodeFromHandle]);
 
   const onConnect = useCallback(
@@ -231,6 +299,11 @@ export default function WorkflowEditor() {
     [setEdges],
   );
 
+  // Keep edgesRef in sync
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
     // If the node is already selected, clicking it again can open the panel
@@ -240,8 +313,12 @@ export default function WorkflowEditor() {
 
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
-    setConfigPanelOpen(true);
+    
+    // Auto-collapse others
     setNodePanelOpen(false);
+    setTriggerPanelOpen(false);
+    
+    setConfigPanelOpen(true);
   }, []);
 
   const onPaneClick = useCallback(() => {
@@ -288,12 +365,14 @@ export default function WorkflowEditor() {
     console.log('Adding node:', { type, typeId, position });
 
     const newNodeId = `node-${Date.now()}`;
+    const uniqueLabel = generateUniqueNodeLabel(nodeType.name, nodes);
+
     const newNode: Node<any> = {
       id: newNodeId,
       type,
       position,
       data: { 
-        label: nodeType.name, 
+        label: uniqueLabel, 
         icon: nodeType.icon, 
         color: nodeType.color,
         nodeType: typeId,
@@ -336,7 +415,9 @@ export default function WorkflowEditor() {
   // Drag and drop handlers for adding nodes from panel
   const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
   }, []);
 
   const handleDrop = useCallback((event: React.DragEvent) => {
@@ -354,12 +435,14 @@ export default function WorkflowEditor() {
       };
 
       const typeId = nodeType.baseNodeTypeId || nodeType.id;
+      const uniqueLabel = generateUniqueNodeLabel(nodeType.name, nodes);
+
       const newNode: Node<any> = {
         id: `node-${Date.now()}`,
         type: typeId.includes('trigger') ? 'trigger' : 'custom',
         position,
         data: {
-          label: nodeType.name,
+          label: uniqueLabel,
           icon: nodeType.icon,
           color: nodeType.color,
           nodeType: typeId,
@@ -374,13 +457,6 @@ export default function WorkflowEditor() {
     }
   }, [setNodes]);
 
-  // Handle opening the config panel
-  const handleOpenConfigPanel = useCallback(() => {
-    if (selectedNode) {
-      setConfigPanelOpen(true);
-      setNodePanelOpen(false);
-    }
-  }, [selectedNode]);
 
   // Handle updating node data from config panel
   const handleUpdateNode = useCallback((nodeId: string, newData: Record<string, unknown>) => {
@@ -391,29 +467,100 @@ export default function WorkflowEditor() {
           : n
       )
     );
-  }, [setNodes]);
+  }, []); // ✅ Empty deps - setNodes is stable from useNodesState
+
 
 
   const handleDeploy = async () => {
     setIsDeploying(true);
+    setDeployedWebhookUrl(null);
     try {
       if (!workflowBackendId) {
         await handleSave();
       }
       
       if (workflowBackendId) {
-        await workflowsService.update(workflowBackendId, { status: 'active' });
+        await orchestratorService.deployWorkflow(workflowBackendId);
+        setWorkflowStatus('active');
+        
+        // Find and set webhook URL if applicable
+        const webhookUrl = findWebhookUrl();
+        setDeployedWebhookUrl(webhookUrl);
+        
         setDeploySuccess(true);
-        setTimeout(() => {
-          setShowDeployModal(false);
-          setDeploySuccess(false);
-        }, 2000);
+        toast.success('Workflow deployed successfully');
+        
+        // If there's a webhook URL, don't auto-close the modal so user can copy it
+        if (!webhookUrl) {
+          setTimeout(() => {
+            setShowDeployModal(false);
+            setDeploySuccess(false);
+          }, 2000);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Deploy failed:', error);
-      toast.error('Deployment failed. Please check console for details.');
+      
+      // Handle detailed backend validation errors
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Deployment failed';
+      const details = error.response?.data?.details;
+      
+      if (details && Array.isArray(details)) {
+        const detailMessages = details.map((d: any) => d.message || d).join('\n');
+        toast.error(`${errorMessage}:\n${detailMessages}`);
+      } else {
+        const tip = error.response?.data?.tip;
+        if (tip) {
+          toast.error(`${errorMessage}\n\nTip: ${tip}`);
+        } else {
+          toast.error(errorMessage);
+        }
+      }
     } finally {
       setIsDeploying(false);
+    }
+  };
+
+  const handleUndeploy = async () => {
+    if (!workflowBackendId) return;
+    
+    setIsUndeploying(true);
+    try {
+      await orchestratorService.undeployWorkflow(workflowBackendId);
+      setWorkflowStatus('draft');
+      toast.success('Workflow undeployed successfully');
+    } catch (error: any) {
+      console.error('Undeploy failed:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Undeploy failed';
+      toast.error(errorMessage);
+    } finally {
+      setIsUndeploying(false);
+    }
+  };
+
+  // Handle batch save for settings
+  const handleSettingsSave = async (desc: string, ctx: string, level: SupervisionLevel, skills: string[]) => {
+    setWorkflowDescription(desc);
+    setWorkflowContext(ctx);
+    setSupervisionLevel(level);
+    setSelectedSkills(skills);
+    
+    if (workflowBackendId) {
+      try {
+        await workflowsService.update(workflowBackendId, { 
+          description: desc,
+          context: ctx,
+          supervision_level: level,
+          workflow_settings: {
+             ...((lastSavedStateRef.current as any)?.workflow_settings || {}),
+             skills: skills
+          }
+        } as any);
+        toast.success('Settings saved successfully');
+      } catch (error) {
+        console.error('Failed to save settings:', error);
+        toast.error('Failed to save settings');
+      }
     }
   };
 
@@ -439,11 +586,9 @@ export default function WorkflowEditor() {
     if (isSaving) return; // Prevent double saves
     
     setIsSaving(true);
+    setIsSaving(true);
     if (isAutoSave) {
       setIsAutoSaving(true);
-      setSaveMessage('Auto-saving...');
-    } else {
-      setSaveMessage('Saving...');
     }
     
     try {
@@ -451,7 +596,7 @@ export default function WorkflowEditor() {
       const apiNodes = nodes.map(n => ({
         id: n.id,
         type: n.type || 'custom',
-        position: n.position,
+        position: n.position || { x: 100, y: 100 }, // Ensure position is never missing
         data: n.data,
       }));
       
@@ -470,16 +615,26 @@ export default function WorkflowEditor() {
         // Update existing workflow
         savedWorkflow = await workflowsService.update(workflowBackendId, {
           name: workflowName,
+          description: workflowDescription,
+          context: workflowContext,
           nodes: apiNodes as any,
           edges: apiEdges as any,
+          workflow_settings: {
+            skills: selectedSkills
+          }
         });
       } else {
         // Create new workflow
         savedWorkflow = await workflowsService.create({
           name: workflowName || 'Untitled',
+          description: workflowDescription,
+          context: workflowContext,
           nodes: apiNodes as any,
           edges: apiEdges as any,
           status: 'draft',
+          workflow_settings: {
+            skills: selectedSkills
+          }
         });
         setWorkflowBackendId(savedWorkflow.id);
         // Update URL to include the new workflow ID (without full page reload)
@@ -488,8 +643,6 @@ export default function WorkflowEditor() {
       
       lastSavedStateRef.current = { nodes, edges, workflowName };
       setIsDirty(false);
-      setSaveMessage(isAutoSave ? 'Changes saved' : 'Workflow saved!');
-      setTimeout(() => setSaveMessage(null), 2000);
       console.log('Workflow saved:', savedWorkflow);
       
       // Save version history for manual saves
@@ -521,13 +674,11 @@ export default function WorkflowEditor() {
       
     } catch (error) {
       console.error('Failed to save workflow:', error);
-      setSaveMessage('Save failed!');
-      setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setIsSaving(false);
       setIsAutoSaving(false);
     }
-  }, [workflowName, nodes, edges, workflowBackendId, isSaving, saveVersion]);
+  }, [workflowName, nodes, edges, workflowBackendId, isSaving, saveVersion, workflowDescription, workflowContext, getNodeConfigSync]);
 
   // Auto-save effect: triggers 2 seconds after the last change
   useEffect(() => {
@@ -638,7 +789,16 @@ export default function WorkflowEditor() {
   const [lastExecutionData, setLastExecutionData] = useState<Record<string, any>>({});
   
   // WebSocket Connection
-  const wsUrl = executionId ? `ws://localhost:8000/ws/execution/${executionId}/` : null;
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (executionId) {
+      const token = tokenManager.getAccessToken();
+      setWsUrl(`ws://localhost:8000/ws/execution/${executionId}/?token=${token}`);
+    } else {
+      setWsUrl(null);
+    }
+  }, [executionId]);
   
   useEffect(() => {
     if (!wsUrl) return;
@@ -655,8 +815,34 @@ export default function WorkflowEditor() {
         const message = JSON.parse(event.data);
         if (message.type === 'execution.event') {
            const eventData = message.data;
-           if (eventData.type === 'node_complete') {
-             const { node_id, output, status } = eventData.data || eventData; // Handle both wrapper formats
+           const type = eventData.event_type || eventData.type;
+           const data = eventData.data || eventData;
+           
+           if (type === 'node_started' || type === 'node_start') {
+              const { node_id, input } = data;
+              
+              // Normalize input to items format
+              const normalizedInput = input ? normalizeToItems(input?.items || input?.data || input) : undefined;
+
+              setNodes(nds => nds.map(n => {
+                if (n.id === node_id) {
+                  return {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      executionStatus: 'running',
+                      inputData: normalizedInput || n.data.inputData
+                    }
+                  };
+                }
+                return n;
+              }));
+           }
+           else if (type === 'node_complete') {
+             const { node_id, output, status, error, warnings } = data;
+             
+             // Normalize output to items format
+             const normalizedOutput = normalizeToItems(output?.items || output?.data || output);
              
              // Update node output data
              setNodes(nds => nds.map(n => {
@@ -665,18 +851,118 @@ export default function WorkflowEditor() {
                    ...n,
                    data: {
                      ...n.data,
-                     outputData: output.data || output, // Normalize output wrapper
-                     executionStatus: status
+                     outputData: normalizedOutput,
+                     executionStatus: status,
+                     errorMessage: error,
+                     executionWarning: warnings && warnings.length > 0 ? warnings[0] : undefined
                    }
                  };
                }
                return n;
              }));
 
+             // If a node failed, clear executionId immediately to revert Stop -> Test button
+             if (status === 'failed') {
+               setExecutionId(null);
+             }
+
              // Trigger downstream updates (store last execution data for reference)
-             setLastExecutionData(prev => ({ ...prev, [node_id]: output }));
+             setLastExecutionData(prev => ({ ...prev, [node_id]: normalizedOutput }));
+
+             // Optimistic Update: Immediately set successor nodes to 'running'
+             if (status === 'completed') {
+               const currentEdges = edgesRef.current;
+               const successorNodeIds = currentEdges
+                 .filter(edge => edge.source === node_id)
+                 .map(edge => edge.target);
+
+               if (successorNodeIds.length > 0) {
+                 setNodes(nds => nds.map(n => {
+                   if (successorNodeIds.includes(n.id) && n.data.executionStatus !== 'completed') {
+                     return {
+                       ...n,
+                       data: {
+                         ...n.data,
+                         executionStatus: 'running'
+                       }
+                     };
+                   }
+                   return n;
+                 }));
+               }
+             }
+           }
+           else if (type === 'node_error') {
+              const { node_id, error, status } = data;
+              setNodes(nds => nds.map(n => {
+                if (n.id === node_id) {
+                  return {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      executionStatus: status || 'failed',
+                      errorMessage: error
+                    }
+                  };
+                }
+                return n;
+              }));
+           }
+           else if (type === 'workflow_complete' || type === 'workflow_completed') {
+             setExecutionId(null);
+             toast.success('Workflow execution completed');
+           }
+           else if (type === 'workflow_cancelled') {
+             setExecutionId(null);
+             toast.info('Workflow stopped');
+           }
+           else if (type === 'workflow_error' || type === 'workflow_failed') {
+             setExecutionId(null);
+             const error = data.error || data.message || 'Unknown error';
+             toast.error(`Workflow failed: ${error}`);
            }
         }
+        else if (message.type === 'execution.state_sync') {
+           const { nodes: syncedNodes, overall_status } = message.data;
+           console.log('Received state sync for nodes:', syncedNodes.length, 'overall_status:', overall_status);
+           
+           // If the execution is already in a terminal state, reset the button
+           if (overall_status === 'completed' || overall_status === 'failed' || overall_status === 'cancelled') {
+             setExecutionId(null);
+             if (overall_status === 'completed') {
+               toast.success('Workflow execution completed');
+             } else if (overall_status === 'failed') {
+               toast.error('Workflow execution failed');
+             }
+           }
+           
+           setNodes(nds => nds.map(n => {
+             const syncedNode = syncedNodes.find((sn: any) => sn.node_id === n.id);
+             if (syncedNode) {
+               const normalizedOutput = syncedNode.output ? normalizeToItems(syncedNode.output?.items || syncedNode.output?.data || syncedNode.output) : undefined;
+               return {
+                 ...n,
+                 data: {
+                   ...n.data,
+                   executionStatus: syncedNode.status,
+                   outputData: normalizedOutput || n.data.outputData,
+                   errorMessage: syncedNode.error
+                 }
+               };
+             }
+             return n;
+           }));
+
+           // Also update lastExecutionData for all completed nodes
+           const completedNodeData: Record<string, any> = {};
+           syncedNodes.forEach((sn: any) => {
+             if (sn.status === 'completed' && sn.output) {
+               completedNodeData[sn.node_id] = normalizeToItems(sn.output?.items || sn.output?.data || sn.output);
+             }
+           });
+           setLastExecutionData(prev => ({ ...prev, ...completedNodeData }));
+        }
+
       } catch (e) {
         console.error('Failed to parse WebSocket message', e);
       }
@@ -701,22 +987,23 @@ export default function WorkflowEditor() {
         const incomingEdges = edges.filter(e => e.target === node.id);
         if (incomingEdges.length === 0) return node;
 
-        // Collect matching outputs
-        const inputs: any[] = [];
+        // Collect and merge input items from all upstream nodes
+        const allInputItems: any[] = [];
         incomingEdges.forEach(edge => {
            const sourceOutput = lastExecutionData[edge.source];
-           if (sourceOutput) {
-              inputs.push(sourceOutput);
+           if (sourceOutput && Array.isArray(sourceOutput)) {
+              // Source output is already in items format
+              allInputItems.push(...sourceOutput);
            }
         });
 
-        if (inputs.length > 0) {
-           // We have new inputs for this node
+        if (allInputItems.length > 0) {
+           // We have new inputs for this node in items format
            return {
               ...node,
               data: {
                  ...node.data,
-                 inputData: inputs
+                 inputData: allInputItems
               }
            };
         }
@@ -724,9 +1011,43 @@ export default function WorkflowEditor() {
      }));
   }, [lastExecutionData, edges, setNodes]);
 
+  const handleStop = useCallback(async () => {
+    if (!executionId) return;
+    
+    try {
+      await orchestratorService.stopExecution(executionId);
+      toast.success('Execution stopped');
+    } catch (error) {
+      console.error('Failed to stop execution:', error);
+      toast.error('Failed to stop execution');
+    } finally {
+      // Always clear execution ID to revert button to "Test"
+      setExecutionId(null);
+      
+      // Update nodes to reflect cancellation if they were still running/pending
+      setNodes(nds => nds.map(n => {
+        if (n.data.executionStatus === 'running' || n.data.executionStatus === 'pending') {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              executionStatus: 'failed',
+              errorMessage: 'Execution stopped'
+            }
+          };
+        }
+        return n;
+      }));
+    }
+  }, [executionId, setNodes]);
+
   const handleExecute = useCallback(async () => {
     // Validate before execution
-    const result = await validateWorkflow(nodes, edges);
+    const result = await validateWorkflow(nodes, edges, { 
+      validateWithBackend: true,
+      checkCredentials: true,
+      checkTypeCompatibility: true
+    });
     setValidationErrors(result.errors);
     setValidationWarnings(result.warnings);
     setValidationSummary(getValidationSummary(result));
@@ -775,6 +1096,21 @@ export default function WorkflowEditor() {
       } catch (error) {
         console.error('Execution failed:', error);
         toast.error('Execution failed to start.');
+        setExecutionId(null);
+        
+        // Reset nodes from pending back to null if it failed to start
+        setNodes(nds => nds.map(n => {
+          if (n.data.executionStatus === 'pending') {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                executionStatus: undefined
+              }
+            };
+          }
+          return n;
+        }));
       }
     }
   }, [nodes, edges, isDirty, workflowBackendId, handleSave]);
@@ -792,7 +1128,7 @@ export default function WorkflowEditor() {
     onExecute: handleExecute,
   }), [handleSave, handleUndo, handleRedo, handleDeleteNode, handleDuplicate, handleCopy, handlePaste, handleEscape, handleExecute]);
 
-  useKeyboardShortcuts(shortcuts);
+  useKeyboardShortcuts(shortcuts, !configPanelOpen);
 
   // ==================== END KEYBOARD SHORTCUTS ====================
 
@@ -805,133 +1141,162 @@ export default function WorkflowEditor() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* ... existing JSX ... */}
-      
-      {/* Node Config Panel (MOVED TO FLEX CONTAINER) */}
-      
-      {/* Top Toolbar */}
-      {/* Top Toolbar */}
-      <div className="h-14 border-b border-border bg-card flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-4">
-          <input
-            type="text"
-            value={workflowName}
-            onChange={(e) => setWorkflowName(e.target.value)}
-            className="bg-transparent border-none text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-primary rounded px-2 py-1"
-          />
-          {selectedNode && (
-            <div className="flex items-center gap-2 ml-4 pl-4 border-l border-border">
-              <span className="text-sm text-muted-foreground">Selected:</span>
-              <span className="text-sm font-medium">{selectedNode.data.label}</span>
-              <button 
-                onClick={handleDeleteNode}
-                className="p-1 hover:bg-destructive/10 text-destructive rounded-md"
-                title="Delete Node"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button 
-                onClick={handleOpenConfigPanel}
-                className="p-1 hover:bg-muted rounded-md"
-                title="Node Settings"
+      {/* ======== STABLE ENTERPRISE TOP BAR ======== */}
+      <header className="h-16 shrink-0 border-b border-border/60 bg-card/80 backdrop-blur-xl z-20">
+        <div className="h-full px-6 flex items-center justify-between">
+
+          {/* LEFT — Navigation & History */}
+          <div className="flex items-center gap-3 min-w-[220px]">
+            <button
+              onClick={() => setShowExecutionLog(!showExecutionLog)}
+              className={`p-2 rounded-md transition ${
+                showExecutionLog
+                  ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+              title="Executions"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
+
+            <div className="h-4 w-px bg-border/40" />
+
+            <button
+              onClick={handleUndo}
+              disabled={!undoRedo.canUndo}
+              className={`p-2 rounded-md transition ${
+                undoRedo.canUndo
+                  ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  : 'opacity-20 pointer-events-none'
+              }`}
+              title="Undo"
+            >
+              <Undo className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handleRedo}
+              disabled={!undoRedo.canRedo}
+              className={`p-2 rounded-md transition ${
+                undoRedo.canRedo
+                  ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  : 'opacity-20 pointer-events-none'
+              }`}
+              title="Redo"
+            >
+              <Redo className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* CENTER — WORKFLOW IDENTITY (PRIMARY ANCHOR) */}
+          <div className="flex flex-col items-center">
+            <input
+              value={workflowName}
+              onChange={(e) => setWorkflowName(e.target.value)}
+              spellCheck={false}
+              className="
+                bg-transparent text-lg font-semibold text-foreground
+                focus:outline-none text-center
+                hover:text-primary transition
+              "
+              style={{ width: '320px' }}
+            />
+
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+              <span>{isDirty ? 'Unsaved changes' : 'Saved'}</span>
+              <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+              <span>{isAutoSaving ? 'Saving…' : 'Synced'}</span>
+            </div>
+          </div>
+
+          {/* RIGHT — TOOLS + ACTIONS */}
+          <div className="flex items-center gap-3 min-w-[320px] justify-end">
+
+            {/* Tools */}
+            <div className="flex items-center gap-1 rounded-md border border-border/40 bg-muted/20 px-1">
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className={`p-2 rounded-md transition ${
+                  showSettings
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                title="Settings"
               >
                 <Settings className="w-4 h-4" />
               </button>
             </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Save status indicator */}
-          {saveMessage ? (
-            <span className={`text-sm font-medium ${isAutoSaving ? 'text-blue-500' : 'text-green-600'} ${isAutoSaving ? '' : 'animate-pulse'}`}>
-              {saveMessage}
-            </span>
-          ) : isDirty ? (
-            <span className="text-sm text-yellow-600 font-medium flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-              Unsaved changes
-            </span>
-          ) : null}
-          <button 
-            onClick={handleUndo}
-            disabled={!undoRedo.canUndo}
-            className={`p-2 hover:bg-muted rounded-md ${!undoRedo.canUndo ? 'opacity-40 cursor-not-allowed' : ''}`}
-            title="Undo (Ctrl+Z)"
-          >
-            <Undo className="w-4 h-4" />
-          </button>
-          <button 
-            onClick={handleRedo}
-            disabled={!undoRedo.canRedo}
-            className={`p-2 hover:bg-muted rounded-md ${!undoRedo.canRedo ? 'opacity-40 cursor-not-allowed' : ''}`}
-            title="Redo (Ctrl+Y)"
-          >
-            <Redo className="w-4 h-4" />
-          </button>
-          <div className="w-px h-6 bg-border mx-2" />
-          <button 
-            onClick={() => setShowVersionHistory(!showVersionHistory)}
-            className={`p-2 hover:bg-muted rounded-md ${showVersionHistory ? 'bg-muted text-primary' : ''}`}
-            title="Version History"
-          >
-            <History className="w-4 h-4" />
-          </button>
-          <div className="w-px h-6 bg-border mx-2" />
-          <button 
-             onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
-             className={`flex items-center gap-2 px-3 py-1.5 border border-purple-500/50 text-purple-600 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20 ${isAiPanelOpen ? 'bg-purple-50 dark:bg-purple-900/20' : ''}`}
-             title="AI Assistant (Ctrl+I)"
-          >
-            <Sparkles className="w-4 h-4" />
-            AI Assistant
-          </button>
-          <div className="w-px h-6 bg-border mx-2" />
-          <button 
-            onClick={() => handleSave(false)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80"
-            title="Save (Ctrl+S)"
-          >
-            <Save className="w-4 h-4" />
-            Save
-          </button>
-          <button 
-            onClick={handleExecute}
-            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700"
-            title="Test (Ctrl+Enter)"
-          >
-            <Play className="w-4 h-4" />
-            Test
-          </button>
-          <button 
-            onClick={() => setShowDeployModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-md hover:from-purple-700 hover:to-blue-700"
-          >
-            <Rocket className="w-4 h-4" />
-            Deploy
-          </button>
-        </div>
-        
-        {/* Validation Status */}
-        {validationSummary && (
-          <button 
-            onClick={() => setValidationPanelOpen(!validationPanelOpen)}
-            className={`
-            px-3 py-1 text-xs rounded-full mr-4 hidden md:flex items-center gap-2 cursor-pointer hover:bg-opacity-80 transition-all
-            ${validationErrors.length > 0 ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 
-              validationWarnings.length > 0 ? 'bg-yellow-500/10 text-yellow-600 border border-yellow-500/20' :
-              'bg-green-500/10 text-green-500 border border-green-500/20'}
-          `}>
-             {validationErrors.length > 0 ? (
-                <AlertCircle className="w-3 h-3" />
-              ) : validationWarnings.length > 0 ? (
-                <AlertTriangle className="w-3 h-3" />
+
+            {/* Test / Stop (LOCKED WIDTH — NO SHIFTING) */}
+            <div className="w-[96px]">
+              {executionId ? (
+                <button
+                  onClick={handleStop}
+                  className="w-full h-9 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold hover:bg-destructive hover:text-destructive-foreground transition"
+                >
+                  Stop
+                </button>
               ) : (
-                <CheckCircle2 className="w-3 h-3" />
+                <button
+                  onClick={handleExecute}
+                  className="w-full h-9 rounded-md border border-border/60 text-muted-foreground text-xs font-semibold hover:bg-muted hover:text-foreground transition"
+                >
+                  Test
+                </button>
               )}
-            {validationSummary}
-          </button>
-        )}
-      </div>
+            </div>
+
+            {/* DEPLOY / UNDEPLOY — SINGLE PRIMARY CTA */}
+            {workflowStatus === 'active' ? (
+              <button
+                onClick={handleUndeploy}
+                disabled={isUndeploying}
+                className="
+                  h-9 px-6 rounded-md
+                  bg-destructive/10 border border-destructive/20
+                  text-destructive text-xs font-bold tracking-wider
+                  hover:bg-destructive hover:text-destructive-foreground
+                  transition shadow-md disabled:opacity-50
+                "
+              >
+                {isUndeploying ? 'Undeploying...' : 'Undeploy'}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowDeployModal(true)}
+                className="
+                   h-9 px-6 rounded-md
+                   bg-primary hover:bg-primary/90
+                   text-primary-foreground text-xs font-bold tracking-wider
+                   transition shadow-md
+                "
+              >
+                Deploy
+              </button>
+            )}
+
+            {/* STATUS — INFORMATIONAL ONLY */}
+            {validationSummary && (
+              <div
+                onClick={() => {
+                  setValidationPanelOpen(!validationPanelOpen);
+                }}
+                className={`cursor-pointer px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border transition
+                  ${
+                    validationErrors.length > 0
+                      ? 'bg-destructive/10 text-destructive border-destructive/20'
+                      : validationWarnings.length > 0
+                      ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
+                      : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                  }
+                `}
+              >
+                {validationErrors.length > 0 ? 'Invalid' : 'Valid'}
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
 
       {/* Canvas */}
       {/* Canvas Area */}
@@ -945,116 +1310,126 @@ export default function WorkflowEditor() {
              onDragOver={handleDragOver}
              onDrop={handleDrop}
           >
-          <ReactFlow
-            nodes={nodesWithConnectionInfo}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onNodeDoubleClick={onNodeDoubleClick}
-            onPaneClick={onPaneClick}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            fitView
-            snapToGrid
-            snapGrid={[15, 15]}
-            defaultEdgeOptions={{
-              animated: true,
-              style: { stroke: '#888', strokeWidth: 2 }
-            }}
-            translateExtent={[[-2000, -2000], [5000, 5000]]}
-            nodeExtent={[[-2000, -2000], [5000, 5000]]}
-            minZoom={0.1}
-            maxZoom={4}
-            preventScrolling={true}
-          >
+            {showExecutionLog ? (
+              <WorkflowExecutionLog workflowId={workflowBackendId} />
+            ) : (
+              <ReactFlow
+                nodes={nodesWithConnectionInfo}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                onNodeDoubleClick={onNodeDoubleClick}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                fitView
+                snapToGrid
+                snapGrid={[15, 15]}
+                defaultEdgeOptions={{
+                  animated: true,
+                  style: { stroke: '#888', strokeWidth: 2 }
+                }}
+                translateExtent={[[-2000, -2000], [5000, 5000]]}
+                nodeExtent={[[-2000, -2000], [5000, 5000]]}
+                minZoom={0.1}
+                maxZoom={4}
+                preventScrolling={true}
+              >
 
-              <Controls className="bg-card border border-border shadow-lg rounded-lg" />
-              <MiniMap 
-                className="bg-card border border-border rounded-lg shadow-sm"
-                style={{ height: 100, width: 150 }} 
-                nodeColor={(node) => node.data?.color || '#7b68ee'}
-                maskColor="rgba(0, 0, 0, 0.1)"
-              />
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#ddd" />
-              
-              {/* Empty Canvas Message - Only show when no nodes exist */}
-              {nodes.length === 0 && (
-                <Panel position="top-center" className="mt-20">
-                  <div className="flex flex-col items-center gap-4 bg-card border border-border rounded-lg p-8 shadow-lg max-w-sm">
-                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-                      <Plus className="w-8 h-8 text-primary" />
-                    </div>
-                    
-                    <div className="text-center space-y-1">
-                      <h3 className="text-lg font-semibold">No nodes yet</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Add a trigger to start building your workflow
-                      </p>
-                    </div>
-                    
-                    <button 
-                      onClick={() => {
-                        setTriggerPanelOpen(true);
-                        setNodePanelOpen(false);
-                        setPendingSourceNodeId(null);
-                      }}
-                      className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-medium shadow-sm"
+                  <Controls className="bg-card border border-border shadow-lg rounded-lg" />
+                  <MiniMap 
+                    className="bg-card border border-border rounded-lg shadow-sm"
+                    style={{ height: 100, width: 150 }} 
+                    nodeColor={(node) => node.data?.color || 'hsl(var(--primary))'}
+                    maskColor="rgba(0, 0, 0, 0.05)"
+                  />
+                  <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--foreground) / 0.05)" />
+                  
+                  {/* Empty Canvas Message - Only show when no nodes exist */}
+                  {nodes.length === 0 && (
+                    <Panel position="top-center" className="mt-20">
+                      <div className="flex flex-col items-center gap-4 bg-card border border-border rounded-lg p-8 shadow-lg max-w-sm">
+                        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                          <Plus className="w-8 h-8 text-primary" />
+                        </div>
+                        
+                        <div className="text-center space-y-1">
+                          <h3 className="text-lg font-semibold">No nodes yet</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Add a trigger to start building your workflow
+                          </p>
+                        </div>
+                        
+                        <button 
+                          onClick={() => {
+                            setTriggerPanelOpen(true);
+                            setNodePanelOpen(false);
+                            setPendingSourceNodeId(null);
+                            // Auto-collapse competitors
+                            setConfigPanelOpen(false);
+                          }}
+                          className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-all font-medium shadow-sm"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Trigger
+                        </button>
+                      </div>
+                    </Panel>
+                  )}
+
+                  {/* Add Buttons - Only show when nodes exist */}
+                  {nodes.length > 0 && (
+                    <Panel position="bottom-center" className="mb-4 flex gap-2">
+                      <button 
+                        onClick={() => {
+                          setTriggerPanelOpen(true);
+                          setNodePanelOpen(false);
+                          setPendingSourceNodeId(null);
+                          // Auto-collapse competitors
+                          setConfigPanelOpen(false);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all font-medium"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Trigger
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setNodePanelOpen(true);
+                          setTriggerPanelOpen(false);
+                          setPendingSourceNodeId(null);
+                          // Auto-collapse competitors
+                          setConfigPanelOpen(false);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-full shadow-lg hover:bg-secondary/80 transition-all font-medium"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Node
+                      </button>
+                    </Panel>
+                  )}
+                  {/* Canvas Controls Panel */}
+                  <Panel position="top-right" className="flex flex-col gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
+                    <button
+                      onClick={() => downloadWorkflow(nodes, edges, workflowName)}
+                      className="p-2 hover:bg-muted rounded-md text-xs"
+                      title="Export Workflow"
                     >
-                      <Plus className="w-4 h-4" />
-                      Add Trigger
+                      <span className="text-xl">📤</span>
                     </button>
-                  </div>
-                </Panel>
-              )}
+                    <button
+                      onClick={() => setShowImportModal(true)}
+                      className="p-2 hover:bg-muted rounded-md text-xs"
+                      title="Import Workflow"
+                    >
+                      <span className="text-xl">📥</span>
+                    </button>
+                  </Panel>
 
-              {/* Add Buttons - Only show when nodes exist */}
-              {nodes.length > 0 && (
-                <Panel position="bottom-center" className="mb-4 flex gap-2">
-                  <button 
-                    onClick={() => {
-                      setTriggerPanelOpen(true);
-                      setNodePanelOpen(false);
-                      setPendingSourceNodeId(null);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all font-medium"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Trigger
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setNodePanelOpen(true);
-                      setTriggerPanelOpen(false);
-                      setPendingSourceNodeId(null);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-full shadow-lg hover:bg-secondary/80 transition-all font-medium"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Node
-                  </button>
-                </Panel>
-              )}
-              {/* Canvas Controls Panel */}
-              <Panel position="top-right" className="flex flex-col gap-1 bg-card border border-border rounded-lg shadow-lg p-1">
-                <button
-                  onClick={() => downloadWorkflow(nodes, edges, workflowName)}
-                  className="p-2 hover:bg-muted rounded-md text-xs"
-                  title="Export Workflow"
-                >
-                  <span className="text-xl">📤</span>
-                </button>
-                <button
-                  onClick={() => setShowImportModal(true)}
-                  className="p-2 hover:bg-muted rounded-md text-xs"
-                  title="Import Workflow"
-                >
-                  <span className="text-xl">📥</span>
-                </button>
-              </Panel>
-
-            </ReactFlow>
+              </ReactFlow>
+            )}
 
 
             {/* Import Modal */}
@@ -1069,20 +1444,7 @@ export default function WorkflowEditor() {
               }}
             />
 
-            {/* Consolidated Node Panel */}
-            <NodePanel 
-              isOpen={nodePanelOpen || triggerPanelOpen} 
-              onClose={() => {
-                setNodePanelOpen(false);
-                setTriggerPanelOpen(false);
-                setPendingSourceNodeId(null);
-                setPendingSourceHandleId(null);
-              }}
-              onAddNode={handleAddNode}
-              triggersOnly={triggerPanelOpen}
-              showAll={nodePanelOpen && !pendingSourceNodeId && !triggerPanelOpen}
-              isFirstNode={nodes.length === 0}
-            />
+            {/* Removed NodePanel from here */}
 
 
 
@@ -1099,6 +1461,18 @@ export default function WorkflowEditor() {
                   setShowVersionHistory(false);
                 }
               }}
+            />
+
+            {/* Workflow Settings Panel */}
+            <WorkflowSettingsPanel
+              isOpen={showSettings}
+              onClose={() => setShowSettings(false)}
+              supervisionLevel={supervisionLevel}
+              description={workflowDescription}
+              context={workflowContext}
+              skills={availableSkills}
+              selectedSkills={selectedSkills}
+              onSave={handleSettingsSave}
             />
 
             {/* HITL Modals */}
@@ -1126,48 +1500,63 @@ export default function WorkflowEditor() {
           </div>
           
           {/* Validation Panel - Positioned below canvas so it shrinks the canvas when open */}
-          <WorkflowValidationPanel 
-            isOpen={validationPanelOpen}
-            onToggle={() => setValidationPanelOpen(!validationPanelOpen)}
-            errors={validationErrors}
-            warnings={validationWarnings}
-            onSelectNode={(nodeId) => {
-              // Select the node
-              setNodes(nds => nds.map(n => ({
-                ...n,
-                selected: n.id === nodeId
-              })));
-              
-              // Find the node to set as selected for config panel if needed
-              const node = nodes.find(n => n.id === nodeId);
-              if (node) setSelectedNode(node);
-            }}
-          />
+          <div className="transition-all duration-300">
+            <WorkflowValidationPanel 
+              isOpen={validationPanelOpen}
+              onToggle={() => setValidationPanelOpen(!validationPanelOpen)}
+              errors={validationErrors}
+              warnings={validationWarnings}
+              onSelectNode={(nodeId) => {
+                // Select the node
+                setNodes(nds => nds.map(n => ({
+                  ...n,
+                  selected: n.id === nodeId
+                })));
+                
+                // Find the node to set as selected for config panel if needed
+                const node = nodes.find(n => n.id === nodeId);
+                if (node) setSelectedNode(node);
+              }}
+            />
+          </div>
         </div>
 
-        {configPanelOpen && liveSelectedNode && (
-          <div className="shrink-0 relative z-30 transition-all duration-300">
-            <NodeConfigPanel
-              isOpen={configPanelOpen}
-              node={liveSelectedNode}
-              onClose={() => setConfigPanelOpen(false)}
-              onUpdateNode={handleUpdateNode}
+        {/* Node Selection/Add Panel (Docked Sidebar) */}
+        {(nodePanelOpen || triggerPanelOpen) && (
+          <div className="w-[320px] border-l border-border bg-card shadow-xl z-20 flex flex-col transition-all duration-300 shrink-0 overflow-hidden">
+            <NodePanel 
+              isOpen={nodePanelOpen || triggerPanelOpen} 
+              onClose={() => {
+                setNodePanelOpen(false);
+                setTriggerPanelOpen(false);
+                setPendingSourceNodeId(null);
+                setPendingSourceHandleId(null);
+              }}
+              onAddNode={handleAddNode}
+              triggersOnly={triggerPanelOpen}
+              showAll={nodePanelOpen && !pendingSourceNodeId && !triggerPanelOpen}
+              isFirstNode={nodes.length === 0}
             />
           </div>
         )}
 
-        {/* AI Chat Panel (Docked) */}
-        {isAiPanelOpen && (
-          <div className="w-[320px] border-l border-border bg-card shadow-xl z-20 flex flex-col transition-all duration-300 shrink-0">
-            <ChatPanel 
-              isDocked={true} 
-              onClose={() => setIsAiPanelOpen(false)} 
-            />
-          </div>
-        )}
+        {/* NodeConfigPanel is now a full-page overlay, rendered outside the flex layout */}
+
+        {/* AI Chat Panel (Docked) - Removed local rendering, now handled globally */}
       </div>
 
-
+      {/* Node Config Panel - Full-page overlay */}
+      {configPanelOpen && liveSelectedNode && (
+        <NodeConfigPanel
+          isOpen={configPanelOpen}
+          node={liveSelectedNode}
+          nodes={nodes}
+          edges={edges}
+          onClose={() => setConfigPanelOpen(false)}
+          onUpdateNode={handleUpdateNode}
+          workflowId={workflowBackendId}
+        />
+      )}
 
       {/* Deploy Modal */}
       {showDeployModal && (
@@ -1175,8 +1564,8 @@ export default function WorkflowEditor() {
           <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-6 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg">
-                  <Rocket className="w-5 h-5 text-white" />
+                <div className="p-2 bg-muted/80 rounded-lg">
+                  <Rocket className="w-5 h-5 text-primary" />
                 </div>
                 <h2 className="text-xl font-semibold">Deploy Workflow</h2>
               </div>
@@ -1191,7 +1580,45 @@ export default function WorkflowEditor() {
                   <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Deployment Successful!</h3>
-                <p className="text-muted-foreground">Your workflow is now live and ready to run.</p>
+                <p className="text-muted-foreground mb-4">Your workflow is now live and ready to run.</p>
+                
+                {deployedWebhookUrl && (
+                  <div className="mt-4 p-4 bg-muted rounded-lg border border-border text-left">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
+                      Webhook URL
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-xs bg-background p-2 rounded border border-border overflow-x-auto whitespace-nowrap">
+                        {deployedWebhookUrl}
+                      </code>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(deployedWebhookUrl);
+                          toast.success('Webhook URL copied to clipboard');
+                        }}
+                        className="p-2 hover:bg-background rounded-md border border-border transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      Use this URL to trigger your workflow from external services.
+                    </p>
+                  </div>
+                )}
+
+                {deployedWebhookUrl && (
+                  <button 
+                    onClick={() => {
+                      setShowDeployModal(false);
+                      setDeploySuccess(false);
+                    }}
+                    className="mt-6 w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 shadow-sm transition-all"
+                  >
+                    Got it
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -1235,7 +1662,7 @@ export default function WorkflowEditor() {
                   <button 
                     onClick={handleDeploy}
                     disabled={isDeploying}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-md hover:from-purple-700 hover:to-blue-700 disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
                   >
                     {isDeploying ? (
                       <>

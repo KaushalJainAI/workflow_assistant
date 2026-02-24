@@ -46,14 +46,30 @@ const TRIGGER_TYPES = [
   'github_trigger',
   'discord_trigger', 
   'telegram_trigger', 
-  'rss_feed_trigger'
+  'rss_feed_trigger',
+  'file_trigger',
+  'sqs_trigger'
 ];
 
 // Backend LLM node types
 const LLM_NODE_TYPES = ['openai', 'gemini', 'ollama'];
 
 // Backend integration node types
-const INTEGRATION_NODE_TYPES = ['slack', 'gmail', 'google_sheets'];
+const INTEGRATION_NODE_TYPES = [
+  'slack', 
+  'gmail', 
+  'google_sheets', 
+  'discord', 
+  'notion', 
+  'airtable', 
+  'telegram', 
+  'trello', 
+  'github',
+  'postgres',
+  'mysql',
+  'mongodb',
+  'redis'
+];
 
 // Backend control flow node types
 const CONTROL_FLOW_TYPES = ['if', 'switch', 'loop'];
@@ -589,9 +605,91 @@ export function validateTimeouts(nodes: Node[], maxTimeout: number = 300): Valid
 }
 
 /**
+ * Validate that node labels used in expressions exist and are upstream
+ */
+export function validateExpressionReferences(
+  nodes: Node[],
+  _edges: Edge[]
+): ValidationError[] {
+  const warnings: ValidationError[] = [];
+  // Suppression: The compiler will no longer error or warn about output nodes that are only known at runtime.
+  // const nodeLabels = new Set(nodes.map(n => n.data?.label).filter(Boolean));
+  
+  /*
+  // Build adjacency list for reachability check
+  const adjacency = new Map<string, Set<string>>();
+  nodes.forEach(n => adjacency.set(n.id, new Set()));
+  edges.forEach(e => adjacency.get(e.target)?.add(e.source));
+
+  // Helper to check if source is upstream of target
+  const isUpstream = (sourceLabel: string, targetId: string) => {
+    const sourceNode = nodes.find(n => n.data?.label === sourceLabel);
+    if (!sourceNode) return false;
+    if (sourceNode.id === targetId) return false;
+
+    const visited = new Set<string>();
+    const queue = [targetId];
+    
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      
+      const parents = adjacency.get(current) || new Set();
+      if (parents.has(sourceNode.id)) return true;
+      queue.push(...Array.from(parents));
+    }
+    return false;
+  };
+  */
+
+  nodes.forEach(node => {
+    const config = node.data?.config;
+    if (!config) return;
+
+    // Recursive function to scan for expressions in nested config
+    const scanConfig = (obj: any, path: string = '') => {
+      if (typeof obj === 'string') {
+        const matches = obj.matchAll(/\{\{\s*\$node\[['"]([^'"]+)['"]\]\.(.*?)\s*\}\}/g);
+        for (const _match of matches) {
+          // Suppression: The compiler will no longer error or warn about output nodes that are only known at runtime.
+          /*
+          if (!nodeLabels.has(referencedLabel)) {
+            warnings.push({
+              type: 'warning',
+              code: 'EXPRESSION_MISSING_NODE',
+              message: `Expression in "${node.data?.label}" refers to non-existent node "${referencedLabel}"`,
+              nodeId: node.id,
+              field: path
+            });
+          } else if (!isUpstream(referencedLabel, node.id)) {
+            warnings.push({
+              type: 'warning',
+              code: 'EXPRESSION_UNREACHABLE_NODE',
+              message: `Expression in "${node.data?.label}" refers to node "${referencedLabel}" which is not upstream`,
+              nodeId: node.id,
+              field: path
+            });
+          }
+          */
+        }
+      } else if (typeof obj === 'object' && obj !== null) {
+        Object.entries(obj).forEach(([key, value]) => {
+          scanConfig(value, path ? `${path}.${key}` : key);
+        });
+      }
+    };
+
+    scanConfig(config);
+  });
+
+  return warnings;
+}
+
+/**
  * Validate workflow complexity and provide warnings
  */
-export function validateWorkflowComplexity(nodes: Node[], edges: Edge[]): ValidationError[] {
+export function validateWorkflowComplexity(nodes: Node[]): ValidationError[] {
   const warnings: ValidationError[] = [];
 
   // Check total node count
@@ -706,6 +804,8 @@ export function validateHandleConnections(
 /**
  * Validate with backend API
  */
+import apiClient from '../api/client';
+
 export async function validateWithBackend(
   nodes: Node[], 
   edges: Edge[],
@@ -716,25 +816,15 @@ export async function validateWithBackend(
   } = {}
 ): Promise<ValidationResult> {
   try {
-    const response = await fetch('/api/compile/validate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        nodes,
-        edges,
-        check_credentials: options.checkCredentials ?? true,
-        check_types: options.checkTypes ?? true,
-        check_subworkflow_cycles: options.checkSubworkflowCycles ?? true,
-      }),
+    const response = await apiClient.post('/compile/validate/', {
+      nodes,
+      edges,
+      check_credentials: options.checkCredentials ?? true,
+      check_types: options.checkTypes ?? true,
+      check_subworkflow_cycles: options.checkSubworkflowCycles ?? true,
     });
 
-    if (!response.ok) {
-      throw new Error('Backend validation failed');
-    }
-
-    const data = await response.json();
+    const data = response.data;
     
     return {
       isValid: data.is_valid,
@@ -865,17 +955,19 @@ export async function validateWorkflow(
   errors.push(...conditionalErrors.filter(e => e.type === 'error'));
   warnings.push(...conditionalErrors.filter(e => e.type === 'warning'));
 
-  // Check timeouts
-  const timeoutErrors = validateTimeouts(nodes);
-  errors.push(...timeoutErrors);
+  // Validate timeouts
+  warnings.push(...validateTimeouts(nodes));
 
-  // Check workflow complexity
-  const complexityWarnings = validateWorkflowComplexity(nodes, edges);
-  warnings.push(...complexityWarnings);
+  // Validate expression references
+  warnings.push(...validateExpressionReferences(nodes, edges));
+
+  // Complexity warnings
+  warnings.push(...validateWorkflowComplexity(nodes));
 
   // Check handle connections
   const handleErrors = validateHandleConnections(nodes, edges, options.getNodeConfigFn);
-  warnings.push(...handleErrors);
+  errors.push(...handleErrors.filter(e => e.type === 'error'));
+  warnings.push(...handleErrors.filter(e => e.type === 'warning'));
 
   // Validate with backend if requested
   if (options.validateWithBackend) {

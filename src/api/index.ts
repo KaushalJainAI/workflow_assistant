@@ -37,6 +37,12 @@ export {
   type CreateCredentialData,
 } from './credentials';
 export { 
+  default as logsService,
   type AuditEntry,
+  type OrchestratorThought,
+  type ExecutionLog,
+  type ExecutionDetail,
+  type NodeLog,
 } from './logs';
 export { default as nodeService, type NodeSchema, type NodeField, type NodeHandle } from './nodeService';
+export { chatService, type ChatSession, type ChatMessage as StandaloneChatMessage } from './chat';

@@ -49,6 +49,8 @@ export interface GenerateWorkflowRequest {
   credential_id?: string;
   save?: boolean;
   conversation_id?: string;
+  provider?: string;
+  model?: string;
 }
 
 export interface GenerateWorkflowResponse {
@@ -91,8 +93,35 @@ export const orchestratorService = {
    * Execute a workflow
    */
   async executeWorkflow(workflowId: number): Promise<ExecuteWorkflowResponse> {
+    // Pass the user's orchestrator LLM settings so the King uses the right provider/model
+    const llmProvider = localStorage.getItem('orchestrator_llm_provider');
+    const llmModel = localStorage.getItem('orchestrator_llm_model');
     const response = await apiClient.post<ExecuteWorkflowResponse>(
-      `/orchestrator/workflows/${workflowId}/execute/`
+      `/orchestrator/workflows/${workflowId}/execute/`,
+      {
+        ...(llmProvider && { llm_provider: llmProvider }),
+        ...(llmModel && { llm_model: llmModel }),
+      }
+    );
+    return response.data;
+  },
+
+  /**
+   * Deploy (activate) a workflow
+   */
+  async deployWorkflow(workflowId: number): Promise<{ status: string; message: string }> {
+    const response = await apiClient.post<{ status: string; message: string }>(
+      `/orchestrator/workflows/${workflowId}/deploy/`
+    );
+    return response.data;
+  },
+
+  /**
+   * Undeploy (deactivate) a workflow
+   */
+  async undeployWorkflow(workflowId: number): Promise<{ status: string; message: string }> {
+    const response = await apiClient.post<{ status: string; message: string }>(
+      `/orchestrator/workflows/${workflowId}/undeploy/`
     );
     return response.data;
   },
@@ -131,13 +160,21 @@ export const orchestratorService = {
   /**
    * Execute partial workflow (single node)
    */
-  async executePartial(workflowId: number | null, nodeId: string, inputs: Record<string, unknown>, config: Record<string, unknown> | null): Promise<Record<string, unknown>> {
+  async executePartial(
+    workflowId: number | null, 
+    nodeId: string, 
+    nodeType: string, 
+    inputs: Record<string, unknown>, 
+    config: Record<string, unknown> | null,
+    signal?: AbortSignal
+  ): Promise<Record<string, unknown>> {
     const response = await apiClient.post('/orchestrator/workflows/execute_partial/', {
       workflow_id: workflowId,
       node_id: nodeId,
-      inputs,
+      node_type: nodeType,
+      input_data: inputs,
       config
-    });
+    }, { signal });
     return response.data;
   },
 
@@ -181,11 +218,13 @@ export const orchestratorService = {
     workflowId: number,
     modification: string,
     apply?: boolean,
-    conversationId?: string
+    conversationId?: string,
+    provider?: string,
+    model?: string
   ): Promise<GenerateWorkflowResponse> {
     const response = await apiClient.post<GenerateWorkflowResponse>(
       `/orchestrator/workflows/${workflowId}/ai/modify/`,
-      { modification, apply, conversation_id: conversationId }
+      { modification, apply, conversation_id: conversationId, provider, model }
     );
     return response.data;
   },
@@ -226,12 +265,16 @@ export const orchestratorService = {
   async sendMessage(
     content: string,
     workflowId?: number,
-    conversationId?: string
+    conversationId?: string,
+    provider?: string,
+    model?: string
   ): Promise<{ conversation_id: string; user_message: ChatMessage; ai_response: ChatMessage }> {
     const response = await apiClient.post('/orchestrator/chat/', {
       content,
       workflow_id: workflowId,
       conversation_id: conversationId,
+      provider,
+      model,
     });
     return response.data;
   },
@@ -243,13 +286,15 @@ export const orchestratorService = {
     message: string,
     workflowId?: number,
     nodeId?: string,
-    conversationId?: string
+    conversationId?: string,
+    provider?: string
   ): Promise<{ response: string; tokens_used: number }> {
     const response = await apiClient.post('/orchestrator/chat/context-aware/', {
       message,
       workflow_id: workflowId,
       node_id: nodeId,
       conversation_id: conversationId,
+      provider,
     });
     return response.data;
   },
@@ -264,6 +309,14 @@ export const orchestratorService = {
     summary: string;
   }> {
     const response = await apiClient.get(`/orchestrator/executions/${executionId}/thoughts/`);
+    return response.data;
+  },
+
+  /**
+   * Get active background tasks
+   */
+  async getBackgroundTasks(): Promise<{ tasks: any[]; history?: any[]; count: number }> {
+    const response = await apiClient.get('/orchestrator/background-tasks/');
     return response.data;
   },
 };

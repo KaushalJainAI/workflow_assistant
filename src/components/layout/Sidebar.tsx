@@ -2,18 +2,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { 
   GitGraph, 
-  Settings, 
   Key, 
-  Play, 
   Menu,
   Plus,
   FileText,
   Sparkles,
-  CreditCard,
-  BarChart3,
   Brain,
   Layout,
-  Loader2
+  Loader2,
+  Zap
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -46,50 +43,131 @@ const Sidebar = () => {
 
     const navItems = [
         { icon: GitGraph, label: "Workflows", path: "/workflows" },
-        { icon: Layout, label: "Templates", path: "/templates" },
-        { icon: Play, label: "Executions", path: "/executions" },
-        { icon: Brain, label: "Orchestrator", path: "/orchestrator" },
-        { icon: BarChart3, label: "Insights", path: "/insights" },
-        { icon: FileText, label: "Documents", path: "/documents" },
         { icon: Key, label: "Credentials", path: "/credentials" },
-        { icon: CreditCard, label: "Billing", path: "/billing" },
-        { icon: Settings, label: "Settings", path: "/settings" },
+        { icon: Zap, label: "Skills", path: "/skills" },
+        { icon: Layout, label: "Templates", path: "/templates" },
+        { icon: FileText, label: "Documents", path: "/documents" },
     ];
 
+
+
     return (
-        <div className={cn(
-            "h-screen bg-card border-r border-border flex flex-col transition-all duration-300",
-            collapsed ? "w-16" : "w-56"
-        )}>
-            <div className="p-4 flex items-center justify-between border-b border-border">
-                {!collapsed && (
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-blue-500 flex items-center justify-center">
-                            <GitGraph className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="font-bold text-xl">Nexus</span>
+        <div 
+            className={cn(
+                "h-screen backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out relative z-40 overflow-hidden",
+                collapsed ? "w-16" : "w-56"
+            )}
+            style={{ 
+                backgroundColor: 'hsl(var(--sidebar-bg))',
+                borderColor: 'hsl(var(--sidebar-border))'
+            }}
+        >
+            <div className={cn(
+                "p-4 flex items-center border-b transition-all duration-300",
+                collapsed ? "justify-center" : "justify-between"
+            )} style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
+                <div className={cn(
+                    "flex items-center gap-2.5 transition-all duration-300 overflow-hidden",
+                    collapsed ? "opacity-0 invisible w-0" : "opacity-100 visible w-auto"
+                )}>
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shadow-sm shrink-0">
+                        <GitGraph className="w-4 h-4 text-primary" />
                     </div>
-                )}
+                    <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap">AstraFlow</span>
+                </div>
                 <button 
                     onClick={() => setCollapsed(!collapsed)}
-                    className="p-1.5 hover:bg-muted rounded-md"
+                    className="p-1.5 hover:bg-muted rounded-lg transition-colors duration-200 shrink-0"
                 >
                     <Menu className="w-5 h-5" />
                 </button>
             </div>
 
-            <div className="p-3">
+            {/* AI Prominent Section */}
+            <div className="p-2 border-b border-border/40 space-y-1">
+                {/* AI Chat Link */}
+                <Link
+                    to="/ai-chat"
+                    className={cn(
+                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
+                        location.pathname === '/ai-chat'
+                            ? "bg-primary/10 text-primary font-bold shadow-sm" 
+                            : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
+                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
+                    )}
+                    title={collapsed ? "AI Chat" : undefined}
+                >
+                    <Sparkles className={cn(
+                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-primary",
+                        location.pathname !== '/ai-chat' && "group-hover:scale-110"
+                    )} />
+                    <span className={cn(
+                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
+                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                    )}>
+                        AI Chat
+                    </span>
+                </Link>
+
+                {/* Orchestrator Link - Relocated & Highlighted */}
+                <Link
+                    to="/orchestrator"
+                    className={cn(
+                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
+                        location.pathname === '/orchestrator'
+                            ? "bg-primary/10 text-primary font-bold shadow-sm" 
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
+                    )}
+                    title={collapsed ? "Orchestrator" : undefined}
+                >
+                    <Brain className={cn(
+                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-primary",
+                        location.pathname !== '/orchestrator' && "group-hover:scale-110"
+                    )} />
+                    <span className={cn(
+                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
+                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                    )}>
+                        Orchestrator
+                    </span>
+                </Link>
+
+                {/* BrowserOS Link */}
+                <a
+                    href="http://localhost:5173" // Vite default port
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
+                        "text-amber-500 hover:bg-amber-500/10",
+                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
+                    )}
+                    title={collapsed ? "Browser OS" : undefined}
+                >
+                    <Layout className={cn(
+                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-amber-500",
+                        "group-hover:scale-110"
+                    )} />
+                    <span className={cn(
+                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden text-amber-500",
+                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                    )}>
+                        Browser OS <span className="text-[10px] uppercase tracking-widest ml-2 opacity-60">Beta</span>
+                    </span>
+                </a>
+            </div>
+
             <div className="p-3">
                 <button
                     onClick={async () => {
                         try {
                             setIsCreating(true);
-                            // Create a new draft workflow with default name
                             const newWorkflow = await workflowsService.create({
-                                name: 'Untitled Workflow', // User requested "Untitled" (using standard "Untitled Workflow")
+                                name: 'Untitled Workflow',
                                 description: 'A new empty workflow',
                                 status: 'draft',
-                                nodes: [], // Explicitly empty
+                                nodes: [],
                                 edges: []
                             });
                             navigate(`/workflow/${newWorkflow.id}`);
@@ -102,79 +180,79 @@ const Sidebar = () => {
                     }}
                     disabled={isCreating}
                     className={cn(
-                        "w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 py-2.5 rounded-lg transition-all font-medium",
-                        collapsed ? "px-0" : "px-4",
-                        isCreating && "opacity-80 cursor-wait"
+                        "flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-all duration-200 font-semibold shadow-sm active:scale-[0.98] overflow-hidden whitespace-nowrap mx-auto",
+                        collapsed ? "w-10 h-10 p-0" : "w-full py-2.5 px-4 gap-2"
                     )}
+                    title={collapsed ? "New Workflow" : undefined}
                 >
                     {isCreating ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <Loader2 className="w-5 h-5 animate-spin shrink-0" />
                     ) : (
-                        <Plus className="w-5 h-5" />
+                        <Plus className="w-5 h-5 shrink-0" />
                     )}
-                    {!collapsed && <span>{isCreating ? 'Creating...' : 'New Workflow'}</span>}
+                    <span className={cn(
+                        "transition-all duration-300 overflow-hidden",
+                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-2"
+                    )}>
+                        {isCreating ? 'Creating...' : 'New Workflow'}
+                    </span>
                 </button>
             </div>
-            </div>
 
-            <nav className="flex-1 p-2 space-y-1">
+            <nav className="flex-1 p-2 space-y-0.5">
                 {navItems.map((item) => (
                     <Link
                         key={item.path}
                         to={item.path}
                         className={cn(
-                            "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                            "flex items-center rounded-lg transition-all duration-200 group relative py-2.5",
                             location.pathname.startsWith(item.path) 
-                                ? "bg-accent text-accent-foreground font-medium" 
-                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                            collapsed && "justify-center"
+                                ? "bg-primary/10 text-primary font-bold shadow-sm" 
+                                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
                         )}
                         title={collapsed ? item.label : undefined}
                     >
-                        <item.icon className="w-5 h-5" />
-                        {!collapsed && <span>{item.label}</span>}
+                        {location.pathname.startsWith(item.path) && (
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
+                        )}
+                        <item.icon className={cn(
+                            "w-5 h-5 transition-transform duration-200 shrink-0",
+                            !location.pathname.startsWith(item.path) && "group-hover:scale-110"
+                        )} />
+                        <span className={cn(
+                            "text-sm transition-all duration-300 whitespace-nowrap overflow-hidden",
+                            collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                        )}>
+                            {item.label}
+                        </span>
                     </Link>
                 ))}
             </nav>
 
-            {/* AI Builder Button */}
-            <div className="p-2">
-                <Link
-                    to="/ai-chat"
-                    className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                        location.pathname === '/ai-chat'
-                            ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium" 
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        collapsed && "justify-center"
-                    )}
-                    title={collapsed ? "AI Builder" : undefined}
-                >
-                    <Sparkles className="w-5 h-5" />
-                    {!collapsed && <span>AI Builder</span>}
-                </Link>
-            </div>
-
             {/* User Section */}
-            <div className="p-3 border-t border-border">
+            <div className="p-2 border-t border-border/60 mt-auto">
                 <Link 
-                    to="/profile"
+                    to="/settings"
                     className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors",
-                        location.pathname === '/profile' && "bg-accent",
-                        collapsed && "justify-center"
+                        "flex items-center rounded-lg transition-all duration-200 group py-2 overflow-hidden",
+                        location.pathname === '/settings' 
+                            ? "bg-primary/5 text-primary" 
+                            : "hover:bg-muted/60",
+                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
                     )}
-                    title={collapsed ? "Profile" : undefined}
+                    title={collapsed ? "Settings" : undefined}
                 >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-medium text-sm">
+                    <div className="w-8 h-8 flex-shrink-0 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-semibold text-sm ring-2 ring-primary/0 group-hover:ring-primary/10 transition-all duration-200">
                         {getInitials()}
                     </div>
-                    {!collapsed && (
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
-                            <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
-                        </div>
-                    )}
+                    <div className={cn(
+                        "flex-1 min-w-0 transition-all duration-300",
+                        collapsed ? "w-0 opacity-0 invisible" : "w-auto opacity-100 visible"
+                    )}>
+                        <p className="text-sm font-bold text-foreground/90 truncate">{user?.name || 'User'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
+                    </div>
                 </Link>
             </div>
         </div>

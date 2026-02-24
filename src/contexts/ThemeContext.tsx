@@ -1,11 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 
 export type Theme = 'light' | 'dark' | 'system';
+export type ColorTheme = 'blue' | 'magenta';
 
 interface ThemeContextType {
   theme: Theme;
   resolvedTheme: 'light' | 'dark';
+  colorTheme: ColorTheme;
   setTheme: (theme: Theme) => void;
+  setColorTheme: (colorTheme: ColorTheme) => void;
   toggleTheme: () => void;
 }
 
@@ -20,6 +23,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       }
     }
     return 'system';
+  });
+
+  const [colorTheme, setColorThemeState] = useState<ColorTheme>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('colorTheme') as ColorTheme;
+      if (saved && ['blue', 'magenta'].includes(saved)) {
+        return saved;
+      }
+    }
+    return 'blue';
   });
 
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
@@ -61,9 +74,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [resolvedTheme]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-color-theme', colorTheme);
+    
+    // Set RGB values for primary for transparency support if needed by inline styles
+    // Computed HSL to RGB can be complex, so we'll rely on index.css mostly
+  }, [colorTheme]);
+
   const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);
     localStorage.setItem('theme', newTheme);
+  }, []);
+
+  const setColorTheme = useCallback((newColorTheme: ColorTheme) => {
+    setColorThemeState(newColorTheme);
+    localStorage.setItem('colorTheme', newColorTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -74,7 +100,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const value = {
     theme,
     resolvedTheme,
+    colorTheme,
     setTheme,
+    setColorTheme,
     toggleTheme,
   };
 

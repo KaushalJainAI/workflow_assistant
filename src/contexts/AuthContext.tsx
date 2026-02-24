@@ -7,7 +7,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { authService } from '../api/auth';
 import type { User } from '../api/auth';
-import { tokenManager } from '../api/client';
+import { tokenManager, setUnauthorizedCallback } from '../api/client';
 
 interface AuthContextType {
   user: User | null;
@@ -33,6 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load user on mount if token exists
   useEffect(() => {
+    // Set up 401 handling
+    setUnauthorizedCallback(() => {
+      setUser(null);
+      tokenManager.clearTokens();
+    });
+
     const loadUser = async () => {
       if (tokenManager.isAuthenticated()) {
         try {

@@ -226,7 +226,7 @@ export default function InsightsDashboard() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card/50 p-6 rounded-xl border border-border/60 backdrop-blur-sm">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">System Insights</h2>
           <p className="text-muted-foreground">Detailed metrics on performance, costs, and system health</p>
@@ -239,7 +239,7 @@ export default function InsightsDashboard() {
               onClick={() => setTimeRange(range)}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
                 timeRange === range 
-                  ? 'bg-card text-primary shadow-sm border border-border/50' 
+                  ? 'bg-background text-primary shadow-sm border border-border/50' 
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
@@ -250,9 +250,9 @@ export default function InsightsDashboard() {
       </div>
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
         {/* Total Executions */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-colors">
+        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
           <div className="flex justify-between items-start mb-2">
             <div className="p-2 bg-primary/10 rounded-lg text-primary">
               <Activity className="w-5 h-5" />
@@ -266,7 +266,7 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Time Saved */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-colors">
+        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
           <div className="flex justify-between items-start mb-2">
              <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
               <Clock className="w-5 h-5" />
@@ -280,7 +280,7 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Total Cost */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-colors">
+        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
            <div className="flex justify-between items-start mb-2">
              <div className="p-2 bg-green-500/10 rounded-lg text-green-500">
               <DollarSign className="w-5 h-5" />
@@ -291,7 +291,7 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Pending Approvals */}
-         <div className="bg-card border border-border rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-colors">
+         <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
            <div className="flex justify-between items-start mb-2">
              <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
               <Users className="w-5 h-5" />
@@ -305,9 +305,9 @@ export default function InsightsDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up" style={{ animationDelay: '100ms' }}>
         {/* Main Performance Chart */}
-        <div className="lg:col-span-2 bg-card border border-border rounded-xl p-6 shadow-sm">
+        <div className="lg:col-span-2 bg-card border border-border/60 rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-semibold flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary" />
@@ -365,7 +365,7 @@ export default function InsightsDashboard() {
         {/* System Health & Costs */}
         <div className="space-y-6">
           {/* API Costs Breakdown */}
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+          <div className="bg-card border border-border/60 rounded-xl p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
               API Cost Estimate
@@ -393,17 +393,17 @@ export default function InsightsDashboard() {
           </div>
 
           {/* System Load */}
-           <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+           <div className="bg-card border border-border/60 rounded-xl p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <Cpu className="w-4 h-4" />
               System Status
             </h3>
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-secondary/50 rounded-lg text-center">
+              <div className="p-3 bg-secondary/50 rounded-lg text-center border border-border/50">
                 <span className="text-2xl font-bold text-primary">{SYSTEM_HEALTH.cpu}%</span>
                 <p className="text-xs text-muted-foreground">CPU Usage</p>
               </div>
-              <div className="p-3 bg-secondary/50 rounded-lg text-center">
+              <div className="p-3 bg-secondary/50 rounded-lg text-center border border-border/50">
                 <span className="text-2xl font-bold text-blue-500">{SYSTEM_HEALTH.activeStreams}</span>
                 <p className="text-xs text-muted-foreground">Active Streams</p>
               </div>
@@ -433,7 +433,7 @@ export default function InsightsDashboard() {
                 placeholder="Search workflows..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full pl-9 pr-4 py-2 bg-background border border-border/60 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
               />
             </div>
             <button className="p-2 border border-input rounded-md hover:bg-muted" title="Filter">
@@ -465,7 +465,7 @@ export default function InsightsDashboard() {
                   onClick={() => setSelectedWorkflow(workflow)}
                 >
                   <td className="px-6 py-4 font-medium flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500 opacity-20" />
+                    <div className="w-8 h-8 rounded-full bg-muted border border-border" />
                     {workflow.name}
                   </td>
                   <td className="px-6 py-4 text-right">{workflow.executions.toLocaleString()}</td>

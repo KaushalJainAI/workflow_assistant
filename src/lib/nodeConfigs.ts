@@ -13,7 +13,7 @@ export interface FieldOption {
 export interface ConfigField {
   id: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'code' | 'json' | 'password' | 'credential';
+  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'number' | 'code' | 'json' | 'password' | 'credential' | 'skills';
   placeholder?: string;
   defaultValue?: string | number | boolean;
   options?: FieldOption[];
@@ -471,6 +471,7 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'gmail',
     displayName: 'Gmail',
     description: 'Send and receive emails via Gmail',
+    outputs: [{ id: 'output-0', label: 'Output' }],
     fields: [
       {
         id: 'credential',
@@ -518,6 +519,7 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'slack',
     displayName: 'Slack',
     description: 'Send messages to Slack',
+    outputs: [{ id: 'output-0', label: 'Output' }],
     fields: [
       {
         id: 'credential',
@@ -559,6 +561,7 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'google_sheets',
     displayName: 'Google Sheets',
     description: 'Read/write Google Sheets data',
+    outputs: [{ id: 'output-0', label: 'Output' }],
     fields: [
       {
         id: 'operation',
@@ -599,6 +602,7 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'notion',
     displayName: 'Notion',
     description: 'Manage Notion pages and databases',
+    outputs: [{ id: 'output-0', label: 'Output' }],
     fields: [
       {
         id: 'resource',
@@ -637,6 +641,9 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     nodeType: 'openai',
     displayName: 'OpenAI',
     description: 'Use GPT and AI models',
+    icon: '🤖',
+    color: '#10a37f',
+    outputs: [{ id: 'output-0', label: 'Output' }],
     fields: [
       {
         id: 'credential',
@@ -647,27 +654,29 @@ export const nodeConfigs: Record<string, NodeConfig> = {
         description: 'Select your OpenAI API credentials',
       },
       {
-        id: 'resource',
-        label: 'Resource',
-        type: 'select',
-        options: [
-          { value: 'chat', label: 'Chat' },
-          { value: 'completion', label: 'Completion' },
-          { value: 'image', label: 'Image' },
-          { value: 'audio', label: 'Audio' },
-        ],
-        defaultValue: 'chat',
-      },
-      {
         id: 'model',
         label: 'Model',
         type: 'select',
         options: [
-          { value: 'gpt-4', label: 'GPT-4' },
+          { value: 'gpt-4o', label: 'GPT-4o' },
+          { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
           { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
           { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
         ],
-        defaultValue: 'gpt-4',
+        defaultValue: 'gpt-4o',
+      },
+      {
+        id: 'system_message',
+        label: 'System Message',
+        type: 'textarea',
+        defaultValue: 'You are a helpful assistant.',
+        description: 'Sets the behavior and persona of the AI',
+      },
+      {
+        id: 'skills',
+        label: 'Skills',
+        type: 'skills',
+        description: 'Select skills to inject as context into the system prompt',
       },
       {
         id: 'prompt',
@@ -684,10 +693,236 @@ export const nodeConfigs: Record<string, NodeConfig> = {
         description: '0-2, higher = more creative',
       },
       {
-        id: 'maxTokens',
+        id: 'max_tokens',
         label: 'Max Tokens',
         type: 'number',
-        defaultValue: 1000,
+        defaultValue: 2048,
+        description: 'Maximum length of the response',
+      },
+    ],
+  },
+
+  gemini: {
+    nodeType: 'gemini',
+    displayName: 'Google Gemini',
+    description: 'Use Google Gemini models',
+    icon: '✨',
+    color: '#4285f4',
+    outputs: [{ id: 'output-0', label: 'Output' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'Gemini API Key',
+        type: 'credential',
+        credentialType: 'gemini_api',
+        required: true,
+      },
+      {
+        id: 'model',
+        label: 'Model',
+        type: 'select',
+        options: [
+          { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+          { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+          { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+        ],
+        defaultValue: 'gemini-2.0-flash',
+      },
+      {
+        id: 'system_message',
+        label: 'System Message',
+        type: 'textarea',
+        description: 'Sets the behavior and persona of the AI',
+      },
+      {
+        id: 'skills',
+        label: 'Skills',
+        type: 'skills',
+        description: 'Select skills to inject as context into the system prompt',
+      },
+      {
+        id: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        required: true,
+      },
+      {
+        id: 'temperature',
+        label: 'Temperature',
+        type: 'number',
+        defaultValue: 0.7,
+        description: '0-2, higher = more creative',
+      },
+      {
+        id: 'max_tokens',
+        label: 'Max Tokens',
+        type: 'number',
+        defaultValue: 2048,
+        description: 'Maximum length of the response',
+      },
+    ],
+  },
+
+  ollama: {
+    nodeType: 'ollama',
+    displayName: 'Ollama (Local)',
+    description: 'Run local LLMs via Ollama',
+    icon: '🦙',
+    color: '#0d1117',
+    outputs: [{ id: 'output-0', label: 'Output' }],
+    fields: [
+      {
+        id: 'base_url',
+        label: 'Base URL',
+        type: 'text',
+        defaultValue: 'http://localhost:11434',
+        required: true,
+      },
+      {
+        id: 'model',
+        label: 'Model',
+        type: 'select',
+        options: [
+          { value: 'llama3.2', label: 'Llama 3.2' },
+          { value: 'llama3.1', label: 'Llama 3.1' },
+          { value: 'mistral', label: 'Mistral' },
+          { value: 'phi3', label: 'Phi-3' },
+        ],
+        defaultValue: 'llama3.2',
+      },
+      {
+        id: 'system_message',
+        label: 'System Message',
+        type: 'textarea',
+        description: 'Sets the behavior and persona of the AI',
+      },
+      {
+        id: 'skills',
+        label: 'Skills',
+        type: 'skills',
+        description: 'Select skills to inject as context into the system prompt',
+      },
+      {
+        id: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        required: true,
+      },
+      {
+        id: 'temperature',
+        label: 'Temperature',
+        type: 'number',
+        defaultValue: 0.7,
+        description: '0-2, higher = more creative',
+      },
+    ],
+  },
+
+  perplexity: {
+    nodeType: 'perplexity',
+    displayName: 'Perplexity',
+    description: 'Web-connected AI search',
+    icon: '🔍',
+    color: '#1FB1E6',
+    outputs: [{ id: 'output-0', label: 'Output' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'Perplexity API Key',
+        type: 'credential',
+        credentialType: 'perplexity_api',
+        required: true,
+      },
+      {
+        id: 'model',
+        label: 'Model',
+        type: 'select',
+        options: [
+          { value: 'sonar', label: 'Sonar' },
+          { value: 'sonar-pro', label: 'Sonar Pro' },
+          { value: 'sonar-reasoning', label: 'Sonar Reasoning' },
+        ],
+        defaultValue: 'sonar',
+      },
+      {
+        id: 'skills',
+        label: 'Skills',
+        type: 'skills',
+        description: 'Select skills to inject as context into the system prompt',
+      },
+      {
+        id: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        required: true,
+      },
+      {
+        id: 'return_citations',
+        label: 'Return Citations',
+        type: 'checkbox',
+        defaultValue: true,
+      },
+    ],
+  },
+
+  openrouter: {
+    nodeType: 'openrouter',
+    displayName: 'OpenRouter',
+    description: 'Access 100+ LLMs',
+    icon: '🌐',
+    color: '#6366f1',
+    outputs: [{ id: 'output-0', label: 'Output' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'OpenRouter Key',
+        type: 'credential',
+        credentialType: 'openrouter',
+        required: true,
+      },
+      {
+        id: 'model',
+        label: 'Model',
+        type: 'select',
+        options: [
+          { value: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (Free)' },
+          { value: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free)' },
+          { value: 'openai/gpt-4o', label: 'GPT-4o' },
+          { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+        ],
+        defaultValue: 'google/gemini-2.0-flash-exp:free',
+      },
+      {
+        id: 'system_message',
+        label: 'System Message',
+        type: 'textarea',
+        description: 'Sets the behavior and persona of the AI',
+      },
+      {
+        id: 'skills',
+        label: 'Skills',
+        type: 'skills',
+        description: 'Select skills to inject as context into the system prompt',
+      },
+      {
+        id: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        required: true,
+      },
+      {
+        id: 'temperature',
+        label: 'Temperature',
+        type: 'number',
+        defaultValue: 0.7,
+        description: '0-2, higher = more creative',
+      },
+      {
+        id: 'max_tokens',
+        label: 'Max Tokens',
+        type: 'number',
+        defaultValue: 2048,
+        description: 'Maximum length of the response',
       },
     ],
   },
@@ -822,6 +1057,215 @@ export const nodeConfigs: Record<string, NodeConfig> = {
         label: 'TTL (seconds)',
         type: 'number',
         description: 'Time to live in seconds',
+      },
+    ],
+  },
+  // ============= INTEGRATIONS =============
+  github: {
+    nodeType: 'github',
+    displayName: 'GitHub',
+    description: 'Manage GitHub repositories and issues',
+    icon: '🐙',
+    color: '#181717',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'GitHub Token',
+        type: 'credential',
+        credentialType: 'github',
+      },
+      {
+        id: 'operation',
+        label: 'Operation',
+        type: 'select',
+        options: [
+          { value: 'create_issue', label: 'Create Issue' },
+          { value: 'update_issue', label: 'Update Issue' },
+          { value: 'get_issue', label: 'Get Issue' },
+          { value: 'create_pr', label: 'Create Pull Request' },
+          { value: 'get_repo', label: 'Get Repository' },
+        ],
+        defaultValue: 'create_issue',
+      },
+      {
+        id: 'owner',
+        label: 'Repository Owner',
+        type: 'text',
+        placeholder: 'octocat',
+        description: 'GitHub username or organization',
+      },
+      {
+        id: 'repo',
+        label: 'Repository Name',
+        type: 'text',
+        placeholder: 'hello-world',
+        description: 'Repository name',
+      },
+      {
+        id: 'issue_number',
+        label: 'Issue Number',
+        type: 'text',
+        placeholder: '42',
+        description: 'Required for update/get operations',
+      },
+      {
+        id: 'title',
+        label: 'Title',
+        type: 'text',
+        placeholder: 'Issue or PR title',
+      },
+      {
+        id: 'body',
+        label: 'Body',
+        type: 'textarea',
+        description: 'Description (supports Markdown)',
+      },
+    ],
+  },
+  
+  github_trigger: {
+    nodeType: 'github_trigger',
+    displayName: 'GitHub Trigger',
+    description: 'Start workflow on GitHub events',
+    icon: '🐙',
+    color: '#22c55e',
+    inputs: [],
+    outputs: [{ id: 'output-0' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'GitHub Token',
+        type: 'credential',
+        credentialType: 'github',
+      },
+      {
+        id: 'repository',
+        label: 'Repository',
+        type: 'text',
+        placeholder: 'owner/repo',
+        description: 'Format: owner/repo',
+      },
+      {
+        id: 'events',
+        label: 'Events',
+        type: 'json',
+        defaultValue: '["push", "pull_request"]',
+        description: 'Array of events to listen for',
+      },
+      {
+        id: 'branch_filter',
+        label: 'Branch Filter',
+        type: 'text',
+        placeholder: 'main',
+        description: 'Only trigger for specific branch',
+      },
+    ],
+  },
+
+  airtable: {
+    nodeType: 'airtable',
+    displayName: 'Airtable',
+    description: 'Manage Airtable records',
+    icon: '🗂️',
+    color: '#18bfff',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'Airtable API Key',
+        type: 'credential',
+        credentialType: 'airtable',
+      },
+      {
+        id: 'operation',
+        label: 'Operation',
+        type: 'select',
+        options: [
+          { value: 'create', label: 'Create Record' },
+          { value: 'get', label: 'Get Record' },
+          { value: 'update', label: 'Update Record' },
+          { value: 'delete', label: 'Delete Record' },
+          { value: 'list', label: 'List Records' },
+        ],
+        defaultValue: 'create',
+      },
+      {
+        id: 'base_id',
+        label: 'Base ID',
+        type: 'text',
+      },
+      {
+        id: 'table_name',
+        label: 'Table Name',
+        type: 'text',
+      },
+    ],
+  },
+
+  discord: {
+    nodeType: 'discord',
+    displayName: 'Discord',
+    description: 'Send messages to Discord',
+    icon: '🎮',
+    color: '#5865F2',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'Discord Webhook',
+        type: 'credential',
+        credentialType: 'discord_webhook',
+      },
+      {
+        id: 'content',
+        label: 'Content',
+        type: 'textarea',
+        placeholder: 'Message content',
+      },
+      {
+        id: 'username',
+        label: 'Username',
+        type: 'text',
+        placeholder: 'Override username',
+      },
+    ],
+  },
+
+  telegram: {
+    nodeType: 'telegram',
+    displayName: 'Telegram',
+    description: 'Send Telegram messages',
+    icon: '✈️',
+    color: '#0088cc',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'Bot Token',
+        type: 'credential',
+        credentialType: 'telegram',
+      },
+      {
+        id: 'chat_id',
+        label: 'Chat ID',
+        type: 'text',
+      },
+      {
+        id: 'text',
+        label: 'Message Text',
+        type: 'textarea',
+      },
+      {
+        id: 'message_limit',
+        label: 'Message Limit',
+        type: 'number',
+        defaultValue: 4096,
+        description: 'Truncate message if it exceeds this length',
       },
     ],
   },

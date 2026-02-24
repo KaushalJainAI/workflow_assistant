@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   FileText, 
   Upload, 
-  Search, 
   File,
   Image,
   FileJson,
@@ -16,14 +15,21 @@ import {
 } from 'lucide-react';
 import { documentsService, type Document } from '../api';
 import { toast } from '../components/ui/Toast';
+import { cn } from '../lib/utils';
+import PageHeader from '../components/layout/PageHeader';
+import SearchInput from '../components/ui/SearchInput';
+import { useAssistant } from '../contexts/AssistantContext';
 
 export default function Documents() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [myDocuments, setMyDocuments] = useState<Document[]>([]);
+  const [publicDocuments, setPublicDocuments] = useState<Document[]>([]);
+  const [activeTab, setActiveTab] = useState<'personal' | 'public'>('personal');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isAssistantOpen } = useAssistant();
 
   // Fetch documents
   const fetchDocuments = useCallback(async (silent = false) => {
@@ -31,25 +37,14 @@ export default function Documents() {
     setError(null);
     try {
       const data = await documentsService.list();
-      setDocuments(prev => {
-        // Merge with existing "uploading" items if any (though usually we'd rely on the list to be authoritative)
-        // But here we want to replace the optimistic/server items.
-        // Strategy: Only replace items that are NOT currently in 'uploading' state locally if we were tracking them distinctively.
-        // Simpler: Just replace. If we have optimistic "uploading" items that aren't in the server list yet, we might lose them if we blindly setDocuments.
-        // However, we only fetchDocuments on mount or poll.
-        // Optimistic items are added to `documents` state.
-        
-        // Let's just return the server data, but if we are "uploading" locally, those might be provisional.
-        // Actually best approach: Server is truth. 
-        // But for "Uploading..." optimistic UI, we assign temporary IDs (e.g. negative numbers).
-        const serverDocs = data?.documents || [];
-        
-        // Keep any local optimistic "uploading" docs
+      
+      setMyDocuments(prev => {
+        const serverDocs = data?.my_documents || [];
         const uploadingDocs = prev.filter(d => d.status === 'uploading');
-        
-        // Deduplicate?
         return [...uploadingDocs, ...serverDocs];
       });
+      
+      setPublicDocuments(data?.public_documents || []);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load documents';
       if (!silent) {
@@ -67,7 +62,7 @@ export default function Documents() {
 
   // Polling for pending/processing documents
   useEffect(() => {
-    const hasPending = documents.some(d => d.status === 'pending' || d.status === 'processing');
+    const hasPending = myDocuments.some(d => d.status === 'pending' || d.status === 'processing');
     if (!hasPending) return;
 
     const interval = setInterval(() => {
@@ -75,22 +70,23 @@ export default function Documents() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [documents, fetchDocuments]);
+  }, [myDocuments, fetchDocuments]);
 
-  const filteredDocuments = documents.filter(doc =>
+  const allDocuments = activeTab === 'personal' ? myDocuments : publicDocuments;
+
+  const filteredDocuments = allDocuments.filter(doc =>
     doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     doc.filename.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleUpload = async (files: FileList) => {
-    setShowUploadModal(false); // Close modal immediately
+    setShowUploadModal(false);
     
     const newFiles = Array.from(files);
     let successCount = 0;
 
-    // Create optimistic items
     const optimisticDocs: Document[] = newFiles.map((file, i) => ({
-      id: -Date.now() - i, // Temp ID
+      id: -Date.now() - i,
       title: file.name,
       filename: file.name,
       file_type: file.name.split('.').pop() || 'unknown',
@@ -103,25 +99,16 @@ export default function Documents() {
       status: 'uploading'
     }));
 
-    setDocuments(prev => [...optimisticDocs, ...prev]);
+    setMyDocuments(prev => [...optimisticDocs, ...prev]);
 
-    // Process uploads in parallel
-    // We don't await all of them to block the UI, but we track them.
-    // Actually, we want to know when ALL are done only for the final toast?
-    // Or just let them finish independently.
-    
-    // Using Promise.allSettled to handle individual failures
     const uploadPromises = newFiles.map(async (file, index) => {
       const tempId = optimisticDocs[index].id;
       try {
         const uploadedDoc = await documentsService.upload(file);
-        
-        // Replace optimistic doc with real doc
-        setDocuments(prev => prev.map(d => d.id === tempId ? uploadedDoc : d));
+        setMyDocuments(prev => prev.map(d => d.id === tempId ? uploadedDoc : d));
         successCount++;
       } catch (err) {
-        // Mark as failed
-        setDocuments(prev => prev.map(d => d.id === tempId ? {
+        setMyDocuments(prev => prev.map(d => d.id === tempId ? {
           ...d,
           status: 'failed',
           error_message: err instanceof Error ? err.message : 'Upload failed'
@@ -133,14 +120,13 @@ export default function Documents() {
     await Promise.allSettled(uploadPromises);
     if (successCount > 0) {
       toast.success('Upload initiated', `${successCount} files are being processed.`);
-      fetchDocuments(true); // Fetch authoritative state
+      fetchDocuments(true);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (id < 0) {
-      // Delete local optimistic doc (e.g. failed one)
-      setDocuments(prev => prev.filter(d => d.id !== id));
+      setMyDocuments(prev => prev.filter(d => d.id !== id));
       return;
     }
 
@@ -148,7 +134,7 @@ export default function Documents() {
     
     try {
       await documentsService.delete(id);
-      setDocuments(prev => prev.filter(d => d.id !== id));
+      setMyDocuments(prev => prev.filter(d => d.id !== id));
       toast.success('Document deleted');
     } catch (err) {
       toast.error('Delete failed', err instanceof Error ? err.message : 'Failed to delete document');
@@ -164,7 +150,7 @@ export default function Documents() {
 
     try {
       const result = await documentsService.toggleSharing(doc.id);
-      setDocuments(prev => prev.map(d => 
+      setMyDocuments(prev => prev.map(d => 
         d.id === doc.id ? { ...d, is_shared: result.is_shared, shared_at: result.shared_at } : d
       ));
       
@@ -182,7 +168,7 @@ export default function Documents() {
       if (doc.is_shared) {
           try {
             const result = await documentsService.toggleSharing(doc.id);
-            setDocuments(prev => prev.map(d => 
+            setMyDocuments(prev => prev.map(d => 
               d.id === doc.id ? { ...d, is_shared: result.is_shared, shared_at: result.shared_at } : d
             ));
             toast.success('Sharing updated', 'Document unshared from platform knowledge base');
@@ -241,205 +227,271 @@ export default function Documents() {
     };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex flex-col h-screen bg-background text-foreground animate-in fade-in duration-500">
       {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <FileText className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Documents</h1>
-              <p className="text-sm text-muted-foreground">
-                Manage files for RAG and workflows
-              </p>
-            </div>
-          </div>
+      <PageHeader 
+        title="Documents"
+        subtitle="Manage your knowledge base assets and RAG sources"
+        icon={FileText}
+        actions={
           <button 
             onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all shadow-lg shadow-primary/20 active:scale-95 hover:bg-primary/90"
           >
             <Upload className="w-4 h-4" />
-            Upload
+            Upload Files
           </button>
-        </div>
-
-        {/* Search */}
-        <div className="flex items-center justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search documents..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-          <div className="flex items-center gap-2 bg-muted rounded-md p-1">
-            <button 
-              onClick={() => setViewMode('grid')}
-              className={`px-3 py-1 rounded text-sm ${viewMode === 'grid' ? 'bg-background shadow' : ''}`}
+        }
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-8">
+            <button
+              onClick={() => setActiveTab('personal')}
+              className={cn(
+                "pb-3 text-sm font-semibold transition-all relative",
+                activeTab === 'personal' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              Grid
+              My Documents ({myDocuments.length})
+              {activeTab === 'personal' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
             </button>
-            <button 
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-1 rounded text-sm ${viewMode === 'list' ? 'bg-background shadow' : ''}`}
+            <button
+              onClick={() => setActiveTab('public')}
+              className={cn(
+                "pb-3 text-sm font-semibold transition-all relative",
+                activeTab === 'public' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              List
+              Public Library ({publicDocuments.length})
+              {activeTab === 'public' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        {isLoading && documents.length === 0 ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="relative w-full md:w-[400px] group">
+              <SearchInput
+                placeholder="Search documents..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1 bg-background/50 border border-border/60 rounded-lg p-1">
+              <button 
+                onClick={() => setViewMode('grid')}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
+                  viewMode === 'grid' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Grid
+              </button>
+              <button 
+                onClick={() => setViewMode('list')}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
+                  viewMode === 'list' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                List
+              </button>
+            </div>
           </div>
-        ) : error && documents.length === 0 ? (
-          <div className="text-center py-12">
-            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">Failed to load documents</h3>
-            <p className="text-muted-foreground">{error}</p>
+        </div>
+      </PageHeader>
+
+      <div className={cn(
+        "flex-1 overflow-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-white/5 z-10",
+        isAssistantOpen && "xl:p-6"
+      )}>
+        {isLoading && allDocuments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
+            <p className="text-muted-foreground text-sm font-medium animate-pulse">Loading documents...</p>
+          </div>
+        ) : error && allDocuments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 bg-destructive/5 rounded-2xl border border-destructive/10 max-w-2xl mx-auto">
+            <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+            <h3 className="text-lg font-bold text-foreground mb-2">Failed to load documents</h3>
+            <p className="text-muted-foreground text-sm">{error}</p>
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className={cn(
+            "grid gap-4 md:gap-6 stagger-children",
+            isAssistantOpen 
+              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
+              : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6"
+          )}>
             {filteredDocuments.map((doc) => {
                 const status = getStatusParams(doc.status);
+                const isFailed = doc.status === 'failed';
+                
                 return (
               <div
                 key={doc.id}
-                className={`p-4 bg-card border rounded-lg hover:border-primary/50 cursor-pointer transition-all group relative ${doc.is_shared ? 'border-blue-500/30 bg-blue-500/5' : 'border-border'}`}
-              >
-                {/* Share Badge */}
-                {doc.is_shared && (
-                  <div className="absolute top-2 left-2 text-blue-500" title="Shared with platform">
-                    <Globe className="w-4 h-4" />
-                  </div>
+                className={cn(
+                  "group relative bg-card border border-border/60 rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col h-full",
+                  doc.is_shared && "ring-1 ring-primary/20 shadow-sm bg-primary/5",
+                  isFailed && "border-destructive/50 bg-destructive/5"
                 )}
-                
+              >
                 <div className="flex flex-col items-center text-center mt-2">
-                  <div className="mb-3 relative">
-                    {getDocIcon(doc.file_type)}
+                  <div className="mb-5 relative">
+                    <div className="p-4 bg-background rounded-xl border border-border/60 group-hover:bg-primary/10 group-hover:border-primary/30 transition-all transform group-hover:scale-105 duration-300">
+                        {getDocIcon(doc.file_type)}
+                    </div>
                     {status && (
-                        <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm">
+                        <div className="absolute -bottom-1 -right-1 bg-card rounded-full p-1 border border-border/60 shadow-sm">
                             {status.icon}
                         </div>
                     )}
                   </div>
-                  <p className="font-medium text-sm truncate w-full" title={doc.title}>{doc.title}</p>
+                  
+                  <h4 className="font-bold text-foreground text-sm truncate w-full mb-1 px-2" title={doc.title}>
+                      {doc.title}
+                  </h4>
                   
                   {status ? (
-                      <p className={`text-xs mt-1 ${status.color}`}>
+                      <div className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted",
+                          status.color
+                      )}>
                           {status.label}
-                      </p>
+                      </div>
                   ) : (
-                    <>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            {formatSize(doc.file_size)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                            {doc.chunk_count} chunks
-                        </p>
-                    </>
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 justify-center">
+                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">{formatSize(doc.file_size)}</span>
+                            <span className="w-1 h-1 rounded-full bg-border" />
+                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">{doc.chunk_count} chunks</span>
+                        </div>
+                        {activeTab === 'public' && doc.author_name && (
+                           <div className="text-[9px] font-bold text-primary uppercase tracking-tight">
+                             By {doc.author_name}
+                           </div>
+                        )}
+                    </div>
                   )}
                 </div>
                 
-                <div className="absolute top-2 right-2 flex gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                {/* Actions Overlay */}
+                <div className="mt-6 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-200">
                   <button 
-                    className="p-1.5 rounded hover:bg-muted text-muted-foreground"
+                    className="p-2 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 rounded-lg border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all"
                     onClick={(e) => { e.stopPropagation(); handleDownload(doc); }}
                     title="Download"
                   >
                     <Download className="w-4 h-4" />
                   </button>
-                  <button 
-                    className={`p-1.5 rounded hover:bg-muted ${doc.is_shared ? 'text-blue-500' : 'text-muted-foreground'}`}
-                    onClick={(e) => { e.stopPropagation(); handleShare(doc); }}
-                    title={doc.is_shared ? "Stop sharing" : "Share with platform"}
-                    disabled={!!status}
-                  >
-                    <Globe className="w-4 h-4" />
-                  </button>
-                  <button 
-                    className="p-1.5 hover:bg-destructive/10 text-destructive rounded"
-                    onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
-                    title="Delete"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {activeTab === 'personal' && (
+                    <>
+                      <button 
+                        className={cn(
+                            "p-2 rounded-lg border transition-all",
+                            doc.is_shared ? "bg-primary/20 border-primary/40 text-primary" : "bg-card border-border/60 text-muted-foreground hover:text-primary"
+                        )}
+                        onClick={(e) => { e.stopPropagation(); handleShare(doc); }}
+                        title={doc.is_shared ? "Unshare" : "Share"}
+                        disabled={!!status}
+                      >
+                        <Globe className="w-4 h-4" />
+                      </button>
+                      <button 
+                        className="p-2 bg-destructive/10 hover:bg-destructive/20 rounded-lg border border-destructive/20 text-destructive hover:text-destructive transition-all"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )})}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3 max-w-6xl mx-auto">
             {filteredDocuments.map((doc) => {
                 const status = getStatusParams(doc.status);
                 return (
               <div
                 key={doc.id}
-                className={`flex items-center gap-4 p-4 bg-card border rounded-lg hover:border-primary/50 transition-all ${doc.is_shared ? 'border-blue-500/30 bg-blue-500/5' : 'border-border'}`}
+                className={cn(
+                    "flex items-center gap-6 p-4 bg-card border border-border/60 rounded-xl hover:border-primary/40 hover:shadow-md transition-all group animate-slide-up",
+                    doc.is_shared && "border-primary/30 bg-primary/5"
+                )}
               >
-                {getDocIcon(doc.file_type)}
-                <div className="flex-1">
-                  <p className="font-medium flex items-center gap-2">
-                    {doc.title}
-                    {doc.is_shared && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded-full border border-blue-500/20">
+                <div className="p-2 bg-background rounded-lg border border-border/60 group-hover:bg-primary/10 transition-colors">
+                    {getDocIcon(doc.file_type)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-0.5">
+                    <p className="font-bold text-foreground tracking-tight truncate">{doc.title}</p>
+                    {doc.is_shared && activeTab === 'personal' && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-primary/20 text-primary rounded border border-primary/30 uppercase tracking-wider">
                         Shared
                       </span>
                     )}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{doc.filename}</p>
+                    {activeTab === 'public' && doc.author_name && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-muted text-muted-foreground rounded border border-border/60 uppercase">
+                        By {doc.author_name}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-medium text-muted-foreground truncate">{doc.filename}</p>
                 </div>
                 
                 {status ? (
-                    <div className={`text-sm flex items-center gap-2 ${status.color}`}>
+                    <div className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 px-3 py-1.5 bg-background rounded-lg",
+                        status.color
+                    )}>
                         {status.icon}
                         {status.label}
                     </div>
                 ) : (
-                    <>
-                        <div className="text-sm text-muted-foreground">
-                        {formatSize(doc.file_size)}
+                    <div className="hidden md:flex items-center gap-8">
+                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-20">
+                          {formatSize(doc.file_size)}
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                        {doc.chunk_count} chunks
+                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-24">
+                          {doc.chunk_count} chunks
                         </div>
-                    </>
+                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-24">
+                          {formatDate(doc.created_at)}
+                        </div>
+                    </div>
                 )}
 
-                <div className="text-sm text-muted-foreground">
-                  {formatDate(doc.created_at)}
-                </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <button 
-                    className="p-2 rounded-md hover:bg-muted transition-colors text-muted-foreground"
+                    className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-primary"
                     onClick={() => handleDownload(doc)}
                     title="Download"
                   >
                     <Download className="w-4 h-4" />
                   </button>
-                  <button 
-                    className={`p-2 rounded-md hover:bg-muted transition-colors ${doc.is_shared ? 'text-blue-500 bg-blue-500/10' : 'text-muted-foreground'}`}
-                    onClick={() => handleShare(doc)}
-                    title={doc.is_shared ? "Stop sharing with platform" : "Share with platform"}
-                    disabled={!!status}
-                  >
-                    <Globe className="w-4 h-4" />
-                  </button>
-                  <button 
-                    className="p-2 hover:bg-destructive/10 text-destructive rounded-md"
-                    onClick={() => handleDelete(doc.id)}
-                    title="Delete"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {activeTab === 'personal' && (
+                    <>
+                      <button 
+                        className={cn(
+                            "p-2 rounded-lg transition-all",
+                            doc.is_shared ? "text-primary bg-primary/20" : "text-muted-foreground hover:text-primary hover:bg-muted"
+                        )}
+                        onClick={() => handleShare(doc)}
+                        title={doc.is_shared ? "Unshare" : "Share"}
+                        disabled={!!status}
+                      >
+                        <Globe className="w-4 h-4" />
+                      </button>
+                      <button 
+                        className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-all"
+                        onClick={() => handleDelete(doc.id)}
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )})}
@@ -447,50 +499,63 @@ export default function Documents() {
         )}
 
         {!isLoading && !error && filteredDocuments.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <FileText className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No documents found</h3>
-            <p className="text-muted-foreground mb-4">
-              Upload documents to use in your workflows
+          <div className="flex flex-col items-center justify-center py-20 text-center max-w-sm mx-auto">
+            <div className="p-6 bg-muted rounded-full mb-6">
+              <FileText className="w-12 h-12 text-muted-foreground/40" />
+            </div>
+            <h3 className="text-xl font-bold text-foreground mb-2">No documents found</h3>
+            <p className="text-muted-foreground text-sm mb-8">
+              {activeTab === 'personal' 
+                ? "You haven't uploaded any documents yet. Start by uploading files to build your knowledge base."
+                : "The public library is currently empty."}
             </p>
-            <button 
-              onClick={() => setShowUploadModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              <Upload className="w-4 h-4" />
-              Upload Document
-            </button>
+            {activeTab === 'personal' && (
+              <button 
+                onClick={() => setShowUploadModal(true)}
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
+              >
+                <Upload className="w-4 h-4" />
+                Upload Your First File
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-lg mx-4">
-            <div className="p-6 border-b border-border flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Upload Documents</h2>
-              <button onClick={() => setShowUploadModal(false)} className="p-1 hover:bg-muted rounded">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-in fade-in duration-300">
+          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+            <div className="p-6 border-b border-border/60 flex items-center justify-between">
+              <div>
+                  <h2 className="text-xl font-bold text-foreground">Upload Documents</h2>
+                  <p className="text-xs text-muted-foreground mt-1">Add files to your private registry</p>
+              </div>
+              <button 
+                onClick={() => setShowUploadModal(false)} 
+                className="p-2 hover:bg-muted rounded-lg transition-all"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6">
-              <label className="border-2 border-dashed border-border rounded-lg p-12 text-center hover:border-primary/50 transition-colors cursor-pointer block">
+            <div className="p-8">
+              <label className="group border-2 border-dashed border-border/60 hover:border-primary/50 bg-background/50 hover:bg-primary/5 rounded-2xl p-12 text-center transition-all cursor-pointer block">
                 <input
                   type="file"
                   multiple
                   className="hidden"
                   onChange={(e) => e.target.files && handleUpload(e.target.files)}
-                  // disabled={uploading} // Removed global disabled to allow parallel requests if logic permitted, but here we close modal anyway
                 />
                
-                  <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <div className="p-4 bg-card rounded-xl border border-border/60 w-fit mx-auto mb-6 group-hover:scale-110 group-hover:border-primary/40 transition-all">
+                    <Upload className="w-10 h-10 text-muted-foreground group-hover:text-primary" />
+                </div>
                 
-                <p className="font-medium mb-2">
-                  Drop files here or click to upload
+                <p className="text-base font-bold text-foreground mb-1 group-hover:text-primary transition-colors">
+                  Click or drag files here
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  Supports PDF, JSON, CSV, TXT, and more
+                <p className="text-xs text-muted-foreground">
+                  PDF, JSON, CSV, TXT, or Markdown
                 </p>
               </label>
             </div>
@@ -501,54 +566,61 @@ export default function Documents() {
       {/* Share Confirmation Modal */}
       {shareConfirmation.isOpen && shareConfirmation.doc && (
         <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 transition-opacity animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-in fade-in duration-300"
           onClick={() => setShareConfirmation({ isOpen: false, doc: null })}
         >
           <div 
-            className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 animate-in zoom-in-95 duration-200 bg-background"
+            className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 border-b border-border flex items-center gap-3">
-              <div className="p-2 bg-blue-500/10 rounded-full">
-                <Globe className="w-6 h-6 text-blue-500" />
+            <div className="p-6 border-b border-border/60 flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-xl">
+                <Globe className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Make Document Global?</h2>
+                <h2 className="text-xl font-bold text-foreground">Share Document</h2>
+                <p className="text-xs text-muted-foreground mt-1">Make this file available to everyone</p>
               </div>
             </div>
             
-            <div className="p-6 space-y-4">
-              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md p-3 flex gap-3">
-                <AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
-                <div className="text-sm text-yellow-700 dark:text-yellow-400">
-                  <p className="font-semibold mb-1">Policy Warning</p>
-                  You are about to make <strong>{shareConfirmation.doc.title}</strong> accessible to the entire organization.
-                </div>
+            <div className="p-6 space-y-6">
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+                <p className="text-sm text-foreground/80 leading-relaxed">
+                    Sharing <strong>{shareConfirmation.doc.title}</strong> will make it visible to all users in the public library.
+                </p>
               </div>
 
-              <div className="text-sm text-muted-foreground space-y-2">
-                <p>Please confirm that:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>This document does not contain Personally Identifiable Information (PII) or sensitive secrets.</li>
-                  <li>You are authorized to share this content broadly.</li>
-                  <li>This action will be logged in the system audit logs.</li>
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Before you share:</p>
+                <ul className="space-y-2">
+                  {[
+                      "Ensure the file contains no sensitive data",
+                      "Confirm you have rights to share this content",
+                      "Verify file content is correct"
+                  ].map((item, i) => (
+                      <li key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className="w-1 h-1 rounded-full bg-primary" />
+                          {item}
+                      </li>
+                  ))}
                 </ul>
               </div>
             </div>
 
-            <div className="p-6 border-t border-border flex justify-end gap-3 bg-muted/10">
+            <div className="p-6 border-t border-border/60 flex justify-end gap-3 bg-background/50">
               <button 
                 onClick={() => setShareConfirmation({ isOpen: false, doc: null })}
-                className="px-4 py-2 border border-input rounded-md hover:bg-muted font-medium"
+                className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
               </button>
               <button 
                 onClick={confirmShare}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium flex items-center gap-2"
+                className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm transition-all hover:bg-primary/90 active:scale-95 flex items-center gap-2"
               >
                 <Globe className="w-4 h-4" />
-                Confirm & Share
+                Share Document
               </button>
             </div>
           </div>

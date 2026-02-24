@@ -1,20 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { 
-  Plus, 
-  Search, 
+  Plus,
   FolderOpen,
-  Clock,
   Zap,
-  CheckCircle2,
   XCircle,
-  Loader2,
-  Trash2,
-  Copy,
-  Play
+  Loader2, 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { workflowsService, orchestratorService, type WorkflowListItem } from '../api';
+import PageHeader from '../components/layout/PageHeader';
+import SearchInput from '../components/ui/SearchInput';
+import WorkflowCard from '../components/workflows/WorkflowCard';
+import { cn } from '../lib/utils';
 
 export default function WorkflowsDashboard() {
   const navigate = useNavigate();
@@ -116,39 +114,19 @@ export default function WorkflowsDashboard() {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'active': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-      case 'inactive': return <XCircle className="w-4 h-4 text-gray-400" />;
-      default: return <Clock className="w-4 h-4 text-yellow-500" />;
-    }
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'Never';
-    return new Date(dateStr).toLocaleDateString();
-  };
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Zap className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Workflows</h1>
-              <p className="text-sm text-muted-foreground">
-                {workflows.length} workflows • {workflows.filter(w => w.status === 'active').length} active
-              </p>
-            </div>
-          </div>
+      <PageHeader 
+        title="Workflows"
+        subtitle={`${workflows.length} workflows • ${workflows.filter(w => w.status === 'active').length} active`}
+        icon={Zap}
+        actions={
           <button
             onClick={handleCreateWorkflow}
             disabled={isCreating}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-primary/20 active:scale-[0.98] font-medium whitespace-nowrap"
           >
             {isCreating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -157,32 +135,41 @@ export default function WorkflowsDashboard() {
             )}
             {isCreating ? 'Creating...' : 'New Workflow'}
           </button>
-        </div>
+        }
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
+            {[
+              { value: '', label: 'All Status' },
+              { value: 'active', label: 'Active' },
+              { value: 'inactive', label: 'Inactive' },
+              { value: 'draft', label: 'Draft' }
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setStatusFilter(option.value)}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
+                  statusFilter === option.value
+                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                    : "bg-card border border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
+                )}
+              >
+                {option.label}
+                {option.value === '' ? ` (${workflows.length})` : ` (${workflows.filter(w => w.status === option.value).length})`}
+              </button>
+            ))}
+          </div>
 
-        {/* Search and filters */}
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
+          <div className="relative w-full md:w-[400px] group">
+            <SearchInput
               placeholder="Search workflows..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="draft">Draft</option>
-          </select>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
@@ -197,7 +184,7 @@ export default function WorkflowsDashboard() {
             <p className="text-muted-foreground">{error}</p>
           </div>
         ) : filteredWorkflows.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="text-center py-12 animate-fade-in">
             <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">No workflows found</h3>
             <p className="text-muted-foreground mb-4">
@@ -206,7 +193,7 @@ export default function WorkflowsDashboard() {
             <button
               onClick={handleCreateWorkflow}
               disabled={isCreating}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed shadow-sm active:scale-[0.98] font-medium"
             >
               {isCreating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -217,79 +204,15 @@ export default function WorkflowsDashboard() {
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 stagger-children">
             {filteredWorkflows.map((workflow) => (
-              <Link
+              <WorkflowCard
                 key={workflow.id}
-                to={`/workflow/${workflow.id}`}
-                className="group bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-all"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
-                      style={{ backgroundColor: `${workflow.color}20` }}
-                    >
-                      {workflow.icon || '⚡'}
-                    </div>
-                    <div>
-                      <h3 className="font-medium group-hover:text-primary transition-colors">
-                        {workflow.name}
-                      </h3>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        {getStatusIcon(workflow.status)}
-                        <span className="capitalize">{workflow.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
-                      onClick={(e) => handlePlay(e, workflow.id)}
-                      className="p-1 hover:bg-muted rounded"
-                    >
-                      <Play className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={(e) => handleDuplicate(e, workflow.id)}
-                      className="p-1 hover:bg-muted rounded"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={(e) => { 
-                        e.preventDefault(); 
-                        handleDelete(workflow.id); 
-                      }}
-                      className="p-1 hover:bg-destructive/10 text-destructive rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                  {workflow.description || 'No description'}
-                </p>
-
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{workflow.node_count || 0} nodes</span>
-                  <span>{workflow.execution_count} runs</span>
-                  <span>Last run: {formatDate(workflow.last_executed_at)}</span>
-                </div>
-
-                {workflow.tags && workflow.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-3">
-                    {workflow.tags.slice(0, 3).map((tag) => (
-                      <span 
-                        key={tag} 
-                        className="px-2 py-0.5 bg-muted text-xs rounded-full"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </Link>
+                workflow={workflow}
+                onPlay={handlePlay}
+                onDuplicate={handleDuplicate}
+                onDelete={handleDelete}
+              />
             ))}
           </div>
         )}

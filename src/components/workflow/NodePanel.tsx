@@ -58,7 +58,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
   const mappedBackendNodes: NodeType[] = backendNodes.map(node => ({
       // Handle both camelCase (frontend expected) and snake_case (current backend default)
       id: node.nodeType || (node as any).node_type || `unknown-${Math.random()}`,
-      name: node.name,
+      name: node.name || (node as any).displayName,
       description: node.description,
       category: node.category,
       color: node.color,
@@ -120,7 +120,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
   // If an app with actions is selected, show the actions panel
   if (selectedApp && selectedApp.actions && selectedApp.actions.length > 0) {
     return (
-      <div className="absolute top-0 right-0 h-full w-80 bg-card border-l border-border shadow-xl z-50 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 bg-card">
         {/* Header */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-4">
@@ -196,7 +196,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
   }
 
   return (
-    <div className="absolute top-0 right-0 h-full w-80 bg-card border-l border-border shadow-xl z-50 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0 bg-card">
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-4">
@@ -247,7 +247,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
       </div>
 
       {/* Node List */}
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2">
         {Object.entries(groupedNodes).map(([category, nodes]) => (
           <div key={category} className="mb-4">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 mb-2">
@@ -308,7 +308,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
       </div>
 
       {/* Footer - Node Builder */}
-      <div className="p-3 border-t border-border bg-muted/10">
+      <div className="p-3 border-t border-border bg-card shrink-0">
         <button
           onClick={() => setShowBuilder(true)}
           className="w-full py-2 bg-secondary text-secondary-foreground rounded-md text-xs font-semibold hover:bg-secondary/80 flex items-center justify-center gap-2"

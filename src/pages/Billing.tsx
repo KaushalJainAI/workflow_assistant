@@ -14,7 +14,7 @@ export default function Billing() {
         '7-day execution history'
       ],
       current: true,
-      color: 'bg-slate-100 dark:bg-slate-800'
+      color: 'border-border/60'
     },
     {
       name: 'Pro',
@@ -44,7 +44,7 @@ export default function Billing() {
         'Unlimited history',
         'On-premise deployment option'
       ],
-      color: 'bg-slate-100 dark:bg-slate-800'
+      color: 'border-border/60'
     }
   ];
 
@@ -56,10 +56,10 @@ export default function Billing() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+        <div className="p-6 rounded-xl border border-border/60 bg-card">
           <div className="flex items-center gap-4">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
-              <Zap className="w-6 h-6" />
+            <div className="p-2.5 bg-blue-500/12 rounded-xl">
+              <Zap className="w-5 h-5 text-blue-400" />
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Monthly Executions</p>
@@ -67,14 +67,14 @@ export default function Billing() {
             </div>
           </div>
           <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
-            <div className="h-full bg-blue-600 w-[25%] rounded-full" />
+            <div className="h-full bg-primary w-[25%] rounded-full shadow-[0_0_8px_hsl(var(--primary)/0.2)]" />
           </div>
         </div>
 
-        <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+        <div className="p-6 rounded-xl border border-border/60 bg-card">
            <div className="flex items-center gap-4">
-            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-purple-600 dark:text-purple-400">
-              <Rocket className="w-6 h-6" />
+            <div className="p-2.5 bg-purple-500/12 rounded-xl">
+              <Rocket className="w-5 h-5 text-purple-400" />
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Active Workflows</p>
@@ -86,10 +86,10 @@ export default function Billing() {
           </div>
         </div>
 
-        <div className="p-6 rounded-xl border border-border bg-card shadow-sm">
+        <div className="p-6 rounded-xl border border-border/60 bg-card">
            <div className="flex items-center gap-4">
-            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-600 dark:text-green-400">
-              <CreditCard className="w-6 h-6" />
+            <div className="p-2.5 bg-emerald-500/12 rounded-xl">
+              <CreditCard className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Current Plan</p>
@@ -104,14 +104,14 @@ export default function Billing() {
 
 
       <h2 className="text-xl font-semibold mb-6">Available Plans</h2>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl stagger-children">
         {plans.map((plan) => (
           <div 
             key={plan.name}
-            className={`rounded-2xl border ${plan.highlight ? 'border-primary shadow-xl scale-105' : 'border-border shadow-md'} flex flex-col p-8 relative overflow-hidden transition-all hover:shadow-lg bg-card`}
+            className={`rounded-2xl border ${plan.highlight ? 'border-primary/50 shadow-xl shadow-primary/10 scale-105' : `${plan.color}`} flex flex-col p-8 relative overflow-hidden transition-all duration-300 hover:shadow-lg bg-card`}
           >
             {plan.highlight && (
-              <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-bl-xl">
+              <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wider">
                 POPULAR
               </div>
             )}
@@ -129,8 +129,8 @@ export default function Billing() {
             <ul className="space-y-3 mb-8 flex-1">
               {plan.features.map((feature, i) => (
                 <li key={i} className="flex items-center gap-3 text-sm">
-                  <div className={`rounded-full p-1 ${plan.highlight ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-green-100 dark:bg-green-900/30 text-green-600'}`}>
-                    <Check className={`w-3 h-3 ${plan.highlight ? 'text-primary' : ''}`} />
+                  <div className={`rounded-full p-1 ${plan.highlight ? 'bg-primary/20 text-primary' : 'bg-emerald-500/12 text-emerald-400'}`}>
+                    <Check className="w-3 h-3" />
                   </div>
                   <span>{feature}</span>
                 </li>
@@ -140,9 +140,9 @@ export default function Billing() {
             <button 
               className={`w-full py-2.5 rounded-lg font-medium transition-colors ${
                 plan.highlight 
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm' 
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-              }`}
+              } active:scale-[0.98]`}
             >
               {plan.current ? 'Current Plan' : 'Upgrade'}
             </button>
@@ -150,11 +150,11 @@ export default function Billing() {
         ))}
       </div>
 
-      <div className="mt-16 p-8 bg-muted/30 rounded-2xl border border-border">
+      <div className="mt-16 p-8 bg-muted/30 rounded-2xl border border-border/60">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div>
             <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-              <Shield className="w-5 h-5 text-blue-600" />
+              <Shield className="w-5 h-5 text-blue-400" />
               Enterprise Security
             </h3>
             <p className="text-muted-foreground max-w-2xl">
@@ -162,7 +162,7 @@ export default function Billing() {
               Contact our sales team for a custom enterprise package tailored to your organization's needs.
             </p>
           </div>
-          <button className="whitespace-nowrap px-6 py-2.5 bg-background border border-input rounded-lg hover:bg-accent hover:text-accent-foreground font-medium transition-colors">
+          <button className="whitespace-nowrap px-6 py-2.5 bg-background border border-border/60 rounded-lg hover:bg-accent hover:text-accent-foreground font-medium transition-colors">
             Contact Sales
           </button>
         </div>

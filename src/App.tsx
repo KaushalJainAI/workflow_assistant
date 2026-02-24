@@ -1,10 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { ThemeProvider } from './contexts/ThemeContext';
+import { ThemeProvider, useThemeContext } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Sidebar from './components/layout/Sidebar';
 import WorkflowsDashboard from './pages/WorkflowsDashboard';
 import WorkflowEditor from './pages/WorkflowEditor';
-import Executions from './pages/Executions';
 import Credentials from './pages/Credentials';
 import Settings from './pages/Settings';
 import Documents from './pages/Documents';
@@ -13,14 +12,15 @@ import AIChat from './pages/AIChat';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import GoogleCallback from './pages/GoogleCallback';
-import Billing from './pages/Billing';
-import Insights from './pages/Insights';
 import Orchestrator from './pages/Orchestrator';
-import Profile from './pages/Profile';
 import Templates from './pages/Templates';
+import Skills from './pages/Skills';
 import TemplateDetail from './pages/templates/TemplateDetail';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AssistantProvider, useAssistant } from './contexts/AssistantContext';
+import GlobalAssistantPanel from './components/layout/GlobalAssistantPanel';
+import { Sparkles } from 'lucide-react';
 
 // Protected route wrapper
 function ProtectedRoute({ children }: { children?: React.ReactNode }) {
@@ -41,17 +41,81 @@ function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   return children ? <>{children}</> : <Outlet />;
 }
 
+
 // Layout with sidebar
 const Layout = () => {
+  const { toggleAssistant, isAssistantOpen } = useAssistant();
+
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
       <Sidebar />
-      <main className="flex-1 h-full overflow-hidden relative">
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
-      </main>
+      <div className="flex-1 flex h-full overflow-hidden relative">
+        <main className="flex-1 h-full overflow-hidden relative">
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+
+          {/* Global Help Button - Bottom Right */}
+          <div className="fixed bottom-4 right-8 z-[110]">
+            <button
+              onClick={toggleAssistant}
+              className={`flex items-center gap-2 p-3 px-5 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 border backdrop-blur-md active:scale-95 ${
+                isAssistantOpen 
+                  ? 'bg-primary text-primary-foreground border-primary scale-110 shadow-primary/20' 
+                  : 'bg-card/40 text-muted-foreground border-border/50 hover:border-primary/50 hover:text-primary hover:shadow-primary/10 hover:bg-card/60'
+              }`}
+            >
+              <Sparkles className={`w-5 h-5 ${isAssistantOpen ? 'animate-pulse' : ''}`} />
+              <span className="text-sm font-bold tracking-tight uppercase">Help</span>
+            </button>
+          </div>
+          
+          {/* Model Selector - Bottom Right (Left of Help) */}
+        </main>
+        
+        <GlobalAssistantPanel />
+      </div>
     </div>
+  );
+};
+
+const AppContent = () => {
+  const { resolvedTheme } = useThemeContext();
+  
+  return (
+    <>
+      <Router>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/auth/google/callback" element={<GoogleCallback />} />
+          
+          {/* Protected routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Navigate to="/workflows" replace />} />
+              <Route path="/workflows" element={<WorkflowsDashboard />} />
+              <Route path="/workflow/:id" element={<WorkflowEditor />} />
+              <Route path="/workflows/new" element={<WorkflowEditor />} />
+              <Route path="/templates" element={<Templates />} />
+              <Route path="/templates/:id" element={<TemplateDetail />} />
+              <Route path="/ai-chat" element={<AIChat />} />
+              <Route path="/documents" element={<Documents />} />
+              <Route path="/credentials" element={<Credentials />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/billing" element={<Navigate to="/settings" replace />} />
+              <Route path="/insights" element={<Navigate to="/settings" replace />} />
+              <Route path="/orchestrator" element={<Orchestrator />} />
+              <Route path="/skills" element={<Skills />} />
+              <Route path="/profile" element={<Navigate to="/settings" replace />} />
+              <Route path="/executions" element={<Navigate to="/workflows" replace />} />
+            </Route>
+          </Route>
+        </Routes>
+      </Router>
+      <Toaster richColors position="bottom-left" theme={resolvedTheme} duration={1500} />
+    </>
   );
 };
 
@@ -59,36 +123,9 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <Router>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/auth/google/callback" element={<GoogleCallback />} />
-            
-            {/* Protected routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route element={<Layout />}>
-                <Route path="/" element={<Navigate to="/workflows" replace />} />
-                <Route path="/workflows" element={<WorkflowsDashboard />} />
-                <Route path="/workflow/:id" element={<WorkflowEditor />} />
-                <Route path="/workflows/new" element={<WorkflowEditor />} />
-                <Route path="/templates" element={<Templates />} />
-                <Route path="/templates/:id" element={<TemplateDetail />} />
-                <Route path="/ai-chat" element={<AIChat />} />
-                <Route path="/executions" element={<Executions />} />
-                <Route path="/documents" element={<Documents />} />
-                <Route path="/credentials" element={<Credentials />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/billing" element={<Billing />} />
-                <Route path="/insights" element={<Insights />} />
-                <Route path="/orchestrator" element={<Orchestrator />} />
-                <Route path="/profile" element={<Profile />} />
-              </Route>
-            </Route>
-          </Routes>
-        </Router>
-        <Toaster richColors position="top-right" theme="dark" />
+        <AssistantProvider>
+          <AppContent />
+        </AssistantProvider>
       </AuthProvider>
     </ThemeProvider>
   );

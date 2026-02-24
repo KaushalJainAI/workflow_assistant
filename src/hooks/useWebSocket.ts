@@ -12,13 +12,13 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
 export type WebSocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export interface ExecutionEvent {
-  type: 'node_started' | 'node_completed' | 'node_failed' | 'execution_completed' | 'execution_failed' | 'hitl_request' | 'progress';
-  execution_id: string;
+  type: 'node_started' | 'node_completed' | 'node_failed' | 'execution_completed' | 'execution_failed' | 'hitl_request' | 'progress' | 'execution.event' | 'notification' | 'new_request' | 'execution.state_sync' | 'connected' | 'hitl.request' | 'error';
+  execution_id?: string;
   node_id?: string;
-  data?: Record<string, unknown>;
+  data?: any;
   progress?: number;
   error?: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface UseWebSocketOptions {
@@ -168,8 +168,18 @@ export function useHITLWebSocket(
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'hitl_request') {
+        if (data.type === 'hitl_request' || data.type === 'new_request') {
           onRequest(data);
+        } else if (data.type === 'notification') {
+          // Add a simple way to pass notifications back
+          // We can reuse onRequest or add a new callback.
+          // For simplicity, let's wrap it in an ExecutionEvent-like structure
+          onRequest({
+            type: 'notification' as any,
+            execution_id: '',
+            data: data.data,
+            timestamp: new Date().toISOString()
+          });
         }
       } catch (err) {
         console.error('Failed to parse HITL message:', err);

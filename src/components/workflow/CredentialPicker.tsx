@@ -6,6 +6,7 @@ interface CredentialPickerProps {
   value?: string;
   onChange: (credentialId: string) => void;
   credentialType?: string; // Filter by credential_type slug (e.g. 'gmail_oauth')
+  credentialTypeId?: number; // Filter by specific credential_type ID
   placeholder?: string;
   required?: boolean;
   onCreate?: () => void;
@@ -16,6 +17,7 @@ export default function CredentialPicker({
   value,
   onChange,
   credentialType,
+  credentialTypeId,
   placeholder = 'Select a credential...',
   required = false,
   onCreate,
@@ -51,23 +53,12 @@ export default function CredentialPicker({
 
   // Filter credentials
   const filteredCredentials = credentials.filter((cred) => {
-    // Since we receive the type SLUG or ID in backend schema, we need to match it.
-    // However, backend credential object has `credential_type` ID. 
-    // We ideally need to map slug -> id or filter by type display/slug if available.
-    // For now, let's assume `credentialType` passed here filters by name/display loosely 
-    // OR matches the logic in the backend. 
-    // Actually, `credentialType` from node config is usually the SLUG (e.g. 'gmail').
-    // The credential object has `credential_type` (int) and `credential_type_display` (string).
-    // We might need to fetch types to map slug -> ID, or rely on naming convention.
-    // Let's rely on loose matching for now or show all if unsure.
+    // Filter by type if provided
+    if (credentialTypeId !== undefined && cred.credential_type !== credentialTypeId) {
+      return false;
+    }
     
-    // If credentialType is provided, filter. 
-    // Best effort: matches credential_type_display (lowercase) or name contains it.
-    // Real fix: `useNodeTypes` should provide the integer ID, OR we fetch types to lookup.
-    
-    // TODO: Improve filtering by fetching Types map. 
-    // For now, let's show all and let user search, or if names match obvious patterns.
-    
+    // Filter by search
     const matchesSearch = cred.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
@@ -102,11 +93,11 @@ export default function CredentialPicker({
             onClick={() => setIsOpen(!isOpen)}
             className={`
             flex-1 flex items-center justify-between gap-2 px-3 py-2 
-            bg-[var(--bg-tertiary)] border border-[var(--border-primary)] 
+            bg-muted/40 border border-border 
             rounded-lg text-sm transition-all duration-200
-            hover:border-[var(--accent-primary)] focus:outline-none 
-            focus:ring-2 focus:ring-[var(--accent-primary)]/20
-            ${!selectedCredential ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'}
+            hover:border-primary focus:outline-none 
+            focus:ring-2 focus:ring-primary/20
+            ${!selectedCredential ? 'text-muted-foreground' : 'text-foreground'}
             `}
         >
             <div className="flex items-center gap-2 truncate">
@@ -130,7 +121,7 @@ export default function CredentialPicker({
             <button
                 type="button"
                 onClick={() => onEdit(selectedCredential)}
-                className="p-2 border border-[var(--border-primary)] rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                className="p-2 border border-border rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
                 title="Edit Credential"
             >
                 <Edit className="w-4 h-4" />
@@ -140,17 +131,17 @@ export default function CredentialPicker({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg shadow-xl overflow-hidden">
+        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl overflow-hidden">
           {/* Search */}
-          <div className="p-2 border-b border-[var(--border-primary)]">
+          <div className="p-2 border-b border-border">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search credentials..."
-                className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)]"
+                className="w-full pl-8 pr-3 py-1.5 bg-muted/40 border border-border rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                 autoFocus
               />
             </div>
@@ -159,7 +150,7 @@ export default function CredentialPicker({
           {/* Credential List */}
           <div className="max-h-48 overflow-y-auto">
             {filteredCredentials.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-[var(--text-secondary)] text-center">
+              <div className="px-3 py-4 text-sm text-muted-foreground text-center">
                 {loading ? 'Loading...' : 'No credentials found'}
               </div>
             ) : (
@@ -170,8 +161,8 @@ export default function CredentialPicker({
                   onClick={() => handleSelect(cred.id)}
                   className={`
                     w-full flex items-center gap-2 px-3 py-2 text-sm text-left
-                    hover:bg-[var(--bg-tertiary)] transition-colors
-                    ${String(value) === String(cred.id) ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]' : 'text-[var(--text-primary)]'}
+                    hover:bg-muted transition-colors
+                    ${String(value) === String(cred.id) ? 'bg-primary/10 text-primary' : 'text-foreground'}
                   `}
                 >
                   <span className="text-base">🔑</span>
@@ -184,14 +175,14 @@ export default function CredentialPicker({
 
           {/* Create New */}
           {onCreate && (
-              <div className="p-2 border-t border-[var(--border-primary)]">
+              <div className="p-2 border-t border-border">
                 <button
                 type="button"
                 onClick={() => {
                     setIsOpen(false);
                     onCreate();
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 rounded transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-primary/10 rounded transition-colors"
                 >
                 <Plus className="w-4 h-4" />
                 <span>Create new credential</span>

@@ -3,9 +3,7 @@ import {
   FolderIcon, 
   ArrowRight, 
   Star, 
-  Tag, 
-  Clock, 
-  CheckCircle2
+  GitBranch
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { type WorkflowTemplate } from '../../api/templates';
@@ -16,79 +14,80 @@ interface TemplateCardProps {
   featured?: boolean;
 }
 
-export default function TemplateCard({ template, onUse, featured = false }: TemplateCardProps) {
+export default function TemplateCard({ template, onUse }: TemplateCardProps) {
   const navigate = useNavigate();
 
   return (
     <div 
       className={cn(
-        "group relative bg-card/40 hover:bg-card border border-white/5 hover:border-purple-500/30 rounded-xl p-5 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/10 flex flex-col h-full backdrop-blur-sm cursor-pointer",
-        featured && "bg-gradient-to-br from-purple-900/10 to-blue-900/10 border-purple-500/10"
+        "group relative bg-card border border-border/60 rounded-xl p-5 card-hover cursor-pointer flex flex-col h-full"
       )}
       onClick={() => navigate(`/templates/${template.id}`)}
     >
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex items-start justify-between mb-5">
         <div className={cn(
-          "p-2.5 rounded-lg text-purple-400 transition-colors",
-          featured ? "bg-purple-500/20" : "bg-white/5 group-hover:bg-purple-500/20"
+          "p-2.5 rounded-lg transition-transform group-hover:scale-110",
+          template.is_featured ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-muted text-muted-foreground group-hover:text-primary transition-colors"
         )}>
           <FolderIcon className="w-5 h-5" />
         </div>
-        <div className="flex gap-2">
-            {template.success_rate > 90 && (
-                <span className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                     Verified
-                </span>
-            )}
-            {template.score && (
-                <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    {Math.round(template.score * 100)}% Match
+        <div className="flex flex-col gap-1.5 items-end">
+            {template.is_featured && (
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-primary/15 text-primary font-bold uppercase tracking-wider">
+                     Featured
                 </span>
             )}
         </div>
       </div>
 
-      <h3 className="text-lg font-semibold text-foreground mb-2 line-clamp-1 group-hover:text-purple-400 transition-colors">
-        {template.name}
-      </h3>
-      <p className="text-sm text-muted-foreground line-clamp-2 mb-4 flex-1">
-        {template.description}
-      </p>
+      <div className="flex-1">
+          <div className="flex flex-col gap-0.5 mb-3">
+              <h3 className="text-lg font-bold text-foreground leading-tight group-hover:text-primary transition-colors">
+                {template.name}
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">
+                    BY {template.author_name}
+                </span>
+              </div>
+          </div>
+          
+          <p className="text-sm text-muted-foreground line-clamp-2 mb-5 leading-relaxed">
+            {template.description}
+          </p>
 
-      <div className="flex flex-wrap gap-2 mb-6">
-        {template.tags?.slice(0, 3).map(tag => (
-          <span key={tag} className="text-xs px-2 py-1 rounded-md bg-white/5 text-muted-foreground border border-white/5 flex items-center gap-1">
-            <Tag className="w-3 h-3" />
-            {tag}
-          </span>
-        ))}
+          <div className="flex flex-wrap gap-2 mb-5">
+            {template.tags?.slice(0, 3).map(tag => (
+              <span key={tag} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-muted text-foreground border border-border/60 uppercase">
+                {tag}
+              </span>
+            ))}
+          </div>
       </div>
 
-      <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-auto">
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-1">
-              <Star className="w-3.5 h-3.5 text-yellow-500/50" />
-              <span>{template.usage_count} uses</span>
-          </div>
-          <div className="flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              <span>{template.success_rate}% success</span>
-          </div>
+      <div className="flex items-center justify-between pt-4 border-t border-border/60 mt-auto">
+        <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1" title="Trust Score">
+                <Star className={cn("w-3.5 h-3.5 text-amber-500", template.average_rating > 0 && "fill-amber-500")} />
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{template.average_rating.toFixed(1)}</span>
+            </div>
+            <div className="flex items-center gap-1 text-muted-foreground" title="Deployments">
+                <GitBranch className="w-3.5 h-3.5" />
+                <span className="text-xs font-medium">{template.usage_count}</span>
+            </div>
         </div>
         
-        {onUse && (
-            <button
-            onClick={(e) => {
-                e.stopPropagation();
-                onUse(template);
-            }}
-            className="flex items-center gap-2 text-sm font-medium text-purple-400 hover:text-purple-300 transition-colors"
-            >
-            Use Template
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </button>
-        )}
+        <div 
+          className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20 hover:bg-primary/20 transition-colors"
+          onClick={(e) => {
+              e.stopPropagation();
+              if (onUse) onUse(template);
+              else navigate(`/templates/${template.id}`);
+          }}
+        >
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            <span>Deploy</span>
+        </div>
       </div>
     </div>
   );

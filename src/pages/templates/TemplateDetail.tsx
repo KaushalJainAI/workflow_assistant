@@ -1,56 +1,84 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  ArrowLeft, 
   Share2, 
   Copy, 
   Layout, 
   GitBranch, 
   ShieldCheck,
-  Zap
+  Star,
+  Bookmark,
+  TrendingUp,
+  Loader2,
+  ChevronRight,
+  Activity,
+  Server,
+  Cpu
 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import templatesService, { type WorkflowTemplate } from '../../api/templates';
 import workflowsService from '../../api/workflows';
-import ReactFlow, { Background, Controls } from 'reactflow';
+import ReactFlow, { Background, Controls, BackgroundVariant, type NodeTypes } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { cn } from '../../lib/utils';
+import GenericNode from '../../components/workflow/GenericNode';
 
 export default function TemplateDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [template, setTemplate] = useState<WorkflowTemplate | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Community stats
+  const [similarTemplates, setSimilarTemplates] = useState<WorkflowTemplate[]>([]);
+  const [isBookmarked, setIsBookmarked] = useState(false);
 
-  useEffect(() => {
-     if (id) {
-         loadTemplate(parseInt(id));
-     }
-  }, [id]);
+  const nodeTypes: NodeTypes = useMemo(() => ({
+    custom: GenericNode,
+    trigger: GenericNode,
+    generic: GenericNode,
+    webhook: GenericNode,
+    schedule: GenericNode
+  }), []);
 
-  const loadTemplate = async (templateId: number) => {
+  const loadTemplate = useCallback(async (templateId: number) => {
     try {
         setLoading(true);
-        // We need a specific get endpoint for details, the list endpoint doesn't return full details (nodes/edges).
-        // Since we just added template_detail view in backend, let's update api/templates.ts first?
-        // Or assume it works if we use axios directly or update the service quickly.
-        // I will assume I updated `api/templates.ts` in paralell or I will use `any` cast to fix TS error if method missing.
-        
-        // Actually, let's just fetch it. The backend IS ready.
-        // But the frontend service definition needs `get(id)` function.
-        // Wait, I haven't updated `api/templates.ts` yet with `get()`.
-        // I will do that in next step.
-        // For now, let's stub it or error will happen.
-        
-        // I'll update api/templates.ts right after this file creation.
-        // @ts-ignore
         const data = await templatesService.get(templateId);
         setTemplate(data);
+        setIsBookmarked(data.is_bookmarked);
+        
+        // Load additional data
+        const [similarData] = await Promise.all([
+            templatesService.getSimilar(templateId)
+        ]);
+        setSimilarTemplates(similarData);
+        
     } catch (error) {
         console.error("Error loading template", error);
         toast.error("Failed to load template details");
     } finally {
         setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+     if (id) {
+         loadTemplate(parseInt(id));
+     }
+  }, [id, loadTemplate]);
+
+
+
+  const handleToggleBookmark = async () => {
+      if (!template) return;
+      try {
+          const { bookmarked } = await templatesService.toggleBookmark(template.id);
+          setIsBookmarked(bookmarked);
+          toast.success(bookmarked ? "Bookmarked" : "Removed bookmark");
+      } catch (error) {
+          toast.error("Failed to toggle bookmark");
+      }
   };
 
   const handleUseTemplate = async () => {
@@ -61,12 +89,9 @@ export default function TemplateDetail() {
            const result = await workflowsService.create({
                name: `[Template] ${template.name}`,
                description: template.description || '',
-               // @ts-ignore
-               nodes: template.nodes,
-               // @ts-ignore
-               edges: template.edges,
-               // @ts-ignore
-               workflow_settings: template.workflow_settings,
+               nodes: template.nodes || [],
+               edges: template.edges || [],
+               workflow_settings: template.workflow_settings || {},
                tags: template.tags
            });
            toast.dismiss();
@@ -78,151 +103,206 @@ export default function TemplateDetail() {
       }
   };
 
+
+
   if (loading) {
       return (
-          <div className="flex items-center justify-center h-screen bg-background text-foreground">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="flex flex-col items-center justify-center h-full bg-background gap-4">
+              <Loader2 className="w-10 h-10 animate-spin text-primary/50" />
+              <p className="text-muted-foreground text-sm font-medium animate-pulse font-mono">INITIALIZING_ASTRA_CORE...</p>
           </div>
       )
   }
 
-  if (!template) return <div>Template not found</div>;
+  if (!template) return <div className="h-full bg-background flex items-center justify-center text-muted-foreground font-mono">ERR_TEMPLATE_NOT_FOUND</div>;
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground animate-in fade-in duration-300">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate('/templates')}
-            className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5 text-muted-foreground" />
-          </button>
-          <div>
-             <h1 className="text-xl font-bold flex items-center gap-2">
-                 {template.name}
-                 <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/10 font-normal">
-                     Template
-                 </span>
-             </h1>
-             <p className="text-sm text-muted-foreground">
-                 {template.category} • {template.usage_count} uses
-             </p>
-          </div>
+    <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-500 overflow-hidden">
+      {/* System Header - Simplified */}
+      <header className="border-b border-border/40 bg-card/50 backdrop-blur-md px-6 py-4 flex items-center justify-between z-20 shadow-sm">
+        <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mb-1">
+                <Link to="/templates" className="hover:text-primary transition-colors">TEMPLATES</Link>
+                <ChevronRight className="w-3 h-3" />
+                <span className="uppercase text-foreground font-semibold tracking-wider">{template.category}</span>
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-3">
+                {template.name}
+                {template.is_featured && (
+                     <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary tracking-wider border border-primary/20">
+                         Featured
+                     </span>
+                 )}
+            </h1>
         </div>
 
-        <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-white/5 rounded-lg transition-colors">
-                <Share2 className="w-4 h-4" />
-                Share
-            </button>
-            <button 
-                onClick={handleUseTemplate}
-                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium transition-colors shadow-lg shadow-primary/20"
-            >
-                <Copy className="w-4 h-4" />
-                Use Template
-            </button>
+        <div className="flex items-center gap-3">
+              <button 
+                  onClick={handleToggleBookmark}
+                  className={cn(
+                      "p-2 rounded-md border transition-all active:scale-95",
+                      isBookmarked 
+                          ? "bg-primary/10 border-primary/20 text-primary" 
+                          : "bg-background border-border hover:bg-muted text-muted-foreground"
+                  )}
+                  title="Bookmark Template"
+              >
+                  <Bookmark className={cn("w-4 h-4", isBookmarked && "fill-primary")} />
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md border border-transparent transition-all">
+                  <Share2 className="w-4 h-4" />
+                  Share
+              </button>
+              <button 
+                  onClick={handleUseTemplate}
+                  className="flex items-center gap-2 px-5 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md font-bold text-sm transition-all shadow-lg shadow-primary/20 active:scale-95"
+              >
+                  <Copy className="w-4 h-4" />
+                  Use Template
+              </button>
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-          {/* Main Content: Nodes Preview + Description */}
-          <div className="flex-1 flex flex-col min-w-0 border-r border-border">
-              {/* Preview */}
-              <div className="h-[50vh] bg-muted/20 relative border-b border-border group">
-                  {/* We use ReactFlow read-only to visualize */}
-                  <div className="absolute inset-0 opacity-80 pointer-events-none group-hover:opacity-100 transition-opacity">
-                       {/* Mock graph or real graph */}
-                       {/* @ts-ignore */}
-                      <ReactFlow 
-                        nodes={(template.nodes || []).map((n:any) => ({
-                            ...n, 
-                            data: { label: n.data?.label || n.type }
-                        }))} 
-                        edges={template.edges || []}
-                        fitView
-                        proOptions={{ hideAttribution: true }}
-                        nodesDraggable={false}
-                        nodesConnectable={false}
-                      >
-                        <Background color="#333" gap={20} size={1} />
-                        <Controls showInteractive={false} />
-                      </ReactFlow>
-                  </div>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                       {/* Overlay if needed */}
-                  </div>
-              </div>
-
-              {/* Details */}
-              <div className="flex-1 overflow-y-auto p-8">
-                  <div className="max-w-3xl mx-auto space-y-8">
-                      <section>
-                          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                              <Layout className="w-5 h-5 text-purple-400" />
-                              Description
-                          </h2>
-                          <div className="prose prose-invert max-w-none text-muted-foreground">
-                              {template.description || "No description provided."}
-                          </div>
-                      </section>
-
-                      <section className="grid grid-cols-2 gap-6">
-                           <div className="p-4 rounded-xl bg-card border border-border">
-                               <h3 className="font-medium mb-2 flex items-center gap-2 text-sm text-foreground">
-                                   <GitBranch className="w-4 h-4 text-blue-400" />
-                                   Complexity
-                               </h3>
-                               <div className="text-2xl font-bold">
-                                   {/* @ts-ignore */}
-                                   {(template.nodes?.length || 0)} <span className="text-base font-normal text-muted-foreground">nodes</span>
-                               </div>
-                           </div>
-                           <div className="p-4 rounded-xl bg-card border border-border">
-                               <h3 className="font-medium mb-2 flex items-center gap-2 text-sm text-foreground">
-                                   <Zap className="w-4 h-4 text-yellow-400" />
-                                   Success Rate
-                               </h3>
-                               <div className="text-2xl font-bold">
-                                   {template.success_rate}%
-                               </div>
-                           </div>
-                      </section>
-
-                      <section>
-                          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                              <ShieldCheck className="w-5 h-5 text-green-400" />
-                              Required Credentials
-                          </h2>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                               {/* Extract credentials from nodes heuristic */}
-                               {/* @ts-ignore */}
-                               {Array.from(new Set((template.nodes || [])
-                                  .filter((n:any) => n.data?.credential_id || n.type.includes('integration'))
-                                  .map((n:any) => n.type.split('_')[0])
-                               )).map((service: any) => (
-                                   <div key={service} className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border">
-                                        <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-xs font-bold uppercase">
-                                            {service.slice(0,2)}
-                                        </div>
-                                        <div>
-                                            <div className="font-medium capitalize">{service}</div>
-                                            <div className="text-xs text-muted-foreground">Credential required</div>
-                                        </div>
-                                   </div>
-                               ))}
-                               {/* If empty, show none */}
-                               {/* @ts-ignore */}
-                               {(!template.nodes?.some((n:any) => n.data?.credential_id || n.type.includes('integration'))) && (
-                                   <div className="text-sm text-muted-foreground italic">No external credentials required.</div>
-                               )}
-                          </div>
-                      </section>
-                  </div>
+      <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
+          {/* Main Canvas Area */}
+          <div className="flex-1 relative bg-secondary/5 group">
+              <div className="absolute inset-0">
+                  <ReactFlow 
+                    nodes={(template.nodes || [])
+                        .filter((n: any) => n && typeof n === 'object') // Defensive check
+                        .map((n:any) => ({
+                        ...n, 
+                        type: n.type || 'custom', // Ensure type uses custom node
+                        position: n.position || { x: 100, y: 100 }, // Fallback for missing position
+                        data: { 
+                            ...n.data, 
+                            label: n.data?.label || n.type,
+                            nodeType: n.type, // Pass original type for icon resolution
+                            executionStatus: undefined, // Hide execution status for preview
+                            validationError: undefined  // Hide validation errors for preview
+                        }
+                    }))} 
+                    edges={(template.edges || []).map((e: any) => ({
+                        ...e,
+                        animated: true,
+                        style: { stroke: '#444', strokeWidth: 1.5 }
+                    }))}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    proOptions={{ hideAttribution: true }}
+                    nodesDraggable={false}
+                    nodesConnectable={false}
+                    nodesFocusable={false}
+                    zoomOnScroll={true}
+                    panOnScroll={true}
+                  >
+                    <Background color="#555" gap={20} size={1} variant={BackgroundVariant.Dots} />
+                    <Controls showInteractive={false} className="bg-card border border-border text-foreground fill-foreground" />
+                    
+                    {/* Mini Map overlay */}
+                    <div className="absolute bottom-4 right-4 z-10 pointer-events-none opacity-50 text-[10px] font-mono text-muted-foreground">
+                        READ-ONLY PREVIEW
+                    </div>
+                  </ReactFlow>
               </div>
           </div>
+
+          {/* Right Sidebar: Details & Stats */}
+          <aside className="w-full lg:w-[400px] bg-card border-l border-border/60 flex flex-col overflow-y-auto no-scrollbar z-10 shadow-xl">
+               
+               <div className="p-6 space-y-8">
+                   {/* Description Panel - Moved to Top */}
+                   <section className="space-y-3">
+                       <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                           <Layout className="w-4 h-4" /> Specification
+                       </h3>
+                       <div className="text-sm leading-relaxed text-muted-foreground bg-muted/30 p-4 rounded-lg border border-border/50">
+                           {template.description || "No specification provided."}
+                       </div>
+                   </section>
+
+                   {/* Metrics Grid - Moved Below Description */}
+                   <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
+                            <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                                <Server className="w-3 h-3" /> Nodes
+                            </div>
+                            <div className="text-lg font-bold font-mono tracking-tight">{template.nodes?.length || 0}</div>
+                        </div>
+                        <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
+                             <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                                <Activity className="w-3 h-3 text-emerald-500" /> Uptime
+                            </div>
+                            <div className="text-lg font-bold font-mono tracking-tight text-emerald-500">{typeof template.success_rate === 'number' ? template.success_rate.toFixed(1) : '0'}%</div>
+                        </div>
+                        <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
+                             <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                                <Cpu className="w-3 h-3 text-blue-500" /> Run Time
+                            </div>
+                            <div className="text-lg font-bold font-mono tracking-tight text-blue-500">~240ms</div>
+                        </div>
+                        <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
+                             <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                                <TrendingUp className="w-3 h-3 text-amber-500" /> Usage
+                            </div>
+                            <div className="text-lg font-bold font-mono tracking-tight text-amber-500">{template.usage_count}</div>
+                        </div>
+                   </div>
+
+                   {/* Integrations Panel */}
+                   <section className="space-y-3">
+                        <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                           <ShieldCheck className="w-4 h-4 text-primary" /> Required Integrations
+                       </h3>
+                       <div className="space-y-2">
+                            {Array.from(new Set((template.nodes || [])
+                               .filter((n:any) => n.data?.credential_id || n.type.toLowerCase().includes('integration'))
+                               .map((n:any) => n.type.split('_')[0])
+                            )).map((service: any) => (
+                                <div key={service} className="flex items-center justify-between p-3 rounded-lg bg-card border border-border/60 shadow-sm group hover:border-primary/30 transition-all">
+                                     <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded bg-muted flex items-center justify-center text-[10px] font-bold uppercase text-muted-foreground font-mono">
+                                            {service.slice(0,2)}
+                                        </div>
+                                        <span className="text-sm font-medium capitalize">{service}</span>
+                                     </div>
+                                     <div className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" title="Auth Required" />
+                                </div>
+                            ))}
+                            {(!template.nodes?.some((n:any) => n.data?.credential_id || n.type.toLowerCase().includes('integration'))) && (
+                                <div className="text-xs text-muted-foreground font-mono text-center py-4 border border-dashed border-border rounded-lg bg-muted/20">
+                                    NO_AUTH_REQUIRED
+                                </div>
+                            )}
+                       </div>
+                   </section>
+
+                   {/* Similar Templates */}
+                   <section className="space-y-3">
+                        <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                           <GitBranch className="w-4 h-4" /> Related Workflows
+                       </h3>
+                       <div className="space-y-2">
+                           {similarTemplates.slice(0, 3).map((sim) => (
+                               <div 
+                                 key={sim.id}
+                                 onClick={() => navigate(`/templates/${sim.id}`)}
+                                 className="group p-3 rounded-lg border border-border/60 bg-card hover:bg-muted/40 cursor-pointer transition-all hover:border-primary/30"
+                               >
+                                    <div className="flex justify-between items-start mb-1">
+                                        <h4 className="text-sm font-bold group-hover:text-primary transition-colors line-clamp-1">{sim.name}</h4>
+                                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
+                                            <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                            {sim.average_rating.toFixed(1)}
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground line-clamp-2">{sim.description}</p>
+                               </div>
+                           ))}
+                       </div>
+                   </section>
+               </div>
+          </aside>
       </div>
     </div>
   );

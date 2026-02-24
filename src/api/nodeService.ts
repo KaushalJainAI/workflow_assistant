@@ -3,6 +3,7 @@ import apiClient from './client';
 export interface NodeSchema {
   nodeType: string;
   name: string;
+  displayName?: string;
   description: string;
   category: string;
   icon: string;
@@ -35,7 +36,31 @@ export interface NodeCategory {
   nodes: NodeSchema[];
 }
 
+export interface AIModel {
+  name: string;
+  value: string;
+  is_free: boolean;
+  description: string;
+}
+
+export interface AIProvider {
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  has_credentials: boolean;
+  models: AIModel[];
+}
+
 const nodeService = {
+  /**
+   * Get all AI providers and their models with credential status
+   */
+  async getAIModels(): Promise<{ providers: AIProvider[] }> {
+    const response = await apiClient.get<{ providers: AIProvider[] }>('/nodes/models/');
+    return response.data;
+  },
+
   /**
    * Get all available node schemas
    */

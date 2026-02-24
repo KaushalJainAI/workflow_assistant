@@ -1,5 +1,6 @@
 
-import { AlertTriangle, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { AlertTriangle, AlertCircle, CheckCircle, X, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { type ValidationError } from '../../lib/validateWorkflow';
 
 interface WorkflowValidationPanelProps {
@@ -49,7 +50,7 @@ export default function WorkflowValidationPanel({
               {allIssues.map((issue, index) => (
                 <div 
                   key={index} 
-                  className={`p-3 flex items-start gap-3 hover:bg-muted/50 transition-colors cursor-pointer border-l-4 ${
+                  className={`group p-3 flex items-start gap-3 hover:bg-muted/50 transition-colors cursor-pointer border-l-4 ${
                     issue.type === 'error' ? 'border-destructive' : 'border-yellow-500'
                   }`}
                   onClick={() => issue.nodeId && onSelectNode(issue.nodeId)}
@@ -61,12 +62,12 @@ export default function WorkflowValidationPanel({
                       <AlertTriangle className="w-4 h-4 text-yellow-500" />
                     )}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className={`text-xs font-bold uppercase px-1.5 py-0.5 rounded ${
                         issue.type === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-yellow-500/10 text-yellow-600'
                       }`}>
-                        {issue.code.replace(/_/g, ' ')}
+                        {(issue.code || 'VALIDATION_ISSUE').replace(/_/g, ' ')}
                       </span>
                       {issue.nodeId && (
                          <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
@@ -74,10 +75,25 @@ export default function WorkflowValidationPanel({
                          </span>
                       )}
                     </div>
-                    <p className="text-sm text-foreground">{issue.message}</p>
+                    <p className="text-sm text-foreground select-text cursor-text" onClick={(e) => e.stopPropagation()}>
+                      {issue.message}
+                    </p>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Click to view
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(`${issue.code}: ${issue.message}`);
+                        toast.success('Copied to clipboard');
+                      }}
+                      className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                      title="Copy error"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="text-xs text-muted-foreground whitespace-nowrap">
+                      Click to view
+                    </div>
                   </div>
                 </div>
               ))}

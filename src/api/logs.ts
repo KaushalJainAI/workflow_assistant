@@ -25,6 +25,7 @@ export interface ExecutionDetail extends ExecutionLog {
   node_logs: NodeLog[];
   input_data: Record<string, unknown>;
   output_data: Record<string, unknown>;
+  supervision_level?: string;
 }
 
 export interface NodeLog {
@@ -39,6 +40,21 @@ export interface NodeLog {
   duration_ms: number;
   started_at: string;
   completed_at: string | null;
+}
+
+export interface OrchestratorThought {
+  id: number;
+  execution?: string;
+  node_id: string;
+  node_name?: string;
+  category: 'workflow' | 'idle' | 'system';
+  thought_type: 'thinking' | 'thought' | 'narrative' | 'status' | 'error';
+  content: string;
+  reasoning: string;
+  model_id?: string;
+  model_name?: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
 }
 
 // Insights types
@@ -168,6 +184,26 @@ export const logsService = {
       params: { format, days },
       responseType: 'blob',
     });
+    return response.data;
+  },
+
+  /**
+   * Get orchestrator activity logs for an execution
+   */
+  async getActivityLogs(executionId: string): Promise<OrchestratorThought[]> {
+    const response = await apiClient.get<OrchestratorThought[]>(
+      `/logs/executions/${executionId}/activities/`
+    );
+    return response.data;
+  },
+
+  /**
+   * Get synthesized narrative for an execution
+   */
+  async getNarrative(executionId: string): Promise<OrchestratorThought> {
+    const response = await apiClient.get<OrchestratorThought>(
+      `/logs/executions/${executionId}/narrative/`
+    );
     return response.data;
   },
 };

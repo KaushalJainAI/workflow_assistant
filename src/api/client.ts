@@ -23,6 +23,13 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
+// Auth failure callback
+let unauthorizedCallback: (() => void) | null = null;
+
+export const setUnauthorizedCallback = (callback: () => void) => {
+  unauthorizedCallback = callback;
+};
+
 // Token management
 export const tokenManager = {
   getAccessToken: (): string | null => localStorage.getItem(ACCESS_TOKEN_KEY),
@@ -100,11 +107,13 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = tokenManager.getRefreshToken();
+const refreshToken = tokenManager.getRefreshToken();
       if (!refreshToken) {
         tokenManager.clearTokens();
-        // Only redirect if we're not already on the login page
-        if (!window.location.pathname.includes('/login')) {
+        // Use callback if registered, otherwise fallback to redirect
+        if (unauthorizedCallback) {
+          unauthorizedCallback();
+        } else if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
         return Promise.reject(error);
@@ -115,8 +124,9 @@ apiClient.interceptors.response.use(
           refresh: refreshToken,
         });
         
-        const { access } = response.data;
-        tokenManager.setTokens(access, refreshToken);
+        const { access, refresh } = response.data;
+        const newRefreshToken = refresh || refreshToken;
+        tokenManager.setTokens(access, newRefreshToken);
         processQueue(null, access);
         
         if (originalRequest.headers) {
@@ -126,8 +136,11 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError as Error, null);
         tokenManager.clearTokens();
-        // Only redirect if we're not already on the login page
-        if (!window.location.pathname.includes('/login')) {
+        
+        // Use callback if registered, otherwise fallback to redirect
+        if (unauthorizedCallback) {
+          unauthorizedCallback();
+        } else if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

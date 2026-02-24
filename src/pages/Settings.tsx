@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Settings as SettingsIcon,
   User,
@@ -9,20 +10,32 @@ import {
   ChevronRight,
   Moon,
   Sun,
-  Monitor
+  Monitor,
+  BarChart3,
+  CreditCard,
+  Zap,
+  Check,
+  Rocket,
+  LogOut
 } from 'lucide-react';
+import { cn } from '../lib/utils';
+import InsightsDashboard from '../components/billing/InsightsDashboard';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../api/auth';
+import Select from '../components/ui/Select';
 
-type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api';
+type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
-  const { theme, setTheme } = useTheme();
-  const { user } = useAuth();
+  const { theme, setTheme, colorTheme, setColorTheme } = useTheme();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [timezone, setTimezone] = useState('UTC');
+  const [language, setLanguage] = useState('English');
 
   useEffect(() => {
     if (activeTab === 'api') {
@@ -95,9 +108,20 @@ export default function Settings() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   const tabs = [
     { id: 'general' as const, label: 'General', icon: SettingsIcon },
     { id: 'account' as const, label: 'Account', icon: User },
+    { id: 'insights' as const, label: 'Insights', icon: BarChart3 },
+    { id: 'billing' as const, label: 'Billing', icon: CreditCard },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'security' as const, label: 'Security', icon: Shield },
     { id: 'appearance' as const, label: 'Appearance', icon: Palette },
@@ -115,12 +139,12 @@ export default function Settings() {
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
                     <p className="font-medium">Instance Name</p>
-                    <p className="text-sm text-muted-foreground">The name of your Nexus instance</p>
+                    <p className="text-sm text-muted-foreground">The name of your AstraFlow instance</p>
                   </div>
                   <input 
                     type="text" 
-                    defaultValue="My Nexus" 
-                    className="px-3 py-2 border border-input rounded-md bg-background"
+                    defaultValue="My AstraFlow" 
+                    className="px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
                   />
                 </div>
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
@@ -128,24 +152,34 @@ export default function Settings() {
                     <p className="font-medium">Timezone</p>
                     <p className="text-sm text-muted-foreground">Set your default timezone</p>
                   </div>
-                  <select className="px-3 py-2 border border-input rounded-md bg-background">
-                    <option>UTC</option>
-                    <option>America/New_York</option>
-                    <option>Europe/London</option>
-                    <option>Asia/Tokyo</option>
-                  </select>
+                  <Select
+                    value={timezone}
+                    onChange={setTimezone}
+                    options={[
+                      { value: 'UTC', label: 'UTC' },
+                      { value: 'America/New_York', label: 'America/New_York' },
+                      { value: 'Europe/London', label: 'Europe/London' },
+                      { value: 'Asia/Tokyo', label: 'Asia/Tokyo' },
+                    ]}
+                    className="w-[200px]"
+                  />
                 </div>
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
                     <p className="font-medium">Language</p>
                     <p className="text-sm text-muted-foreground">Choose your preferred language</p>
                   </div>
-                  <select className="px-3 py-2 border border-input rounded-md bg-background">
-                    <option>English</option>
-                    <option>Spanish</option>
-                    <option>German</option>
-                    <option>French</option>
-                  </select>
+                  <Select
+                    value={language}
+                    onChange={setLanguage}
+                    options={[
+                      { value: 'English', label: 'English' },
+                      { value: 'Spanish', label: 'Spanish' },
+                      { value: 'German', label: 'German' },
+                      { value: 'French', label: 'French' },
+                    ]}
+                    className="w-[200px]"
+                  />
                 </div>
               </div>
             </div>
@@ -158,7 +192,7 @@ export default function Settings() {
             <div>
               <h3 className="text-lg font-medium mb-4">Account Settings</h3>
               <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-xl font-bold text-primary">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-xl font-bold text-primary ring-4 ring-primary/5">
                   {getInitials()}
                 </div>
                 <div>
@@ -167,7 +201,7 @@ export default function Settings() {
                 </div>
                 <button 
                   onClick={handleAvatarClick}
-                  className="ml-auto px-4 py-2 border border-input rounded-md hover:bg-muted"
+                  className="ml-auto px-4 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors"
                 >
                   Change Avatar
                 </button>
@@ -186,7 +220,7 @@ export default function Settings() {
                     <input 
                       type="text" 
                       defaultValue={getFirstName()} 
-                      className="w-full px-3 py-2 border border-input rounded-md bg-background"
+                      className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
                     />
                   </div>
                   <div>
@@ -194,7 +228,7 @@ export default function Settings() {
                     <input 
                       type="text" 
                       defaultValue={getLastName()} 
-                      className="w-full px-3 py-2 border border-input rounded-md bg-background"
+                      className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
                     />
                   </div>
                 </div>
@@ -203,9 +237,23 @@ export default function Settings() {
                   <input 
                     type="email" 
                     defaultValue={user?.email || ''} 
-                    className="w-full px-3 py-2 border border-input rounded-md bg-background"
+                    className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
                   />
                 </div>
+              </div>
+
+              <div className="mt-10 pt-6 border-t border-border/60">
+                <h4 className="text-sm font-semibold mb-2">Session</h4>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Log out of your account on this device.
+                </p>
+                <button 
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-all duration-200 rounded-lg font-medium border border-border/60"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
               </div>
             </div>
           </div>
@@ -228,9 +276,9 @@ export default function Settings() {
                       <button
                         key={id}
                         onClick={() => setTheme(id)}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
                           theme === id 
-                            ? 'border-primary bg-primary/5' 
+                            ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10' 
                             : 'border-border hover:border-primary/50'
                         }`}
                       >
@@ -240,6 +288,35 @@ export default function Settings() {
                     ))}
                   </div>
                 </div>
+
+                <div>
+                  <p className="font-medium mb-3 text-foreground/90">Accent Palette</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { id: 'blue' as const, label: 'Classic Blue', color: 'bg-blue-500' },
+                      { id: 'magenta' as const, label: 'Quantum Pink', color: 'bg-pink-500' },
+                    ].map(({ id, label, color }) => (
+                      <button
+                        key={id}
+                        onClick={() => setColorTheme(id)}
+                        className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 relative overflow-hidden group/palette ${
+                          colorTheme === id 
+                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/5' 
+                            : 'border-border hover:border-primary/40 hover:bg-muted/30'
+                        }`}
+                      >
+                        <div className={cn("w-5 h-5 rounded-full ring-2 ring-primary/20", color)} />
+                        <span className="text-sm font-semibold">{label}</span>
+                        {colorTheme === id && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                            <Check className="w-3 h-3 text-primary-foreground" />
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
                     <p className="font-medium">Sidebar Collapsed</p>
@@ -271,12 +348,12 @@ export default function Settings() {
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 p-2 bg-background border border-input rounded text-sm font-mono overflow-hidden text-ellipsis">
+                    <code className="flex-1 p-2 bg-background/50 border border-input rounded-lg text-sm font-mono overflow-hidden text-ellipsis">
                       {apiKey || '••••••••••••••••••••••••••••••••'}
                     </code>
                     <button 
                       onClick={() => apiKey && copyToClipboard(apiKey)}
-                      className="px-3 py-2 border border-input rounded-md hover:bg-muted text-sm whitespace-nowrap"
+                      className="px-3 py-2 border border-border/60 rounded-lg hover:bg-muted text-sm whitespace-nowrap transition-colors"
                     >
                       {isCopied ? 'Copied!' : 'Copy'}
                     </button>
@@ -287,11 +364,155 @@ export default function Settings() {
                 </div>
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <p className="font-medium mb-2">Webhook URL</p>
-                  <code className="block p-2 bg-background border border-input rounded text-sm font-mono break-all">
-                    https://your-nexus-instance.com/webhook/
+                  <code className="block p-2 bg-background/50 border border-input rounded-lg text-sm font-mono break-all">
+                    https://your-astraflow-instance.com/webhook/
                   </code>
                 </div>
               </div>
+            </div>
+          </div>
+        );
+
+      case 'insights':
+        return (
+          <div className="space-y-6">
+            <div className="mb-6">
+              <h3 className="text-lg font-medium">Insights</h3>
+              <p className="text-sm text-muted-foreground mt-1">Analyze your workflow performance and ROI</p>
+            </div>
+            <InsightsDashboard />
+          </div>
+        );
+
+      case 'billing':
+        return (
+          <div className="space-y-8 max-w-7xl">
+            <div>
+              <h3 className="text-2xl font-bold tracking-tight">Billing & Plans</h3>
+              <p className="text-muted-foreground mt-1">Manage your subscription and usage limits</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-blue-500/12 rounded-xl">
+                    <Zap className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Monthly Executions</p>
+                    <h3 className="text-2xl font-bold">12,842 / 50,000</h3>
+                  </div>
+                </div>
+                <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-full bg-primary w-[25%] rounded-full shadow-[0_0_8px_hsl(var(--primary)/0.2)]" />
+                </div>
+              </div>
+
+              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
+                 <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-purple-500/12 rounded-xl">
+                    <Rocket className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Active Workflows</p>
+                    <h3 className="text-2xl font-bold">18 / ∞</h3>
+                  </div>
+                </div>
+                <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-full bg-purple-600 w-[100%] rounded-full opacity-20" />
+                </div>
+              </div>
+
+              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
+                 <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-emerald-500/12 rounded-xl">
+                    <CreditCard className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Current Plan</p>
+                    <h3 className="text-2xl font-bold">Pro</h3>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <span className="text-sm text-muted-foreground">Next billing date: Feb 20, 2026</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {[
+                {
+                  name: 'Starter',
+                  price: '$0',
+                  description: 'Perfect for testing and personal projects',
+                  features: ['5 active workflows', '1,000 executions/month', 'Community support', 'Basic integrations', '7-day history']
+                },
+                {
+                  name: 'Pro',
+                  price: '$29',
+                  period: '/month',
+                  description: 'For professionals and growing teams',
+                  features: ['Unlimited workflows', '50,000 executions/month', 'Priority email support', 'Advanced integrations', '30-day history', 'AI Generation'],
+                  highlight: true
+                },
+                {
+                  name: 'Enterprise',
+                  price: 'Custom',
+                  description: 'For large organizations with custom needs',
+                  features: ['Unlimited executions', 'Dedicated manager', 'SSO & Advanced Security', 'Custom SLAs', 'Unlimited history', 'On-premise option']
+                }
+              ].map((plan) => (
+                <div key={plan.name} className={cn(
+                  "rounded-2xl border flex flex-col p-8 relative overflow-hidden transition-all duration-300 hover:shadow-lg bg-card/50",
+                  plan.highlight ? "border-primary/50 shadow-xl shadow-primary/10 scale-105 z-10" : "border-border/60"
+                )}>
+                  {plan.highlight && (
+                    <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wider">
+                      POPULAR
+                    </div>
+                  )}
+                  <div className="mb-6">
+                    <h3 className="text-xl font-bold">{plan.name}</h3>
+                    <p className="text-muted-foreground text-sm mt-2">{plan.description}</p>
+                  </div>
+                  <div className="mb-6">
+                    <span className="text-4xl font-bold">{plan.price}</span>
+                    {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
+                  </div>
+                  <ul className="space-y-3 mb-8 flex-1">
+                    {plan.features.map((feature, i) => (
+                      <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <Check className="w-4 h-4 text-emerald-500" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <button className={cn(
+                    "w-full py-2.5 rounded-lg font-medium transition-all active:scale-[0.98]",
+                    plan.highlight 
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm" 
+                      : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  )}>
+                    {plan.name === 'Pro' ? 'Current Plan' : 'Upgrade'}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-12 p-8 bg-muted/30 rounded-2xl border border-border/60 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-blue-400" />
+                  Enterprise Security
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-2xl">
+                  Need advanced security features, audit logs, and dedicated support? 
+                  Contact our sales team for a custom enterprise package.
+                </p>
+              </div>
+              <button className="whitespace-nowrap px-6 py-2.5 bg-background border border-border/60 rounded-lg hover:bg-accent font-medium transition-colors">
+                Contact Sales
+              </button>
             </div>
           </div>
         );
@@ -308,19 +529,22 @@ export default function Settings() {
   return (
     <div className="h-full flex">
       {/* Settings Sidebar */}
-      <div className="w-64 border-r border-border bg-card p-4">
+      <div className="w-64 border-r border-border/60 bg-card/80 backdrop-blur-xl p-4">
         <h2 className="text-lg font-semibold mb-4 px-2">Settings</h2>
         <nav className="space-y-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 relative ${
                 activeTab === tab.id
-                  ? 'bg-primary/10 text-primary'
+                  ? 'bg-primary/10 text-primary font-medium'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
+              {activeTab === tab.id && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
+              )}
               <tab.icon className="w-4 h-4" />
               <span className="flex-1 text-left">{tab.label}</span>
               <ChevronRight className={`w-4 h-4 transition-transform ${
@@ -333,17 +557,22 @@ export default function Settings() {
 
       {/* Settings Content */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-2xl">
+        <div className={cn(
+          "w-full",
+          !['insights', 'billing'].includes(activeTab) && "max-w-3xl"
+        )}>
           {renderContent()}
           
-          <div className="mt-8 pt-6 border-t border-border flex justify-end gap-2">
-            <button className="px-4 py-2 border border-input rounded-md hover:bg-muted">
-              Cancel
-            </button>
-            <button className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
-              Save Changes
-            </button>
-          </div>
+          {['general', 'account'].includes(activeTab) && (
+            <div className="mt-8 pt-6 border-t border-border flex justify-end gap-2">
+              <button className="px-4 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
+                Cancel
+              </button>
+              <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-200 shadow-sm active:scale-[0.98] font-medium">
+                Save Changes
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

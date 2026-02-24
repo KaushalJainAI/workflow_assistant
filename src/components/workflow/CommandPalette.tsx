@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, Command, ArrowRight, Plus, Play, Save, Settings, Workflow, Zap, X } from 'lucide-react';
+import { Search, Command, ArrowRight, Plus, Play, Save, Settings, Workflow } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,7 +29,6 @@ const actions = [
 
 const navigation = [
   { id: 'workflows', name: 'Go to Workflows', path: '/workflows', icon: Workflow },
-  { id: 'executions', name: 'Go to Executions', path: '/executions', icon: Zap },
   { id: 'orchestrator', name: 'Go to Orchestrator', path: '/orchestrator', icon: Command },
 ];
 

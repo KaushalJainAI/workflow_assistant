@@ -63,23 +63,22 @@ export default function Signup() {
   const displayError = validationError || error;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      
+      <div className="w-full max-w-md space-y-8 relative z-10 animate-slide-up">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground mb-4 shadow-lg shadow-primary/20">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary text-primary-foreground mb-6 shadow-sm">
+            <GitGraph className="w-6 h-6" />
           </div>
-          <h2 className="text-3xl font-bold tracking-tight">Create an account</h2>
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Create an account</h1>
           <p className="mt-2 text-muted-foreground">
             Get started with your free workspace today
           </p>
         </div>
 
-        <div className="bg-card border border-border rounded-xl shadow-lg p-8">
+        <div className="glass rounded-2xl p-8">
           {displayError && (
-            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive">
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive animate-scale-in">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span className="text-sm">{displayError}</span>
             </div>
@@ -96,7 +95,7 @@ export default function Signup() {
                   id="name"
                   type="text"
                   placeholder="John Doe"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
@@ -114,7 +113,7 @@ export default function Signup() {
                   id="email"
                   type="email"
                   placeholder="name@example.com"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
@@ -132,7 +131,7 @@ export default function Signup() {
                   id="password"
                   type="password"
                   placeholder="At least 8 characters"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required
@@ -150,7 +149,7 @@ export default function Signup() {
                   id="confirmPassword"
                   type="password"
                   placeholder="Re-enter your password"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   required
@@ -161,7 +160,7 @@ export default function Signup() {
             <button
               type="submit"
               disabled={isLoading}
-              className="inline-flex items-center justify-center w-full rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-lg shadow-primary/20 mt-4"
+              className="inline-flex items-center justify-center w-full rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-sm active:scale-[0.98] mt-4"
             >
               {isLoading ? (
                 <>
@@ -180,10 +179,10 @@ export default function Signup() {
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border" />
+                <span className="w-full border-t border-border/60" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
+                <span className="bg-card/60 backdrop-blur px-3 text-muted-foreground">
                   Or continue with
                 </span>
               </div>
@@ -193,7 +192,7 @@ export default function Signup() {
               <button 
                 type="button"
                 onClick={handleGoogleLogin}
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 transition-all hover:scale-[1.02]"
+                className="inline-flex items-center justify-center rounded-lg text-sm font-medium border border-border/60 bg-background/50 hover:bg-accent hover:text-accent-foreground h-11 px-4 py-2 transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:border-border"
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                   <path
@@ -220,15 +219,15 @@ export default function Signup() {
 
           <div className="mt-6 text-center text-xs text-muted-foreground">
             By clicking create account, you agree to our{' '}
-            <Link to="#" className="underline hover:text-primary">Terms of Service</Link>
+            <Link to="#" className="underline hover:text-primary transition-colors">Terms of Service</Link>
             {' '}and{' '}
-            <Link to="#" className="underline hover:text-primary">Privacy Policy</Link>.
+            <Link to="#" className="underline hover:text-primary transition-colors">Privacy Policy</Link>.
           </div>
         </div>
 
         <p className="text-center text-sm text-muted-foreground">
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-primary hover:underline">
+          <Link to="/login" className="font-semibold text-primary hover:text-primary/80 transition-colors">
             Sign in
           </Link>
         </p>

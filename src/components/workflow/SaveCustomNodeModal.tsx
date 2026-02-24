@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Check, Palette, Smile } from 'lucide-react';
 import { getCustomCategories, saveCustomNode, type CustomNodeMetadata } from '../../lib/customNodes';
+import Select from '../ui/Select';
 
 interface SaveCustomNodeModalProps {
   isOpen: boolean;
@@ -111,24 +112,23 @@ export default function SaveCustomNodeModal({ isOpen, onClose, baseNode, onSave 
             <label className="text-sm font-medium">Category (App) <span className="text-red-500">*</span></label>
             {!isCreatingCategory ? (
               <div className="flex gap-2">
-                <select
+                <Select
                   value={selectedCategory}
-                  onChange={(e) => {
-                    if (e.target.value === 'NEW') {
+                  onChange={(val) => {
+                    if (val === 'NEW') {
                       setIsCreatingCategory(true);
                       setNewCategory('');
                     } else {
-                      setSelectedCategory(e.target.value);
+                      setSelectedCategory(val);
                     }
                   }}
-                  className="flex-1 px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="" disabled>Select a category...</option>
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                  <option value="NEW">+ Create New App...</option>
-                </select>
+                  options={[
+                    ...categories.map(cat => ({ value: cat, label: cat })),
+                    { value: 'NEW', label: '+ Create New App...' }
+                  ]}
+                  placeholder="Select a category..."
+                  className="w-full"
+                />
               </div>
             ) : (
               <div className="flex gap-2">
