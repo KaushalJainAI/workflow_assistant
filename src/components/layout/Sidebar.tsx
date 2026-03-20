@@ -109,6 +109,30 @@ const Sidebar = () => {
                     </span>
                 </Link>
 
+                {/* Imagine Link - New Position */}
+                <Link
+                    to="/imagine"
+                    className={cn(
+                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
+                        location.pathname === '/imagine'
+                            ? "bg-primary/10 text-primary font-bold shadow-sm" 
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
+                    )}
+                    title={collapsed ? "Imagine" : undefined}
+                >
+                    <Sparkles className={cn(
+                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-primary",
+                        location.pathname !== '/imagine' && "group-hover:scale-110"
+                    )} />
+                    <span className={cn(
+                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
+                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                    )}>
+                        Imagine
+                    </span>
+                </Link>
+
                 {/* Orchestrator Link - Relocated & Highlighted */}
                 <Link
                     to="/orchestrator"
@@ -133,29 +157,6 @@ const Sidebar = () => {
                     </span>
                 </Link>
 
-                {/* BrowserOS Link */}
-                <a
-                    href="http://localhost:5173" // Vite default port
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={cn(
-                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
-                        "text-amber-500 hover:bg-amber-500/10",
-                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
-                    )}
-                    title={collapsed ? "Browser OS" : undefined}
-                >
-                    <Layout className={cn(
-                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-amber-500",
-                        "group-hover:scale-110"
-                    )} />
-                    <span className={cn(
-                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden text-amber-500",
-                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
-                    )}>
-                        Browser OS <span className="text-[10px] uppercase tracking-widest ml-2 opacity-60">Beta</span>
-                    </span>
-                </a>
             </div>
 
             <div className="p-3">

@@ -1,5 +1,4 @@
-import { useState, useMemo } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { useMemo } from 'react';
 
 interface TableViewProps {
   data: unknown[];
@@ -7,8 +6,6 @@ interface TableViewProps {
 }
 
 export default function TableView({ data, className = '' }: TableViewProps) {
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-
   // Extract all unique keys from all objects to form columns
   const columns = useMemo(() => {
     const keys = new Set<string>();
@@ -21,16 +18,6 @@ export default function TableView({ data, className = '' }: TableViewProps) {
     });
     return Array.from(keys);
   }, [data]);
-
-  const toggleRow = (index: number) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(index)) {
-      newExpanded.delete(index);
-    } else {
-      newExpanded.add(index);
-    }
-    setExpandedRows(newExpanded);
-  };
 
   const renderCell = (value: unknown) => {
     if (value === null || value === undefined) return <span className="text-muted-foreground italic">null</span>;
@@ -63,7 +50,6 @@ export default function TableView({ data, className = '' }: TableViewProps) {
         <tbody>
           {data.map((row: any, rowIndex) => {
             const rowData = row.json || row;
-            const isExpanded = expandedRows.has(rowIndex);
             
             return (
               <tr key={rowIndex} className="border-b border-border hover:bg-muted/30 transition-colors">

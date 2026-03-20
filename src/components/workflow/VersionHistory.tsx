@@ -9,7 +9,7 @@ import {
   GitBranch
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { WorkflowVersion } from '../../hooks/useVersionHistory';
+import type { WorkflowVersion } from '../../hooks/useVersionHistory';
 
 interface VersionHistoryProps {
   versions: WorkflowVersion[];

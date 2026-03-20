@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { credentialsService } from '../api';
 import { useAIModels } from '../hooks/useAIModels';
 
@@ -15,6 +16,7 @@ interface AssistantContextType {
   setLlmCredential: (credential: string | null) => void;
   syncLlmSettings: (provider: string, model: string, credential?: string | null) => Promise<void>;
   hasCredentials: boolean | null;
+  refreshCredentials: () => Promise<void>;
 }
 
 const AssistantContext = createContext<AssistantContextType | undefined>(undefined);
@@ -24,44 +26,61 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [llmProvider, setLlmProvider] = useState(localStorage.getItem('orchestrator_llm_provider') || 'openrouter');
   const [llmModel, setLlmModel] = useState(localStorage.getItem('orchestrator_llm_model') || 'google/gemini-2.0-flash-exp:free');
   const [llmCredential, setLlmCredential] = useState<string | null>(localStorage.getItem('orchestrator_llm_credential'));
-  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
 
   const toggleAssistant = () => setIsAssistantOpen(prev => !prev);
   const openAssistant = () => setIsAssistantOpen(true);
   const closeAssistant = () => setIsAssistantOpen(false);
 
-  const { providers: dynamicProviders } = useAIModels();
+  const { providers: dynamicProviders, isLoading: isModelsLoading } = useAIModels();
 
-  const checkCredentials = async (provider: string) => {
-    try {
-      if (provider === 'ollama') {
-        setHasCredentials(true);
-        return;
+  // Validate and sync settings once dynamic providers load
+  useEffect(() => {
+    if (!isModelsLoading && dynamicProviders.length > 0) {
+      const currentProvider = dynamicProviders.find(p => p.slug === llmProvider);
+      if (currentProvider) {
+        // If the current model isn't in the provider's list, reset to default
+        const modelExists = currentProvider.models.some(m => m.value === llmModel);
+        if (!modelExists && currentProvider.models.length > 0) {
+          const defaultModel = currentProvider.models[0].value;
+          setLlmModel(defaultModel);
+          localStorage.setItem('orchestrator_llm_model', defaultModel);
+          console.log(`AssistantContext: Reset invalid model ${llmModel} to ${defaultModel} for provider ${llmProvider}`);
+        }
       }
-      
-      const prov = dynamicProviders.find(p => p.slug === provider);
-      if (prov) {
-        setHasCredentials(prov.has_credentials);
-      } else {
-        // Fallback to manual check if models haven't loaded yet
+    }
+  }, [dynamicProviders, isModelsLoading, llmProvider, llmModel]);
+
+  const { data: hasCredentials = null, refetch } = useQuery({
+    queryKey: ['credentials', llmProvider],
+    queryFn: async () => {
+      try {
+        if (llmProvider === 'ollama') {
+          return true;
+        }
+        
         const { credentials } = await credentialsService.list();
-        const providerSlug = provider.toLowerCase();
+        const providerSlug = llmProvider.toLowerCase();
         const hasValid = credentials.some(c => 
           c.is_valid && 
-          (c.credential_type_display.toLowerCase().includes(providerSlug) || 
-           c.name.toLowerCase().includes(providerSlug))
+          (String(c.credential_type_display).toLowerCase().includes(providerSlug) || 
+           String(c.name).toLowerCase().includes(providerSlug) ||
+           (c.credential_type && String(c.credential_type).toLowerCase().includes(providerSlug)))
         );
-        setHasCredentials(hasValid);
+        
+        return hasValid;
+      } catch (err) {
+        console.error('Failed to check credentials:', err);
+        // Fallback
+        const prov = dynamicProviders.find(p => p.slug === llmProvider);
+        if (prov) {
+          return prov.has_credentials;
+        } else {
+          return false;
+        }
       }
-    } catch (err) {
-      console.error('Failed to check credentials:', err);
-      setHasCredentials(false);
-    }
-  };
-
-  useEffect(() => {
-    checkCredentials(llmProvider);
-  }, [llmProvider, dynamicProviders]);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const updateLlmProvider = async (provider: string) => {
     setLlmProvider(provider);
@@ -165,7 +184,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       llmCredential,
       setLlmCredential: updateLlmCredential,
       syncLlmSettings,
-      hasCredentials
+      hasCredentials,
+      refreshCredentials: async () => { await refetch(); }
     }}>
       {children}
     </AssistantContext.Provider>

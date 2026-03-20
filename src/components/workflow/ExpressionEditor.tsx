@@ -71,6 +71,7 @@ export default function ExpressionEditor({
   value,
   onChange,
   placeholder = 'Enter value or drag data pills here...',
+  multiline: _multiline = false,
   className = '',
   availableNodes = [],
 }: ExpressionEditorProps) {
@@ -78,7 +79,7 @@ export default function ExpressionEditor({
   const [cursorPosition, setCursorPosition] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
   // Check if the value contains expressions
@@ -114,7 +115,7 @@ export default function ExpressionEditor({
   }, [value, cursorPosition, availableNodes]);
 
   // Handle suggestion selection
-  const handleSuggestionClick = (suggestion: any) => {
+  const handleSuggestionClick = useCallback((suggestion: any) => {
     const input = inputRef.current;
     if (!input) return;
 
@@ -148,46 +149,62 @@ export default function ExpressionEditor({
       input.focus();
       input.setSelectionRange(newCursorPos, newCursorPos);
     }, 0);
-  };
+  }, [value, cursorPosition, onChange]);
 
   // Keyboard navigation
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // ---- Suggestion dropdown is open ----
     if (showSuggestions && filteredSuggestions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setActiveIndex(prev => (prev + 1) % filteredSuggestions.length);
-      } else if (e.key === 'ArrowUp') {
+        return;
+      }
+      if (e.key === 'ArrowUp') {
         e.preventDefault();
         setActiveIndex(prev => (prev - 1 + filteredSuggestions.length) % filteredSuggestions.length);
-      } else if (e.key === 'Enter' && !e.shiftKey) {
-        // Only intercept Enter (not Shift+Enter) for suggestion selection
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        // Enter (without Shift) selects the suggestion
         e.preventDefault();
+        e.stopPropagation();
         handleSuggestionClick(filteredSuggestions[activeIndex]);
-      } else if (e.key === 'Tab') {
+        return;
+      }
+      if (e.key === 'Tab') {
         e.preventDefault();
+        e.stopPropagation();
         handleSuggestionClick(filteredSuggestions[activeIndex]);
-      } else if (e.key === 'Escape') {
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation(); // Prevent panel-level Escape from closing the entire panel
         setShowSuggestions(false);
+        return;
       }
       // Shift+Enter falls through to default textarea behavior (new line)
     }
-  };
+    // When no suggestions are open, Enter and Shift+Enter both insert newlines naturally
+  }, [showSuggestions, filteredSuggestions, activeIndex, handleSuggestionClick]);
 
   // Handle input change
-  const handleChange = (newValue: string) => {
+  const handleChange = useCallback((newValue: string) => {
     onChange(newValue);
 
     // Auto-show suggestions on trigger characters
-    const lastChar = newValue.slice(0, inputRef.current?.selectionStart || 0).slice(-1);
-    const lastTwo = newValue.slice(0, inputRef.current?.selectionStart || 0).slice(-2);
+    const curPos = inputRef.current?.selectionStart || 0;
+    const lastChar = newValue.slice(0, curPos).slice(-1);
+    const lastTwo = newValue.slice(0, curPos).slice(-2);
 
     if (lastChar === '$' || lastTwo === '{{' || lastChar === '[' || lastChar === '"' || lastChar === "'") {
       setShowSuggestions(true);
       setActiveIndex(0);
     }
-  };
+  }, [onChange]);
 
-  // Auto-resize textarea: starts compact, grows up to 300px, then scrollbar
+  // Auto-resize textarea: starts compact, grows up to 400px, then scrollbar
   const autoResize = useCallback(() => {
     const textarea = inputRef.current as HTMLTextAreaElement | null;
     if (!textarea) return;
@@ -264,7 +281,7 @@ export default function ExpressionEditor({
   const isExpressionMode = hasExpressions || value.includes('$');
 
   const baseInputClass = `
-    w-full px-4 py-3.5 bg-muted/20 border rounded-xl text-[15px] leading-relaxed transition-all duration-200
+    w-full px-4 py-3 bg-muted/20 border rounded-xl text-[15px] leading-relaxed transition-all duration-200
     focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 focus:bg-muted/10
     text-foreground placeholder-muted-foreground/50
     scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent custom-scrollbar
@@ -273,6 +290,10 @@ export default function ExpressionEditor({
     ${isDragOver ? 'border-primary bg-primary/10 ring-2 ring-primary/20 scale-[1.01]' : 'border-border/60'}
     ${className}
   `;
+
+  const handleSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    setCursorPosition((e.target as HTMLTextAreaElement).selectionStart || 0);
+  }, []);
 
   return (
     <div className="relative">
@@ -316,13 +337,13 @@ export default function ExpressionEditor({
         onDrop={handleDrop}
         className="relative"
       >
-        {/* Always use textarea for all fields — enables Shift+Enter and auto-resize */}
+        {/* Always use textarea for all fields — enables multiline editing, auto-resize, and scrolling */}
         <textarea
-          ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+          ref={inputRef}
           value={value}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          onSelect={(e) => setCursorPosition((e.target as HTMLTextAreaElement).selectionStart)}
+          onSelect={handleSelect}
           placeholder={placeholder}
           rows={1}
           className={`${baseInputClass} resize-none`}

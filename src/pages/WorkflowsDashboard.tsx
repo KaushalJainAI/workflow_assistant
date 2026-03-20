@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus,
@@ -8,7 +8,8 @@ import {
   Loader2, 
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { workflowsService, orchestratorService, type WorkflowListItem } from '../api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { workflowsService, orchestratorService } from '../api';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
 import WorkflowCard from '../components/workflows/WorkflowCard';
@@ -17,29 +18,19 @@ import { cn } from '../lib/utils';
 export default function WorkflowsDashboard() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const queryClient = useQueryClient();
 
-  // Fetch workflows from API
-  useEffect(() => {
-    const fetchWorkflows = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await workflowsService.list(statusFilter || undefined);
-        setWorkflows(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load workflows');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const { data: workflows = [], isLoading, error: queryError } = useQuery({
+    queryKey: ['workflows', statusFilter],
+    queryFn: async () => {
+      return await workflowsService.list(statusFilter || undefined);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
-    fetchWorkflows();
-  }, [statusFilter]);
+  const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load workflows') : null;
 
   const handleCreateWorkflow = async () => {
     try {
@@ -51,6 +42,7 @@ export default function WorkflowsDashboard() {
         nodes: [], // Explicitly empty
         edges: []
       });
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
       navigate(`/workflow/${newWorkflow.id}`);
     } catch (err) {
       console.error(err);
@@ -70,7 +62,7 @@ export default function WorkflowsDashboard() {
     
     try {
       await workflowsService.delete(id);
-      setWorkflows(prev => prev.filter(w => w.id !== id));
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
       toast.success('Workflow deleted successfully');
     } catch (err) {
       console.error(err);
@@ -94,19 +86,13 @@ export default function WorkflowsDashboard() {
     e.preventDefault();
     try {
       const workflow = await workflowsService.get(id);
-      const newWorkflow = await workflowsService.create({
+      await workflowsService.create({
         ...workflow,
         name: `${workflow.name} (Copy)`,
         status: 'draft',
         // Omit id, created_at, updated_at, execution stats
       });
-      setWorkflows(prev => [{
-        ...newWorkflow,
-        node_count: newWorkflow.nodes?.length || 0,
-        // Ensure other fields are present to satisfy WorkflowListItem
-        last_executed_at: null,
-        execution_count: 0
-      } as WorkflowListItem, ...prev]);
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
       toast.success('Workflow duplicated successfully');
     } catch (err) {
       console.error(err);

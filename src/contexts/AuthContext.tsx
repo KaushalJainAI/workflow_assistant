@@ -5,6 +5,7 @@
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { authService } from '../api/auth';
 import type { User } from '../api/auth';
 import { tokenManager, setUnauthorizedCallback } from '../api/client';
@@ -25,103 +26,83 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+
+  const { data: user = null, isLoading, refetch } = useQuery({
+    queryKey: ['authProfile'],
+    queryFn: async () => {
+      if (!tokenManager.isAuthenticated()) {
+        return null;
+      }
+      try {
+        const userData = await authService.getProfile();
+        return userData;
+      } catch (err) {
+        tokenManager.clearTokens();
+        return null;
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const isAuthenticated = !!user;
 
-  // Load user on mount if token exists
   useEffect(() => {
     // Set up 401 handling
     setUnauthorizedCallback(() => {
-      setUser(null);
+      queryClient.setQueryData(['authProfile'], null);
       tokenManager.clearTokens();
     });
-
-    const loadUser = async () => {
-      if (tokenManager.isAuthenticated()) {
-        try {
-          const userData = await authService.getProfile();
-          setUser(userData);
-        } catch (err) {
-          // Token invalid, clear it
-          tokenManager.clearTokens();
-        }
-      }
-      setIsLoading(false);
-    };
-
-    loadUser();
-  }, []);
+  }, [queryClient]);
 
   const login = useCallback(async (email: string, password: string) => {
-    setIsLoading(true);
     setError(null);
     try {
       const response = await authService.login({ email, password });
-      setUser(response.user);
+      queryClient.setQueryData(['authProfile'], response.user);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Login failed';
       setError(message);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   const register = useCallback(async (email: string, password: string, name?: string) => {
-    setIsLoading(true);
     setError(null);
     try {
       const response = await authService.register({ email, password, name });
-      setUser(response.user);
+      queryClient.setQueryData(['authProfile'], response.user);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Registration failed';
       setError(message);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   const googleLogin = useCallback(async (code: string) => {
-    setIsLoading(true);
     setError(null);
     try {
       const response = await authService.googleLogin(code);
-      setUser(response.user);
+      queryClient.setQueryData(['authProfile'], response.user);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Google login failed';
       setError(message);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(async () => {
-    setIsLoading(true);
     try {
       await authService.logout();
     } finally {
-      setUser(null);
-      setIsLoading(false);
+      queryClient.setQueryData(['authProfile'], null);
     }
-  }, []);
+  }, [queryClient]);
 
   const refreshUser = useCallback(async () => {
-    if (tokenManager.isAuthenticated()) {
-      try {
-        const userData = await authService.getProfile();
-        setUser(userData);
-      } catch (err) {
-        // Token invalid
-        tokenManager.clearTokens();
-        setUser(null);
-      }
-    }
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const clearError = useCallback(() => {
     setError(null);

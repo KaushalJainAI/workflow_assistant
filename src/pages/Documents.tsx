@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { 
   FileText, 
   Upload, 
@@ -15,62 +15,47 @@ import {
 } from 'lucide-react';
 import { documentsService, type Document } from '../api';
 import { toast } from '../components/ui/Toast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
 import { useAssistant } from '../contexts/AssistantContext';
+import { MediaPreview } from '../components/chat/MediaPreview';
 
 export default function Documents() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [myDocuments, setMyDocuments] = useState<Document[]>([]);
-  const [publicDocuments, setPublicDocuments] = useState<Document[]>([]);
   const [activeTab, setActiveTab] = useState<'personal' | 'public'>('personal');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [localUploadingDocs, setLocalUploadingDocs] = useState<Document[]>([]);
   const { isAssistantOpen } = useAssistant();
+  const queryClient = useQueryClient();
 
-  // Fetch documents
-  const fetchDocuments = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-    try {
+  const { data: documentsData, isLoading, error: queryError } = useQuery({
+    queryKey: ['documents'],
+    queryFn: async () => {
       const data = await documentsService.list();
-      
-      setMyDocuments(prev => {
-        const serverDocs = data?.my_documents || [];
-        const uploadingDocs = prev.filter(d => d.status === 'uploading');
-        return [...uploadingDocs, ...serverDocs];
-      });
-      
-      setPublicDocuments(data?.public_documents || []);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load documents';
-      if (!silent) {
-        setError(message);
-        toast.error('Error loading documents', message);
-      }
-    } finally {
-      if (!silent) setIsLoading(false);
-    }
-  }, []);
+      return {
+        my_documents: data?.my_documents || [],
+        public_documents: data?.public_documents || []
+      };
+    },
+    // Poll every 5 seconds if any doc is pending or processing
+    refetchInterval: (query) => {
+      const myDocs = query.state.data?.my_documents || [];
+      const hasPending = myDocs.some(d => d.status === 'pending' || d.status === 'processing');
+      return hasPending ? 5000 : false;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
-  useEffect(() => {
-    fetchDocuments();
-  }, [fetchDocuments]);
-
-  // Polling for pending/processing documents
-  useEffect(() => {
-    const hasPending = myDocuments.some(d => d.status === 'pending' || d.status === 'processing');
-    if (!hasPending) return;
-
-    const interval = setInterval(() => {
-      fetchDocuments(true);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [myDocuments, fetchDocuments]);
+  const myDocuments = [
+    // Keep locally tracked uploading documents first
+    ...localUploadingDocs,
+    ...(documentsData?.my_documents || [])
+  ];
+  const publicDocuments = documentsData?.public_documents || [];
+  const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load documents') : null;
 
   const allDocuments = activeTab === 'personal' ? myDocuments : publicDocuments;
 
@@ -99,34 +84,30 @@ export default function Documents() {
       status: 'uploading'
     }));
 
-    setMyDocuments(prev => [...optimisticDocs, ...prev]);
+    setLocalUploadingDocs(prev => [...optimisticDocs, ...prev]);
 
     const uploadPromises = newFiles.map(async (file, index) => {
       const tempId = optimisticDocs[index].id;
       try {
-        const uploadedDoc = await documentsService.upload(file);
-        setMyDocuments(prev => prev.map(d => d.id === tempId ? uploadedDoc : d));
+        await documentsService.upload(file);
         successCount++;
       } catch (err) {
-        setMyDocuments(prev => prev.map(d => d.id === tempId ? {
-          ...d,
-          status: 'failed',
-          error_message: err instanceof Error ? err.message : 'Upload failed'
-        } : d));
         toast.error(`Failed to upload ${file.name}`);
+      } finally {
+        setLocalUploadingDocs(prev => prev.filter(d => d.id !== tempId));
       }
     });
 
     await Promise.allSettled(uploadPromises);
     if (successCount > 0) {
       toast.success('Upload initiated', `${successCount} files are being processed.`);
-      fetchDocuments(true);
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
     }
   };
 
   const handleDelete = async (id: number) => {
     if (id < 0) {
-      setMyDocuments(prev => prev.filter(d => d.id !== id));
+      setLocalUploadingDocs(prev => prev.filter(d => d.id !== id));
       return;
     }
 
@@ -134,7 +115,7 @@ export default function Documents() {
     
     try {
       await documentsService.delete(id);
-      setMyDocuments(prev => prev.filter(d => d.id !== id));
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       toast.success('Document deleted');
     } catch (err) {
       toast.error('Delete failed', err instanceof Error ? err.message : 'Failed to delete document');
@@ -150,9 +131,7 @@ export default function Documents() {
 
     try {
       const result = await documentsService.toggleSharing(doc.id);
-      setMyDocuments(prev => prev.map(d => 
-        d.id === doc.id ? { ...d, is_shared: result.is_shared, shared_at: result.shared_at } : d
-      ));
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       
       const action = result.is_shared ? 'shared with' : 'unshared from';
       toast.success('Sharing updated', `Document ${action} platform knowledge base`);
@@ -167,10 +146,8 @@ export default function Documents() {
       // If already shared, we can unshare immediately (or add a simple confirm if desired)
       if (doc.is_shared) {
           try {
-            const result = await documentsService.toggleSharing(doc.id);
-            setMyDocuments(prev => prev.map(d => 
-              d.id === doc.id ? { ...d, is_shared: result.is_shared, shared_at: result.shared_at } : d
-            ));
+            await documentsService.toggleSharing(doc.id);
+            queryClient.invalidateQueries({ queryKey: ['documents'] });
             toast.success('Sharing updated', 'Document unshared from platform knowledge base');
           } catch (err) {
             toast.error('Update failed', err instanceof Error ? err.message : 'Failed to update sharing settings');
@@ -335,16 +312,20 @@ export default function Documents() {
                 )}
               >
                 <div className="flex flex-col items-center text-center mt-2">
-                  <div className="mb-5 relative">
-                    <div className="p-4 bg-background rounded-xl border border-border/60 group-hover:bg-primary/10 group-hover:border-primary/30 transition-all transform group-hover:scale-105 duration-300">
-                        {getDocIcon(doc.file_type)}
-                    </div>
-                    {status && (
-                        <div className="absolute -bottom-1 -right-1 bg-card rounded-full p-1 border border-border/60 shadow-sm">
-                            {status.icon}
-                        </div>
-                    )}
-                  </div>
+                <div className="mb-5 relative w-full aspect-video">
+                  <MediaPreview 
+                    url={`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/inference/documents/${doc.id}/download/`}
+                    type={doc.file_type.includes('image') ? 'image' : doc.file_type.includes('pdf') ? 'pdf' : 'link'}
+                    title={doc.title}
+                    source={doc.filename}
+                    className="w-full h-full shadow-none border-none bg-transparent"
+                  />
+                  {status && (
+                      <div className="absolute -bottom-1 -right-1 bg-card rounded-full p-1 border border-border/60 shadow-sm z-10">
+                          {status.icon}
+                      </div>
+                  )}
+                </div>
                   
                   <h4 className="font-bold text-foreground text-sm truncate w-full mb-1 px-2" title={doc.title}>
                       {doc.title}

@@ -15,6 +15,7 @@ import GoogleCallback from './pages/GoogleCallback';
 import Orchestrator from './pages/Orchestrator';
 import Templates from './pages/Templates';
 import Skills from './pages/Skills';
+import Imagine from './pages/Imagine';
 import TemplateDetail from './pages/templates/TemplateDetail';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -108,6 +109,7 @@ const AppContent = () => {
               <Route path="/insights" element={<Navigate to="/settings" replace />} />
               <Route path="/orchestrator" element={<Orchestrator />} />
               <Route path="/skills" element={<Skills />} />
+              <Route path="/imagine" element={<Imagine />} />
               <Route path="/profile" element={<Navigate to="/settings" replace />} />
               <Route path="/executions" element={<Navigate to="/workflows" replace />} />
             </Route>

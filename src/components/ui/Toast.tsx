@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { X, CheckCircle2, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { useEffect } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 

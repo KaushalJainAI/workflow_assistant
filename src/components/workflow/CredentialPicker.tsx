@@ -16,7 +16,6 @@ interface CredentialPickerProps {
 export default function CredentialPicker({
   value,
   onChange,
-  credentialType,
   credentialTypeId,
   placeholder = 'Select a credential...',
   required = false,

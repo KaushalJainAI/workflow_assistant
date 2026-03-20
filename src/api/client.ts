@@ -17,7 +17,7 @@ const REFRESH_TOKEN_KEY = 'refresh_token';
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
-  timeout: 30000,
+  timeout: 300000, // 5 minutes to accommodate Deep Research and long LLM responses
   headers: {
     'Content-Type': 'application/json',
   },

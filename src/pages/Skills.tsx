@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { 
   Zap, 
   Search, 
@@ -14,8 +14,8 @@ import {
   Download
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
-
 import apiClient from '../api/client';
 
 interface Skill {
@@ -30,15 +30,32 @@ interface Skill {
 }
 
 export default function Skills() {
+    const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'mine' | 'public'>('mine');
-    const [isLoading, setIsLoading] = useState(true);
     
-    // Skills Data State
-    const [mySkills, setMySkills] = useState<Skill[]>([]);
-    const [publicSkills, setPublicSkills] = useState<Skill[]>([]);
-    const [totalMy, setTotalMy] = useState(0);
-    const [totalPublic, setTotalPublic] = useState(0);
+    // Skills Data from React Query
+    const { data: skillsData, isLoading } = useQuery({
+        queryKey: ['skills', activeTab, searchQuery],
+        queryFn: async () => {
+            const response = await apiClient.get('/skills/search/', {
+                params: {
+                    query: searchQuery,
+                    tab: activeTab,
+                    page_size: 20
+                }
+            });
+            return {
+                results: response.data.results,
+                total: response.data.total
+            };
+        },
+        staleTime: 5 * 60 * 1000,
+    });
+    
+    const currentSkills = skillsData?.results || [];
+    const totalMy = activeTab === 'mine' ? (skillsData?.total || 0) : 0;
+    const totalPublic = activeTab === 'public' ? (skillsData?.total || 0) : 0;
 
     // Editor State
     const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
@@ -49,40 +66,7 @@ export default function Skills() {
     const [editCategory, setEditCategory] = useState('General');
     const [editorMode, setEditorMode] = useState<'split' | 'edit' | 'preview'>('split');
 
-    const fetchSkills = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const response = await apiClient.get('/skills/search/', {
-                params: {
-                    query: searchQuery,
-                    tab: activeTab,
-                    page_size: 20
-                }
-            });
-            
-            if (activeTab === 'mine') {
-                setMySkills(response.data.results);
-                setTotalMy(response.data.total);
-            } else {
-                setPublicSkills(response.data.results);
-                setTotalPublic(response.data.total);
-            }
-        } catch (error) {
-            console.error('Failed to fetch skills:', error);
-            toast.error('Failed to load skills');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [searchQuery, activeTab]);
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchSkills();
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [fetchSkills]);
-
-    const currentSkills = activeTab === 'mine' ? mySkills : publicSkills;
 
     const handleCreateSkill = () => {
         setSelectedSkill(null);
@@ -119,7 +103,7 @@ export default function Skills() {
                 toast.success('Skill created successfully');
             }
             setIsEditing(false);
-            fetchSkills();
+            queryClient.invalidateQueries({ queryKey: ['skills'] });
         } catch (error) {
             console.error('Failed to save skill:', error);
             toast.error('Failed to save skill');
@@ -130,7 +114,7 @@ export default function Skills() {
         try {
             const response = await apiClient.post(`/skills/${skill.id}/share/`);
             toast.success(response.data.message);
-            fetchSkills();
+            queryClient.invalidateQueries({ queryKey: ['skills'] });
         } catch (error) {
             console.error('Failed to share skill:', error);
             toast.error('Failed to update sharing status');
@@ -142,7 +126,7 @@ export default function Skills() {
             try {
                 await apiClient.delete(`/skills/${id}/`);
                 toast.success('Skill deleted');
-                fetchSkills();
+                queryClient.invalidateQueries({ queryKey: ['skills'] });
             } catch (error) {
                 console.error('Failed to delete skill:', error);
                 toast.error('Failed to delete skill');
@@ -154,6 +138,7 @@ export default function Skills() {
         try {
             await apiClient.post(`/skills/${skill.id}/fork/`);
             toast.success('Skill incorporated into your collection!');
+            queryClient.invalidateQueries({ queryKey: ['skills'] });
             setActiveTab('mine');
         } catch (error) {
             console.error('Failed to incorporate skill:', error);
@@ -206,7 +191,6 @@ export default function Skills() {
                         <button
                             onClick={() => {
                                 setActiveTab('mine');
-                                setIsLoading(true);
                             }}
                             className={cn(
                                 "pb-3 text-sm font-semibold transition-all relative",
@@ -219,7 +203,6 @@ export default function Skills() {
                     <button
                         onClick={() => {
                             setActiveTab('public');
-                            setIsLoading(true);
                         }}
                         className={cn(
                             "pb-3 text-sm font-semibold transition-all relative",
@@ -274,7 +257,7 @@ export default function Skills() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 stagger-children">
-                        {currentSkills.map((skill) => (
+                        {currentSkills.map((skill: Skill) => (
                             <div 
                                 key={skill.id}
                                 onClick={() => handleOpenSkill(skill)}

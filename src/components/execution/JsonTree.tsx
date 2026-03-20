@@ -8,8 +8,6 @@ interface JsonTreeProps {
   defaultExpanded?: boolean;
 }
 
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
 /**
  * Collapsible JSON tree viewer component
  * Shows JSON data in a tree structure with syntax highlighting

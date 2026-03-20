@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, Loader2, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Signup() {

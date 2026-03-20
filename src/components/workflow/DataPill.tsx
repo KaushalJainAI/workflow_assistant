@@ -14,6 +14,8 @@ interface DataPillProps {
   sampleValue?: string;
   /** Size variant */
   size?: 'sm' | 'md';
+  /** Whether the data is mock/fallback data */
+  isMock?: boolean;
 }
 
 const TYPE_ICONS: Record<string, typeof Type> = {
@@ -31,6 +33,7 @@ export default function DataPill({
   type = 'unknown',
   sampleValue,
   size = 'md',
+  isMock = false,
 }: DataPillProps) {
   const Icon = TYPE_ICONS[type] || Type;
 
@@ -76,11 +79,15 @@ export default function DataPill({
         group
       `}
       style={{
-        backgroundColor: `${color}18`,
+        backgroundColor: isMock ? `${color}08` : `${color}18`,
         color: color,
-        border: `1.5px solid ${color}40`,
+        border: isMock ? `1.5px dashed ${color}40` : `1.5px solid ${color}40`,
+        opacity: isMock ? 0.8 : 1,
       }}
-      title={sampleValue ? `${path}\n\nValue: ${sampleValue}` : path}
+      title={isMock 
+        ? `[MOCK DATA]\n${path}\n\nValue: ${sampleValue}` 
+        : (sampleValue ? `${path}\n\nValue: ${sampleValue}` : path)
+      }
     >
       <GripVertical
         className={`${size === 'sm' ? 'w-2.5 h-2.5' : 'w-3 h-3'} opacity-40 group-hover:opacity-70 transition-opacity shrink-0`}

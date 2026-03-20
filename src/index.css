@@ -127,6 +127,15 @@
     animation: float 6s ease-in-out infinite;
   }
 
+  .animate-shimmer-fast {
+    animation: shimmer-fast 1.5s linear infinite;
+    background-size: 200% 100%;
+  }
+
+  .animate-scanning-beam {
+    animation: scanning-beam 2s ease-in-out infinite;
+  }
+
 
   /* ── Glassmorphism ── */
   .glass {
@@ -232,6 +241,67 @@
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
+}
+
+@keyframes shimmer-fast {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes scanning-beam {
+  0%, 100% { transform: translateY(-20%); opacity: 0; }
+  50% { transform: translateY(120%); opacity: 1; }
+}
+
+/* ── Custom Markdown Styling ── */
+.ai-chat-prose {
+  @apply text-foreground/90 leading-relaxed;
+}
+.ai-chat-prose p {
+  @apply mb-4 last:mb-0;
+}
+.ai-chat-prose ul {
+  @apply list-none ml-0 pl-0 mb-4 space-y-2;
+}
+.ai-chat-prose ul li {
+  @apply relative pl-5;
+}
+.ai-chat-prose ul li::before {
+  content: "•";
+  @apply absolute left-1 top-0 text-primary/80 font-bold text-xl leading-6;
+}
+.ai-chat-prose ol {
+  @apply list-decimal pl-6 mb-4 space-y-2 marker:text-primary marker:font-bold;
+}
+.ai-chat-prose strong {
+  @apply font-semibold text-foreground;
+}
+.ai-chat-prose table {
+  @apply w-full my-6 border-collapse overflow-hidden rounded-xl border border-border bg-card/40 shadow-sm text-sm block md:table overflow-x-auto;
+}
+.ai-chat-prose thead {
+  @apply bg-muted/60 border-b border-border text-left;
+}
+.ai-chat-prose thead th {
+  @apply p-3 font-semibold text-foreground/90 whitespace-nowrap;
+}
+.ai-chat-prose tbody tr {
+  @apply border-b border-border/40 last:border-0 hover:bg-muted/30 transition-colors;
+}
+.ai-chat-prose tbody td {
+  @apply p-3 align-top;
+}
+.ai-chat-prose h1, .ai-chat-prose h2, .ai-chat-prose h3, .ai-chat-prose h4 {
+  @apply font-bold mt-6 mb-3 text-foreground tracking-tight;
+}
+.ai-chat-prose code {
+  @apply bg-primary/10 text-primary px-1.5 py-0.5 rounded-md text-[0.85em] font-bold font-mono border border-primary/20;
+}
+.ai-chat-prose pre {
+  @apply bg-zinc-950 text-zinc-50 p-5 rounded-2xl my-6 overflow-x-auto border border-zinc-800 shadow-xl text-[13px] leading-relaxed;
+}
+.ai-chat-prose pre code {
+  @apply bg-transparent text-inherit p-0 border-0;
 }
 
 

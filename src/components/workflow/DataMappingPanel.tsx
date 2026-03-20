@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Database, Zap, Search } from 'lucide-react';
 import { type Node, type Edge } from 'reactflow';
 import DataPill from './DataPill';
+import { useNodeTypes } from '../../hooks/useNodeTypes';
 
 interface DataMappingPanelProps {
   /** Current node being configured */
@@ -40,9 +41,10 @@ interface TreeNodeProps {
   color: string;
   depth?: number;
   defaultOpen?: boolean;
+  isMock?: boolean;
 }
 
-function TreeNode({ name, value, path, color, depth = 0, defaultOpen = false }: TreeNodeProps) {
+function TreeNode({ name, value, path, color, depth = 0, defaultOpen = false, isMock = false }: TreeNodeProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const type = inferType(value);
 
@@ -57,6 +59,7 @@ function TreeNode({ name, value, path, color, depth = 0, defaultOpen = false }: 
           type={type}
           sampleValue={truncateValue(value)}
           size="sm"
+          isMock={isMock}
         />
         <span className="text-[11px] text-muted-foreground truncate max-w-[220px] font-mono">
           {truncateValue(value, 60)}
@@ -88,6 +91,7 @@ function TreeNode({ name, value, path, color, depth = 0, defaultOpen = false }: 
           type={type}
           sampleValue={`${type === 'array' ? `Array(${(value as unknown[]).length})` : `Object(${Object.keys(value as object).length} keys)`}`}
           size="sm"
+          isMock={isMock}
         />
         <span className="text-[11px] text-muted-foreground font-mono">
           {type === 'array' ? `[${(value as unknown[]).length}]` : `{${Object.keys(value as object).length}}`}
@@ -103,6 +107,7 @@ function TreeNode({ name, value, path, color, depth = 0, defaultOpen = false }: 
               path={type === 'array' ? `${path}${key}` : `${path}.${key}`}
               color={color}
               depth={1}
+              isMock={isMock}
             />
           ))}
         </div>
@@ -125,6 +130,8 @@ export default function DataMappingPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
+    const { getNodeConfigSync } = useNodeTypes();
+
   // Calculate upstream nodes via BFS
   const upstreamNodes = useMemo(() => {
     const reachable = new Set<string>();
@@ -145,14 +152,21 @@ export default function DataMappingPanel({
 
     return nodes
       .filter((n) => reachable.has(n.id))
-      .map((n) => ({
-        id: n.id,
-        label: n.data?.label || n.id,
-        color: n.data?.color || '#7b68ee',
-        icon: n.data?.icon || '📦',
-        outputData: lastExecutionData[n.id] || n.data?.outputData,
-      }));
-  }, [currentNode.id, nodes, edges, lastExecutionData]);
+      .map((n) => {
+        const config = getNodeConfigSync(n.data?.nodeType || '');
+        return {
+          id: n.id,
+          label: n.data?.label || n.id,
+          color: n.data?.color || '#7b68ee',
+          icon: n.data?.icon || '📦',
+          outputData: lastExecutionData[n.id] || n.data?.outputData,
+          staticFields: [
+            ...(config?.outputFields || []),
+            ...(n.data?.customFieldDefs || []).map((f: { id: string; label: string }) => f.label || f.id.replace('custom_', '')),
+          ],
+        };
+      });
+  }, [currentNode.id, nodes, edges, lastExecutionData, getNodeConfigSync]);
 
   const toggleNode = (nodeId: string) => {
     setExpandedNodes((prev) => {
@@ -208,18 +222,27 @@ export default function DataMappingPanel({
         ) : (
           upstreamNodes.map((upNode) => {
             const isExpanded = expandedNodes.has(upNode.id);
-            const hasData = upNode.outputData && (
+            const hasData = (upNode.outputData && (
               (Array.isArray(upNode.outputData) && upNode.outputData.length > 0) ||
               (typeof upNode.outputData === 'object' && Object.keys(upNode.outputData).length > 0)
-            );
+            )) || !!nodes.find(n => n.id === upNode.id)?.data?.test_data;
 
             // Extract the json data from items format
             let displayData: Record<string, unknown> = {};
+            let isMock = false;
+
             if (Array.isArray(upNode.outputData) && upNode.outputData.length > 0) {
               const first = upNode.outputData[0];
               displayData = first?.json || first || {};
-            } else if (typeof upNode.outputData === 'object' && upNode.outputData !== null) {
+            } else if (typeof upNode.outputData === 'object' && upNode.outputData !== null && Object.keys(upNode.outputData).length > 0) {
               displayData = upNode.outputData.json || upNode.outputData;
+            } else {
+              // Fallback to test_data from node.data
+              const node = nodes.find(n => n.id === upNode.id);
+              if (node?.data?.test_data) {
+                displayData = node.data.test_data;
+                isMock = true;
+              }
             }
 
             // Filter by search query
@@ -263,15 +286,15 @@ export default function DataMappingPanel({
                 {/* Data Tree */}
                 {isExpanded && (
                   <div className="px-3 pb-2.5 pt-0.5 space-y-0.5">
-                    {!hasData ? (
+                    {!hasData && upNode.staticFields.length === 0 ? (
                       <p className="text-[11px] text-muted-foreground/60 py-2 text-center">
                         Run the workflow to see output data
                       </p>
-                    ) : filteredKeys.length === 0 ? (
+                    ) : (hasData && filteredKeys.length === 0) ? (
                       <p className="text-[11px] text-muted-foreground/60 py-2 text-center">
                         No matching fields
                       </p>
-                    ) : (
+                    ) : hasData ? (
                       filteredKeys.map((key) => (
                         <TreeNode
                           key={key}
@@ -280,8 +303,28 @@ export default function DataMappingPanel({
                           path={`$node["${upNode.label}"].json.${key}`}
                           color={upNode.color}
                           defaultOpen={false}
+                          isMock={isMock}
                         />
                       ))
+                    ) : (
+                      /* Display Static Fields if no data */
+                      upNode.staticFields
+                        .filter(key => !searchQuery || key.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map((key) => (
+                          <div key={key} className="flex items-center gap-2 py-0.5" style={{ paddingLeft: '0px' }}>
+                            <DataPill
+                              label={key}
+                              path={`$node["${upNode.label}"].json.${key}`}
+                              color={upNode.color}
+                              type="unknown"
+                              sampleValue="[static]"
+                              size="sm"
+                            />
+                            <span className="text-[10px] text-muted-foreground/40 italic">
+                              (available on run)
+                            </span>
+                          </div>
+                        ))
                     )}
                   </div>
                 )}

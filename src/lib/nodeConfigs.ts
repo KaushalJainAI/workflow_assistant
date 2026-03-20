@@ -1269,6 +1269,166 @@ export const nodeConfigs: Record<string, NodeConfig> = {
       },
     ],
   },
+
+  tavily_search: {
+    nodeType: 'tavily_search',
+    displayName: 'Tavily Search',
+    description: 'Search the web using Tavily',
+    icon: 'Search',
+    color: '#4c8bf5',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'Tavily API Key',
+        type: 'credential',
+        credentialType: 'tavily',
+        required: true,
+      },
+      {
+        id: 'operation',
+        label: 'Operation',
+        type: 'select',
+        options: [
+          { value: 'search', label: 'Search' },
+          { value: 'context', label: 'Context' },
+          { value: 'qna', label: 'Q&A' },
+        ],
+        defaultValue: 'search',
+      },
+      {
+        id: 'query',
+        label: 'Query',
+        type: 'text',
+        placeholder: 'What is the capital of France?',
+        required: true,
+      },
+      {
+        id: 'search_depth',
+        label: 'Search Depth',
+        type: 'select',
+        options: [
+          { value: 'basic', label: 'Basic' },
+          { value: 'advanced', label: 'Advanced' },
+        ],
+        defaultValue: 'basic',
+      },
+      {
+        id: 'max_results',
+        label: 'Max Results',
+        type: 'number',
+        defaultValue: 5,
+      },
+      {
+        id: 'include_answer',
+        label: 'Include Answer',
+        type: 'checkbox',
+        defaultValue: false,
+      },
+      {
+        id: 'include_raw_content',
+        label: 'Include Raw Content',
+        type: 'checkbox',
+        defaultValue: false,
+      },
+      {
+        id: 'include_images',
+        label: 'Include Images',
+        type: 'checkbox',
+        defaultValue: false,
+      },
+      {
+        id: 'include_domains',
+        label: 'Include Domains',
+        type: 'text',
+        placeholder: 'example.com, google.com',
+      },
+      {
+        id: 'exclude_domains',
+        label: 'Exclude Domains',
+        type: 'text',
+        placeholder: 'example.com, google.com',
+      },
+    ],
+  },
+
+  firecrawl_scrape: {
+    nodeType: 'firecrawl_scrape',
+    displayName: 'Firecrawl Scrape',
+    description: 'Scrape websites and convert to LLM-ready formats using Firecrawl',
+    icon: 'Globe',
+    color: '#f59e0b',
+    inputs: [{ id: 'input-0' }],
+    outputs: [{ id: 'output-0' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'Firecrawl API Key',
+        type: 'credential',
+        credentialType: 'firecrawl',
+        required: true,
+      },
+      {
+        id: 'operation',
+        label: 'Operation',
+        type: 'select',
+        options: [
+          { value: 'scrape', label: 'Scrape' },
+          { value: 'crawl', label: 'Crawl' },
+          { value: 'map', label: 'Map' },
+          { value: 'check_crawl', label: 'Check Crawl Status' },
+        ],
+        defaultValue: 'scrape',
+      },
+      {
+        id: 'url',
+        label: 'URL',
+        type: 'text',
+        placeholder: 'https://example.com',
+      },
+      {
+        id: 'formats',
+        label: 'Formats',
+        type: 'text',
+        defaultValue: 'markdown',
+        description: 'Comma-separated: markdown, html, raw-html, screenshot, links',
+      },
+      {
+        id: 'only_main_content',
+        label: 'Only Main Content',
+        type: 'checkbox',
+        defaultValue: true,
+      },
+      {
+        id: 'wait_for',
+        label: 'Wait For (ms)',
+        type: 'number',
+        defaultValue: 0,
+      },
+      {
+        id: 'extraction_schema',
+        label: 'Extraction Schema (JSON)',
+        type: 'code',
+      },
+      {
+        id: 'system_prompt',
+        label: 'System Prompt',
+        type: 'textarea',
+      },
+      {
+        id: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+      },
+      {
+        id: 'crawl_id',
+        label: 'Crawl ID',
+        type: 'text',
+        description: 'Required for Check Crawl Status',
+      },
+    ],
+  },
 };
 
 /**

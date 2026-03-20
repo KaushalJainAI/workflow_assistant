@@ -67,6 +67,7 @@ export default function Orchestrator() {
     llmModel: globalModel,
     llmCredential: globalCredential,
     hasCredentials,
+    refreshCredentials,
   } = useAssistant();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -559,7 +560,8 @@ export default function Orchestrator() {
   useEffect(() => {
     fetchCredentialsList();
     fetchPendingRequests();
-  }, [fetchCredentialsList, fetchPendingRequests]);
+    refreshCredentials();
+  }, [fetchCredentialsList, fetchPendingRequests, refreshCredentials]);
 
   // Active Task Polling - Slower interval, doesn't re-trigger creds/HITL
   useEffect(() => {

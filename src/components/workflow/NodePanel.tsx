@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, X, RefreshCw } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getCustomNodes, type CustomNodeMetadata } from '../../lib/customNodes';
 import { useNodeTypes } from '../../hooks/useNodeTypes';
@@ -31,14 +31,14 @@ interface NodePanelProps {
   showAll?: boolean;
 }
 
-export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = false, triggersOnly = false, showAll = false }: NodePanelProps) {
+export default function NodePanel({ isOpen, onClose, onAddNode }: NodePanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedApp, setSelectedApp] = useState<NodeType | null>(null);
   const [customNodes, setCustomNodes] = useState<CustomNodeMetadata[]>([]);
   const [showBuilder, setShowBuilder] = useState(false);
   
-  const { nodes: backendNodes, loading, error, refresh } = useNodeTypes();
+  const { nodes: backendNodes, refresh } = useNodeTypes();
 
   useEffect(() => {
     if (isOpen) {
@@ -87,10 +87,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode, isFirstNode = fa
   
   const allNodes = Array.from(uniqueNodesMap.values());
 
-  const categories = Array.from(new Set(allNodes.map(n => n.category))).filter((cat) => {
-    // Show all categories regardless of triggersOnly per user request
-    return true;
-  });
+  const categories = Array.from(new Set(allNodes.map(n => n.category)));
 
   const filteredNodes = allNodes.filter(node => {
     const matchesSearch = (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 import { FileQuestion, Inbox, Search, Workflow } from 'lucide-react';
 
@@ -11,13 +11,6 @@ interface EmptyStateProps {
   action?: ReactNode;
   className?: string;
 }
-
-const icons = {
-  default: Inbox,
-  workflows: Workflow,
-  search: Search,
-  data: FileQuestion,
-};
 
 const illustrations = {
   default: (

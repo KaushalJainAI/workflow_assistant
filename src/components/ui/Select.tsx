@@ -1,5 +1,5 @@
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -31,7 +31,11 @@ export default function Select({
 }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const filteredOptions = options.filter(opt => {
     const q = searchQuery.toLowerCase().trim();
@@ -50,6 +54,21 @@ export default function Select({
 
   const selectedOption = options.find(opt => opt.value === value);
 
+  // Reset highlighted index when filtered options change
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [filteredOptions.length, searchQuery]);
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (!isOpen || highlightedIndex < 0 || !listRef.current) return;
+    const items = listRef.current.querySelectorAll('[data-select-option]');
+    const item = items[highlightedIndex] as HTMLElement;
+    if (item) {
+      item.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex, isOpen]);
+
   // Close when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -62,21 +81,125 @@ export default function Select({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelect = (optionValue: string) => {
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen && showSearch) {
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    }
+    if (isOpen) {
+      // Set highlight to currently selected option
+      const idx = filteredOptions.findIndex(opt => opt.value === value);
+      setHighlightedIndex(idx >= 0 ? idx : 0);
+    }
+    if (!isOpen) {
+      setSearchQuery('');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const handleSelect = useCallback((optionValue: string) => {
     onChange(optionValue);
     setIsOpen(false);
-  };
+    // Return focus to trigger button
+    setTimeout(() => triggerRef.current?.focus(), 0);
+  }, [onChange]);
+
+  const openDropdown = useCallback(() => {
+    setIsOpen(true);
+  }, []);
+
+  const closeDropdown = useCallback(() => {
+    setIsOpen(false);
+    setTimeout(() => triggerRef.current?.focus(), 0);
+  }, []);
+
+  // Keyboard handling for the trigger button
+  const handleTriggerKeyDown = useCallback((e: React.KeyboardEvent) => {
+    switch (e.key) {
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isOpen) openDropdown();
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        e.stopPropagation();
+        openDropdown();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        e.stopPropagation();
+        openDropdown();
+        break;
+      case 'Escape':
+        if (isOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeDropdown();
+        }
+        break;
+    }
+  }, [isOpen, openDropdown, closeDropdown]);
+
+  // Keyboard handling inside the dropdown (search input or list)
+  const handleDropdownKeyDown = useCallback((e: React.KeyboardEvent) => {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        e.stopPropagation();
+        setHighlightedIndex(prev => 
+          prev < filteredOptions.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        e.stopPropagation();
+        setHighlightedIndex(prev => 
+          prev > 0 ? prev - 1 : filteredOptions.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        e.stopPropagation();
+        if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
+          handleSelect(filteredOptions[highlightedIndex].value);
+        }
+        break;
+      case 'Tab':
+        // Allow Tab to close dropdown and move focus naturally
+        setIsOpen(false);
+        break;
+      case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        closeDropdown();
+        break;
+      case 'Home':
+        e.preventDefault();
+        setHighlightedIndex(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        setHighlightedIndex(filteredOptions.length - 1);
+        break;
+    }
+  }, [filteredOptions, highlightedIndex, handleSelect, closeDropdown]);
 
   return (
     <div className={cn("relative", className)} ref={containerRef}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        onKeyDown={handleTriggerKeyDown}
         className={cn(
           "w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-background/50 border border-input rounded-xl hover:bg-accent/50 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20",
           isOpen && "border-primary/50 ring-2 ring-primary/20",
           className
         )}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
       >
         <div className="flex items-center gap-2 overflow-hidden">
           {icon && <span className="text-muted-foreground">{icon}</span>}
@@ -96,10 +219,15 @@ export default function Select({
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/60 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top p-1">
+        <div
+          className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/60 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top p-1"
+          onKeyDown={handleDropdownKeyDown}
+          role="listbox"
+        >
           {showSearch && (
             <div className="p-2 border-b border-border/10">
               <input
+                ref={searchInputRef}
                 type="text"
                 autoFocus
                 placeholder="Search..."
@@ -110,19 +238,26 @@ export default function Select({
               />
             </div>
           )}
-          <div className="max-h-[240px] overflow-auto py-1 custom-scrollbar">
-            {filteredOptions.map((option) => {
+          <div ref={listRef} className="max-h-[240px] overflow-auto py-1 custom-scrollbar">
+            {filteredOptions.map((option, index) => {
               const isSelected = option.value === value;
+              const isHighlighted = index === highlightedIndex;
               return (
                 <button
                   key={option.value}
+                  data-select-option
                   onClick={() => handleSelect(option.value)}
+                  onMouseEnter={() => setHighlightedIndex(index)}
                   className={cn(
                     "w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors",
-                    isSelected 
+                    isSelected && !isHighlighted
                       ? "bg-primary/10 text-primary font-medium" 
-                      : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                      : isHighlighted
+                        ? "bg-primary/15 text-primary font-medium"
+                        : "text-foreground/80 hover:bg-muted hover:text-foreground"
                   )}
+                  role="option"
+                  aria-selected={isSelected}
                 >
                   <div className="flex items-center gap-2 truncate">
                     {option.icon}

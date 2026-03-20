@@ -10,7 +10,7 @@ import {
   Calendar,
   Activity
 } from 'lucide-react';
-import { logsService, type ExecutionLog, type ExecutionDetail, type NodeLog, type OrchestratorThought } from '../../api/logs';
+import { logsService, type ExecutionLog, type ExecutionDetail, type OrchestratorThought } from '../../api/logs';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
 import Select from '../ui/Select';

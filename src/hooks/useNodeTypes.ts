@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { nodeService, type NodeSchema } from '../api';
-import { toast } from 'sonner';
 
 // Simple in-memory cache to avoid repeated fetches
 let nodeCache: Record<string, NodeSchema> = {};
@@ -14,7 +13,7 @@ export function useNodeTypes() {
 
   // Subscribe to cache updates
   useEffect(() => {
-    const handler = (cache: Record<string, NodeSchema>) => {
+    const handler = (_cache: Record<string, NodeSchema>) => {
        // Optional: update local state if we want real-time cache updates across components
     };
     listeners.push(handler);

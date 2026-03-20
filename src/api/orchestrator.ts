@@ -70,6 +70,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  metadata?: Record<string, any>;
 }
 
 export interface ConversationResponse {
@@ -260,6 +261,18 @@ export const orchestratorService = {
   },
 
   /**
+   * Delete single message (supports rewinding)
+   */
+  async deleteMessage(conversationId: string, messageId: number, rewind: boolean = false, rewindAfter: boolean = false): Promise<void> {
+    const url = rewindAfter
+      ? `/orchestrator/chat/${conversationId}/messages/${messageId}/?rewind_after=true`
+      : rewind 
+      ? `/orchestrator/chat/${conversationId}/messages/${messageId}/?rewind=true` 
+      : `/orchestrator/chat/${conversationId}/messages/${messageId}/`;
+    await apiClient.delete(url);
+  },
+
+  /**
    * Send chat message
    */
   async sendMessage(
@@ -267,7 +280,8 @@ export const orchestratorService = {
     workflowId?: number,
     conversationId?: string,
     provider?: string,
-    model?: string
+    model?: string,
+    reference?: { message_id: number; snippet: string }
   ): Promise<{ conversation_id: string; user_message: ChatMessage; ai_response: ChatMessage }> {
     const response = await apiClient.post('/orchestrator/chat/', {
       content,
@@ -275,6 +289,7 @@ export const orchestratorService = {
       conversation_id: conversationId,
       provider,
       model,
+      reference,
     });
     return response.data;
   },

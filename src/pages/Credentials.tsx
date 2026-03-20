@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { credentialsService } from '../api/credentials';
 import type { Credential, CredentialType } from '../api/credentials';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import CredentialModal from '../components/credentials/CredentialModal';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
@@ -39,46 +40,34 @@ const IconMap: Record<string, any> = {
 
 export default function Credentials() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [credentialTypes, setCredentialTypes] = useState<CredentialType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'verified' | 'unverified'>('verified');
-
   const [showModal, setShowModal] = useState(false);
-  
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
   const [viewingCredential, setViewingCredential] = useState<Credential | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
-  
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
+  const { data, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['credentialsData'],
+    queryFn: async () => {
       const [credsRes, typesRes] = await Promise.all([
         credentialsService.list(),
         credentialsService.getTypes()
       ]);
-      // Handle both wrapped ({ credentials: [...] }) and unwrapped ([...]) responses
-      const credsList = credsRes?.credentials ?? (Array.isArray(credsRes) ? credsRes : []);
-      const typesList = typesRes?.types ?? (Array.isArray(typesRes) ? typesRes : []);
-      setCredentials(credsList);
-      setCredentialTypes(typesList);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to load credentials', err);
-      setError('Failed to load credentials. Ensure backend is running.');
-    } finally {
-      setLoading(false);
-    }
-  };
+      return {
+        credentials: credsRes?.credentials ?? (Array.isArray(credsRes) ? credsRes : []),
+        types: typesRes?.types ?? (Array.isArray(typesRes) ? typesRes : []),
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const credentials = data?.credentials || [];
+  const credentialTypes = data?.types || [];
+  const error = queryError ? 'Failed to load credentials. Ensure backend is running.' : null;
 
   const filteredCredentials = credentials.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -106,7 +95,7 @@ export default function Credentials() {
       await credentialsService.delete(id);
       setShowDeleteConfirm(null);
       setOpenDropdown(null);
-      fetchData();
+      queryClient.invalidateQueries({ queryKey: ['credentialsData'] });
     } catch (err) {
       console.error('Failed to delete credential', err);
     }
@@ -116,8 +105,8 @@ export default function Credentials() {
     try {
       const result = await credentialsService.verify(id);
       if (result.valid) {
-        // Update local state to show verified
-        setCredentials(prev => prev.map(c => c.id === id ? { ...c, is_verified: true } : c));
+        queryClient.invalidateQueries({ queryKey: ['credentialsData'] });
+        
         if (viewingCredential?.id === id) {
             setViewingCredential(prev => prev ? { ...prev, is_verified: true } : null);
         }
@@ -361,7 +350,7 @@ export default function Credentials() {
         }}
         initialData={editingCredential}
         credentialTypes={credentialTypes as CredentialType[]}
-        onSave={() => fetchData()}
+        onSave={() => queryClient.invalidateQueries({ queryKey: ['credentialsData'] })}
       />
 
       {/* View Credential Modal */}

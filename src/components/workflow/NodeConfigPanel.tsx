@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { X, ChevronDown, ChevronUp, Info, Copy, Check, Settings, Database, ArrowRightLeft, Play, Save, ArrowLeft } from 'lucide-react';
 import { type Node, type Edge } from 'reactflow';
-import { getNodeConfig, type ConfigField, type NodeConfig } from '../../lib/nodeConfigs';
+import { getNodeConfig, nodeConfigs, type ConfigField, type NodeConfig } from '../../lib/nodeConfigs';
 import DataViewer from '../execution/DataViewer';
 import CredentialPicker from './CredentialPicker';
 import ExpressionEditor from './ExpressionEditor';
@@ -69,6 +69,7 @@ export default function NodeConfigPanel({
   
   const isMountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const settingsContentRef = useRef<HTMLDivElement>(null);
 
   // Skills state — search-based picker with mine + public
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
@@ -168,6 +169,17 @@ export default function NodeConfigPanel({
       nodeConfig.fields.forEach((field) => {
         initialValues[field.id] = node.data?.config?.[field.id] ?? field.defaultValue ?? '';
       });
+      // Also restore custom_* fields from saved config using customFieldDefs
+      const savedConfig = node.data?.config || {};
+      const fieldDefs: Array<{ id: string; label: string; type: string }> = node.data?.customFieldDefs || [];
+      for (const def of fieldDefs) {
+        if (savedConfig[def.id] !== undefined) {
+          initialValues[def.id] = savedConfig[def.id];
+        } else {
+          // Set default based on type
+          initialValues[def.id] = def.type === 'number' ? 0 : def.type === 'boolean' ? false : def.type === 'json' ? '{}' : '';
+        }
+      }
       setFormValues(initialValues);
     }
   }, [node?.id, node?.data?.config, nodeConfig]);
@@ -272,16 +284,53 @@ export default function NodeConfigPanel({
           />
         );
 
-      case 'number':
-        return (
-          <input
-            type="number"
-            value={value as number}
-            onChange={(e) => handleFieldChange(field.id, parseFloat(e.target.value) || 0)}
-            placeholder={field.placeholder}
-            className="w-full px-3 py-2.5 bg-muted/40 border border-border/60 rounded-lg text-[15px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
-          />
-        );
+      case 'number': {
+        // Use text input with string-backed display so users can naturally type
+        // decimals ("0.") and negatives ("-") without value snapping.
+        const NumberInput = () => {
+          const [localStr, setLocalStr] = useState(String(value ?? ''));
+          const localRef = useRef(localStr);
+          // Sync from parent when value changes externally
+          useEffect(() => {
+            const parentStr = String(value ?? '');
+            if (parentStr !== localRef.current) {
+              setLocalStr(parentStr);
+              localRef.current = parentStr;
+            }
+          }, []);
+          return (
+            <input
+              type="text"
+              inputMode="decimal"
+              value={localStr}
+              onChange={(e) => {
+                const raw = e.target.value;
+                // Allow empty, minus, dot, digits
+                if (raw === '' || raw === '-' || raw === '.' || raw === '-.' || /^-?\d*\.?\d*$/.test(raw)) {
+                  setLocalStr(raw);
+                  localRef.current = raw;
+                }
+              }}
+              onBlur={() => {
+                const parsed = parseFloat(localStr);
+                if (!isNaN(parsed)) {
+                  handleFieldChange(field.id, parsed);
+                  const canonical = String(parsed);
+                  setLocalStr(canonical);
+                  localRef.current = canonical;
+                } else if (localStr === '' || localStr === '-' || localStr === '.') {
+                  handleFieldChange(field.id, 0);
+                  setLocalStr('0');
+                  localRef.current = '0';
+                }
+              }}
+              placeholder={field.placeholder}
+              className="w-full px-3 py-2.5 bg-muted/40 border border-border/60 rounded-lg text-[15px] text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+            />
+          );
+        };
+        return <NumberInput />;
+      }
 
       case 'textarea':
         return (
@@ -309,7 +358,11 @@ export default function NodeConfigPanel({
           'ollama': 'ollama',
           'perplexity': 'perplexity',
           'openrouter': 'openrouter',
-          'anthropic': 'anthropic'
+          'anthropic': 'anthropic',
+          'deepseek': 'deepseek',
+          'mistral': 'mistral',
+          'cohere': 'cohere',
+          'groq': 'groq'
         };
         
         const slug = providerSlugMap[nodeType];
@@ -317,6 +370,7 @@ export default function NodeConfigPanel({
         if (field.id === 'model' && slug && aiProviders?.length > 0) {
           const provider = aiProviders.find((p: any) => p.slug === slug);
           if (provider && provider.models && provider.models.length > 0) {
+            // Priority: Dynamic models from API always replace static models
             options = provider.models.map((m: any) => ({
               value: m.value,
               label: m.name
@@ -589,6 +643,17 @@ export default function NodeConfigPanel({
     // Set default value based on type
     const defaultVal = newParamType === 'number' ? 0 : newParamType === 'boolean' ? false : newParamType === 'json' ? '{}' : '';
     setFormValues(prev => ({ ...prev, [fieldId]: defaultVal }));
+
+    // Persist field definition to node.data so it survives panel close/reopen
+    if (node) {
+      const existingDefs: Array<{ id: string; label: string; type: string }> = node.data?.customFieldDefs || [];
+      const newDef = { id: fieldId, label: newParamName.trim(), type: newParamType };
+      onUpdateNode(node.id, {
+        ...node.data,
+        customFieldDefs: [...existingDefs, newDef],
+      });
+    }
+
     setNewParamName('');
     setNewParamType('text');
     setShowAddParam(false);
@@ -600,11 +665,30 @@ export default function NodeConfigPanel({
       delete next[fieldId];
       return next;
     });
+
+    // Also remove from persisted customFieldDefs
+    if (node) {
+      const existingDefs: Array<{ id: string; label: string; type: string }> = node.data?.customFieldDefs || [];
+      onUpdateNode(node.id, {
+        ...node.data,
+        customFieldDefs: existingDefs.filter(d => d.id !== fieldId),
+      });
+    }
   };
 
   const handleAddHandle = (type: 'inputs' | 'outputs') => {
     if (!node) return;
-    const currentHandles = (node.data[type] || []) as NodeHandle[];
+    const nodeType = node.data?.nodeType || node.type || '';
+    // If data doesn't have handles yet, seed from nodeConfigs defaults
+    let currentHandles = (node.data[type] || []) as NodeHandle[];
+    if (currentHandles.length === 0) {
+      const configHandles = nodeConfigs[nodeType]?.[type];
+      if (configHandles) {
+        currentHandles = configHandles.map((h: any) => 
+          typeof h === 'string' ? { id: h, label: '' } : { id: h.id, label: h.label || '' }
+        );
+      }
+    }
     const newHandleId = `${type === 'inputs' ? 'input' : 'output'}-${currentHandles.length}`;
     
     const updatedHandles = [...currentHandles, { id: newHandleId, label: '' }];
@@ -669,7 +753,7 @@ export default function NodeConfigPanel({
         node.id,
         node.data.nodeType,
         inputJson,
-        formValues,
+        { ...formValues, customFieldDefs: node.data?.customFieldDefs || [] },
         signal
       );
       
@@ -706,8 +790,24 @@ export default function NodeConfigPanel({
   }, [node, workflowId, formValues, onUpdateNode]);
 
   // Close on Escape key
+  // Auto-focus the first input/textarea in the settings tab when panel opens
+  useEffect(() => {
+    if (isOpen && activeTab === 'settings' && settingsContentRef.current) {
+      const timer = setTimeout(() => {
+        const firstInput = settingsContentRef.current?.querySelector<HTMLElement>(
+          'input:not([type="hidden"]):not([type="checkbox"]), textarea, [role="listbox"]'
+        );
+        firstInput?.focus();
+      }, 100); // small delay for animation
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, activeTab]);
+
+  // Close on Escape key — only when event hasn't been handled by a child
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
+      // If the event was already stopped by a child (ExpressionEditor, Select, etc.), skip
+      if (e.defaultPrevented) return;
       if (e.key === 'Escape' && isOpen) {
         onClose();
       }
@@ -814,7 +914,7 @@ export default function NodeConfigPanel({
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-background/20">
+            <div ref={settingsContentRef} className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-background/20">
               <div className="max-w-5xl mx-auto">
                 {activeTab === 'settings' && nodeConfig && (
                   <div className="space-y-6">
@@ -920,8 +1020,10 @@ export default function NodeConfigPanel({
                             {Object.entries(formValues)
                               .filter(([key]) => key.startsWith('custom_') && !nodeConfig.fields.some(f => f.id === key))
                               .map(([key, val]) => {
-                                const displayName = key.replace(/^custom_/, '').replace(/_/g, ' ');
-                                const typeLabel = typeof val === 'number' ? 'Num' : typeof val === 'boolean' ? 'Bool' : typeof val === 'object' ? 'JSON' : 'Text';
+                                const fieldDef = (node?.data?.customFieldDefs || []).find((d: { id: string }) => d.id === key);
+                                const displayName = fieldDef?.label || key.replace(/^custom_/, '').replace(/_/g, ' ');
+                                const typeMap: Record<string, string> = { text: 'Text', number: 'Num', boolean: 'Bool', json: 'JSON' };
+                                const typeLabel = fieldDef ? (typeMap[fieldDef.type] || 'Text') : (typeof val === 'number' ? 'Num' : typeof val === 'boolean' ? 'Bool' : typeof val === 'object' ? 'JSON' : 'Text');
                                 return (
                                   <div key={key} className="p-4 bg-muted/20 border border-border/40 rounded-2xl group hover:border-primary/20 transition-all hover:bg-muted/30">
                                     <div className="flex items-center justify-between mb-3">

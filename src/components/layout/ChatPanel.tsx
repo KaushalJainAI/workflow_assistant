@@ -16,11 +16,21 @@ import {
   History,
   ArrowRight,
   Lock,
-  ChevronDown
+  ChevronDown,
+  RotateCcw,
+  ArrowUpFromLine,
+  Pencil,
+  Globe2,
+  Video,
+  Play
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { toast } from 'sonner';
 import { orchestratorService, type ChatMessage } from '../../api';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../contexts/AssistantContext';
+import { TextSelectionMenu } from '../chat/TextSelectionMenu';
 import { useAIModels } from '../../hooks/useAIModels';
 
 interface ChatPanelProps {
@@ -49,6 +59,15 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [conversationId, setConversationId] = useState<string | undefined>(initialConversationId);
+  const [deletingMsgId, setDeletingMsgId] = useState<number | null>(null);
+  const [expandedImagesMsgId, setExpandedImagesMsgId] = useState<number | null>(null);
+  const [expandedVideosMsgId, setExpandedVideosMsgId] = useState<number | null>(null);
+
+  // Text Selection State
+  const [selectionPos, setSelectionPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
+  const [activeReference, setActiveReference] = useState<{ messageId: number; textSnippet: string } | null>(null);
   
   const [conversations, setConversations] = useState<{conversation_id: string}[]>([]);
   
@@ -99,14 +118,26 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
     }
   }, [initialConversationId]);
 
+  useEffect(() => {
+    if (!initialConversationId && !conversationId) {
+      loadHistory().then(res => {
+        if (res && res.conversations && res.conversations.length > 0) {
+          loadConversation(res.conversations[0].conversation_id);
+        }
+      });
+    }
+  }, []);
+
   const loadHistory = async () => {
     try {
       const res = await orchestratorService.getMessages();
       if (res && res.conversations) {
         setConversations(res.conversations);
       }
+      return res;
     } catch (e) {
       console.error("Failed to load history", e);
+      return null;
     }
   };
 
@@ -141,28 +172,46 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const handleSend = async (overrideInput?: string) => {
+    const textToSend = overrideInput ?? input;
+    if (!textToSend.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
+      id: Date.now(),
       role: 'user',
-      content: input,
+      content: textToSend,
       created_at: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    if (!overrideInput) setInput('');
     setIsLoading(true);
 
     try {
+      // Pass the activeReference if present
+      const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
+
       const response = await orchestratorService.sendMessage(
-        input,
-        undefined,
-        conversationId
+        textToSend,
+        undefined, // workflowId
+        conversationId,
+        llmProvider, // Pass the selected provider
+        llmModel,    // Pass the selected model
+        reference
       );
 
+      // Clear reference after sending
+      setActiveReference(null);
+
       setConversationId(response.conversation_id);
-      setMessages(prev => [...prev, response.ai_response]);
+      setMessages(prev => {
+        const newMsgs = [...prev];
+        const userMsgIndex = newMsgs.findIndex(m => m.id === userMessage.id);
+        if (userMsgIndex !== -1) {
+          newMsgs[userMsgIndex] = { ...newMsgs[userMsgIndex], id: response.user_message.id };
+        }
+        return [...newMsgs, response.ai_response];
+      });
       // Refresh history list if new conversation
       if (!conversationId) loadHistory();
     } catch (err) {
@@ -173,6 +222,98 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
       }]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!conversationId) return;
+    try {
+      setDeletingMsgId(messageId);
+      await orchestratorService.deleteMessage(conversationId, messageId);
+      setMessages(messages.filter(m => m.id !== messageId));
+      toast.success('Message deleted');
+    } catch (err) {
+      toast.error('Failed to delete message');
+    } finally {
+      setDeletingMsgId(null);
+    }
+  };
+
+  const handleRewriteMessage = async (messageId: number) => {
+    if (!conversationId) return;
+    try {
+      setDeletingMsgId(messageId);
+      
+      const targetIndex = messages.findIndex(m => m.id === messageId);
+      if (targetIndex === -1) return;
+
+      let precedingUserMsgIndex = targetIndex - 1;
+      while (precedingUserMsgIndex >= 0 && messages[precedingUserMsgIndex].role !== 'user') {
+        precedingUserMsgIndex--;
+      }
+
+      if (precedingUserMsgIndex === -1 || !messages[precedingUserMsgIndex].id) {
+        toast.error('Could not find the original prompt to rewrite');
+        return;
+      }
+
+      const userMsg = messages[precedingUserMsgIndex];
+
+      await orchestratorService.deleteMessage(conversationId, userMsg.id as number, true);
+      
+      setMessages(messages.slice(0, precedingUserMsgIndex));
+      
+      handleSend(userMsg.content);
+      toast.success('Regenerating response...');
+    } catch (err) {
+      toast.error('Failed to rewrite message');
+    } finally {
+      setDeletingMsgId(null);
+    }
+  };
+
+  const handleRewindAfterMessage = async (messageId: number) => {
+    if (!conversationId) return;
+    try {
+      setDeletingMsgId(messageId);
+      await orchestratorService.deleteMessage(conversationId, messageId, false, true);
+      
+      const targetIndex = messages.findIndex(m => m.id === messageId);
+      if (targetIndex !== -1) {
+        const targetMessage = messages[targetIndex];
+        setMessages(messages.slice(0, targetIndex + 1));
+        setInput(targetMessage.content);
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 50);
+      }
+      toast.success('Message ready to edit');
+    } catch (err) {
+      toast.error('Failed to reverse context');
+    } finally {
+      setDeletingMsgId(null);
+    }
+  };
+
+  const handleEditMessage = async (messageId: number, content: string) => {
+    if (!conversationId) return;
+    try {
+      setDeletingMsgId(messageId);
+      await orchestratorService.deleteMessage(conversationId, messageId, true);
+      
+      const targetIndex = messages.findIndex(m => m.id === messageId);
+      if (targetIndex !== -1) {
+        setMessages(messages.slice(0, targetIndex));
+      }
+      setInput(content);
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 50);
+      toast.success('Message ready to edit');
+    } catch (err) {
+      toast.error('Failed to prepare message for editing');
+    } finally {
+      setDeletingMsgId(null);
     }
   };
 
@@ -195,6 +336,43 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
 
   const formatTime = (dateStr: string) => {
     return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      if (selectionPos) setSelectionPos(null);
+      return;
+    }
+    
+    const text = selection.toString().trim();
+    if (!text) {
+      if (selectionPos) setSelectionPos(null);
+      return;
+    }
+
+    let node = selection.anchorNode;
+    let messageId = null;
+    while (node && node !== document.body) {
+      if (node.nodeType === 1 && (node as HTMLElement).hasAttribute('data-message-id')) {
+        messageId = parseInt((node as HTMLElement).getAttribute('data-message-id') || '', 10);
+        break;
+      }
+      node = node.parentNode;
+    }
+
+    if (messageId) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setSelectionPos({
+        x: rect.left + rect.width / 2,
+        y: rect.top
+      });
+      setSelectedMessageId(messageId);
+      setSelectedText(text);
+    } else {
+      setSelectionPos(null);
+    }
   };
 
   return (
@@ -242,12 +420,37 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-auto p-4">
-          <div className="max-w-3xl mx-auto space-y-6">
+        <div 
+          className="flex-1 overflow-auto p-4"
+          onMouseUp={handleTextSelection}
+          onKeyUp={handleTextSelection}
+        >
+          <div className="max-w-3xl mx-auto space-y-6 relative">
+            
+            <TextSelectionMenu 
+              position={selectionPos}
+              onClose={() => setSelectionPos(null)}
+              onCopy={() => {
+                navigator.clipboard.writeText(selectedText);
+                toast.success('Text copied to clipboard');
+                setSelectionPos(null);
+                window.getSelection()?.removeAllRanges();
+              }}
+              onReference={() => {
+                if (selectedMessageId) {
+                  setActiveReference({ messageId: selectedMessageId, textSnippet: selectedText });
+                  textareaRef.current?.focus();
+                }
+                setSelectionPos(null);
+                window.getSelection()?.removeAllRanges();
+              }}
+            />
+
             {messages.map((message, index) => (
               <div
                 key={index}
-                className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : ''}`}
+                data-message-id={message.id}
+                className={`flex gap-4 group ${message.role === 'user' ? 'justify-end' : ''}`}
               >
                 {message.role === 'assistant' && (
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -262,22 +465,250 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                         : 'bg-muted rounded-tl-sm'
                     }`}
                   >
-                    <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                    <div className="text-sm prose prose-sm dark:prose-invert max-w-none ai-chat-prose">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          a: ({ href, children, ...props }) => {
+                            if (href?.startsWith('citation:')) {
+                              const citNum = parseInt(href.split(':')[1]);
+                              const src = message.metadata?.sources?.[citNum - 1];
+                              return (
+                                <div className="relative inline-block group/cit z-20 mx-0.5 align-text-top">
+                                  <a 
+                                    href={src?.url || '#'}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => { if (!src?.url) e.preventDefault(); }}
+                                    className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-black rounded border border-primary/30 no-underline cursor-pointer transition-all bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground shadow-sm"
+                                  >
+                                    {citNum}
+                                  </a>
+                                  {src && (
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[240px] p-2 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl opacity-0 invisible group-hover/cit:opacity-100 group-hover/cit:visible transition-all duration-200 z-50 flex flex-col gap-1 pointer-events-none">
+                                      <div className="flex items-center gap-1.5 text-zinc-400">
+                                        <Globe2 className="w-3 h-3 shrink-0" />
+                                        <span className="text-[9px] uppercase font-bold tracking-wider truncate">
+                                          {(() => { try { return new URL(src.url).hostname; } catch { return 'Source'; } })()}
+                                        </span>
+                                      </div>
+                                      <p className="text-[11px] font-medium text-zinc-100 leading-snug line-clamp-2">
+                                        {src.title || src.url}
+                                      </p>
+                                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-[5px] border-l-transparent border-r-transparent border-t-zinc-800" />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium" {...props}>
+                                {children}
+                              </a>
+                            );
+                          }
+                        }}
+                      >
+                        {message.content.replace(/\[(\d+)\]/g, '[$1](citation:$1)')}
+                      </ReactMarkdown>
+                    </div>
+
+                    {/* Image Results — Expandable Sidebar Version */}
+                    {message.role === 'assistant' && message.metadata?.images && message.metadata.images.length > 0 && (() => {
+                      const imgs = message.metadata.images;
+                      const isExpanded = expandedImagesMsgId === message.id;
+                      return (
+                        <div className="mt-4 space-y-2">
+                          <div className="flex items-center gap-2 px-1">
+                            <ImageIcon className="w-3.5 h-3.5 text-emerald-500/80" />
+                            <span className="text-xs font-black uppercase tracking-[0.1em] text-muted-foreground/90">Photos</span>
+                            <span className="text-xs font-bold text-muted-foreground/60">{imgs.length} found</span>
+                            <div className="h-px flex-1 bg-border/40" />
+                          </div>
+                          
+                          {!isExpanded ? (
+                            <button
+                              onClick={() => setExpandedImagesMsgId(message.id as number)}
+                              className="flex items-center gap-2 px-3 py-1.5 mt-1 text-xs font-bold text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-all shadow-sm"
+                            >
+                              View {imgs.length} Images
+                            </button>
+                          ) : (
+                            <div className="space-y-2.5">
+                              <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                {imgs.map((img: any, idx: number) => (
+                                  <a
+                                    key={idx}
+                                    href={img.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="group relative aspect-video bg-muted rounded-lg overflow-hidden border border-border block hover:border-emerald-500/50 transition-colors shadow-sm"
+                                    title={img.title}
+                                  >
+                                    <img 
+                                      src={img.image} 
+                                      alt={img.title}
+                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                      loading="lazy"
+                                      onError={(e) => {
+                                         (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGI1Y2Y2IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHJlY3QgeD0iMyIgeT0iMyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgcnk9IjIiPjwvcmVjdD48Y2lyY2xlIGN4PSI4LjUiIGN5PSI4LjUiIHI9IjEuNSI+PC9jaXJjbGU+PHBvbHlsaW5lIHBvaW50cz0iMjEgMTUgMTYgMTAgNSAyMSI+PC9wb2x5bGluZT48L3N2Zz4=';
+                                      }}
+                                    />
+                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 pt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <p className="text-[9px] text-white/90 font-medium truncate">{img.title}</p>
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                              <button
+                                onClick={() => setExpandedImagesMsgId(null)}
+                                className="flex flex-row items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-muted-foreground bg-muted/50 hover:bg-muted border border-border/40 rounded-lg transition-all"
+                              >
+                                <ChevronDown className="w-2.5 h-2.5 rotate-180" /> Hide
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Video Results — Expandable Sidebar Version */}
+                    {message.role === 'assistant' && message.metadata?.videos && message.metadata.videos.length > 0 && (() => {
+                      const vids = message.metadata.videos;
+                      const isExpanded = expandedVideosMsgId === message.id;
+                      return (
+                        <div className="mt-4 space-y-2">
+                          <div className="flex items-center gap-2 px-1">
+                            <Video className="w-3.5 h-3.5 text-purple-500/80" />
+                            <span className="text-xs font-black uppercase tracking-[0.1em] text-muted-foreground/90">Videos</span>
+                            <span className="text-xs font-bold text-muted-foreground/60">{vids.length} found</span>
+                            <div className="h-px flex-1 bg-border/40" />
+                          </div>
+                          
+                          {!isExpanded ? (
+                            <button
+                              onClick={() => setExpandedVideosMsgId(message.id as number)}
+                              className="flex items-center gap-2 px-3 py-1.5 mt-1 text-xs font-bold text-purple-600 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg transition-all shadow-sm"
+                            >
+                              View {vids.length} Videos
+                            </button>
+                          ) : (
+                            <div className="space-y-2.5">
+                              <div className="grid grid-cols-1 gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                {vids.map((vid: any, idx: number) => {
+                                  // Extract YT video ID for thumbnail
+                                  let thumbUrl = '';
+                                  const ytMatch = vid.url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+                                  if (ytMatch && ytMatch[1]) {
+                                    thumbUrl = `https://img.youtube.com/vi/${ytMatch[1]}/mqdefault.jpg`;
+                                  }
+                                  return (
+                                    <a
+                                      key={idx}
+                                      href={vid.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="group flex gap-2.5 p-2 bg-card/60 rounded-lg border border-border/50 hover:border-purple-500/50 transition-colors shadow-sm"
+                                    >
+                                      <div className="relative shrink-0 w-24 aspect-video bg-muted rounded-md overflow-hidden flex items-center justify-center">
+                                        {thumbUrl ? (
+                                          <img src={thumbUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                        ) : (
+                                          <Video className="w-5 h-5 text-muted-foreground/30" />
+                                        )}
+                                        <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                                        <div className="absolute flex items-center justify-center w-6 h-6 rounded-full bg-black/50 backdrop-blur-sm shadow-lg pointer-events-none group-hover:scale-110 transition-transform">
+                                          <Play className="w-2.5 h-2.5 text-white ml-0.5" fill="currentColor" />
+                                        </div>
+                                        {vid.duration && (
+                                          <div className="absolute bottom-1 right-1 px-1 py-0.5 bg-black/80 rounded-[3px] block text-[8px] font-bold text-white tracking-wider">
+                                            {vid.duration}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col flex-1 min-w-0 py-0.5 justify-center">
+                                        <h4 className="text-xs font-semibold text-foreground/90 line-clamp-2 leading-snug group-hover:text-purple-400 transition-colors">
+                                          {vid.title}
+                                        </h4>
+                                      </div>
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                              <button
+                                onClick={() => setExpandedVideosMsgId(null)}
+                                className="flex flex-row items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-muted-foreground bg-muted/50 hover:bg-muted border border-border/40 rounded-lg transition-all"
+                              >
+                                <ChevronDown className="w-2.5 h-2.5 rotate-180" /> Hide
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   
                   {/* Actions */}
-                  <div className={`flex items-center gap-2 mt-2 ${message.role === 'user' ? 'justify-end' : ''}`}>
+                  <div className={cn(
+                    "flex items-center gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
+                    message.role === 'user' ? 'justify-end' : ''
+                  )}>
                     <button
                       onClick={() => copyToClipboard(message.content, `msg-${index}`)}
                       className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                      title="Copy message"
                     >
                       {copiedId === `msg-${index}` ? (
-                        <Check className="w-3 h-3" />
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
                       ) : (
-                        <Copy className="w-3 h-3" />
+                        <Copy className="w-3.5 h-3.5" />
                       )}
                     </button>
-                    <span className="text-xs text-muted-foreground">
+                    {message.role !== 'user' && message.id && (
+                      <button
+                        onClick={() => handleRewriteMessage(message.id as number)}
+                        disabled={deletingMsgId === message.id}
+                        className="p-1 hover:bg-amber-500/10 rounded text-muted-foreground hover:text-amber-500 disabled:opacity-50"
+                        title="Rewrite prompt (regenerates response without subsequent context)"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {message.role === 'user' && message.id && (
+                      <button
+                        onClick={() => handleRewindAfterMessage(message.id as number)}
+                        disabled={deletingMsgId === message.id}
+                        className="p-1 hover:bg-emerald-500/10 rounded text-muted-foreground hover:text-emerald-500 disabled:opacity-50"
+                        title="Reverse context (keep this message, delete answers)"
+                      >
+                        <ArrowUpFromLine className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {message.role === 'user' && message.id && (
+                      <button
+                        onClick={() => handleEditMessage(message.id as number, message.content)}
+                        disabled={deletingMsgId === message.id}
+                        className="p-1 hover:bg-blue-500/10 rounded text-muted-foreground hover:text-blue-500 disabled:opacity-50"
+                        title="Edit and resend message"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {message.id && (
+                      <button
+                        onClick={() => handleDeleteMessage(message.id as number)}
+                        disabled={deletingMsgId === message.id}
+                        className="p-1 hover:bg-red-500/10 rounded text-muted-foreground hover:text-red-500 disabled:opacity-50"
+                        title="Delete message"
+                      >
+                        {deletingMsgId === message.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                    <span className="text-xs text-muted-foreground ml-1">
                       {formatTime(message.created_at)}
                     </span>
                   </div>
@@ -331,6 +762,26 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
         {/* Input Area */}
         <div className={`p-4 border-t border-border bg-card relative z-20 ${isDocked ? 'pb-20' : 'pb-4'}`}>
           <div className="max-w-3xl mx-auto flex flex-col gap-3 mb-2">
+            
+            {/* Active Reference Pill */}
+            {activeReference && (
+              <div className="flex animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl max-w-full group">
+                   <div className="flex items-center gap-1.5 min-w-0">
+                     <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 shrink-0">Reference</span>
+                     <div className="w-px h-3 bg-emerald-500/30 shrink-0" />
+                     <span className="text-xs font-medium text-emerald-700/80 truncate italic">"{activeReference.textSnippet}"</span>
+                   </div>
+                   <button 
+                     onClick={() => setActiveReference(null)}
+                     className="p-1 hover:bg-emerald-500/20 rounded-md transition-colors shrink-0 text-emerald-600/60 hover:text-emerald-600"
+                   >
+                     <X className="w-3.5 h-3.5" />
+                   </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-end gap-2">
               <div className="flex-1 relative bg-background border border-input rounded-2xl focus-within:ring-2 focus-within:ring-ring transition-all group shadow-sm flex items-end gap-2 p-2">
                 
@@ -384,7 +835,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                 {/* Send Button */}
                 <div className="shrink-0 pb-1">
                   <button
-                    onClick={handleSend}
+                    onClick={() => handleSend()}
                     disabled={!input.trim() || isLoading || hasCredentials === false}
                     className="w-8 h-8 bg-primary text-primary-foreground rounded-full shadow-lg shadow-primary/20 hover:bg-primary/90 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
                   >
@@ -561,7 +1012,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
              </div>
           ) : (
             <div className="divide-y divide-border">
-              {conversations.map((conv) => (
+              {Array.isArray(conversations) && conversations.map((conv) => (
                 <div
                   key={conv.conversation_id}
                   className={cn(

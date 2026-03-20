@@ -11,6 +11,7 @@ export interface NodeSchema {
   fields: NodeField[];
   inputs: NodeHandle[];
   outputs: NodeHandle[];
+  outputFields?: string[];
 }
 
 export interface NodeField {
@@ -57,7 +58,7 @@ const nodeService = {
    * Get all AI providers and their models with credential status
    */
   async getAIModels(): Promise<{ providers: AIProvider[] }> {
-    const response = await apiClient.get<{ providers: AIProvider[] }>('/nodes/models/');
+    const response = await apiClient.get<{ providers: AIProvider[] }>(`/nodes/models/?t=${Date.now()}`);
     return response.data;
   },
 

@@ -389,6 +389,7 @@ export default function WorkflowEditor() {
         source: pendingSourceNodeId,
         sourceHandle: pendingSourceHandleId || 'output-0',
         target: newNodeId,
+        targetHandle: 'input-0',
         type: 'deletable',
         animated: true,
         style: { stroke: '#888', strokeWidth: 2 },

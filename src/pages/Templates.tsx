@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Search, Loader2, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
-import { toast } from 'sonner';
-import templatesService, { type PaginatedTemplates } from '../api/templates';
+import { useQuery } from '@tanstack/react-query';
+import templatesService from '../api/templates';
 import TemplateCard from './templates/TemplateCard';
 import Select from '../components/ui/Select';
 
@@ -16,53 +16,34 @@ const CATEGORIES = [
 ];
 
 export default function TemplatesPage() {
-  const [data, setData] = useState<PaginatedTemplates | null>(null);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searching, setSearching] = useState(false);
   
   // Filters
   const [category, setCategory] = useState('all');
   const [sort, setSort] = useState('usage_count');
   const [page, setPage] = useState(1);
 
-  const loadTemplates = useCallback(async (isSearch = false) => {
-    try {
-      if (isSearch) setSearching(true);
-      else setLoading(true);
-      
+  const { data, isLoading: loading, isFetching: searching } = useQuery({
+    queryKey: ['templates', category, sort, page, searchQuery],
+    queryFn: async () => {
       const params = {
           category: category === 'all' ? undefined : category,
           sort,
           page
       };
 
-      let result: PaginatedTemplates;
-      
       if (searchQuery.trim()) {
-          result = await templatesService.search({ query: searchQuery, ...params });
+          return await templatesService.search({ query: searchQuery, ...params });
       } else {
-          result = await templatesService.list(params);
+          return await templatesService.list(params);
       }
-      
-      setData(result);
-    } catch (error) {
-      console.error('Failed to load templates', error);
-      toast.error('Failed to load templates');
-    } finally {
-      setLoading(false);
-      setSearching(false);
-    }
-  }, [category, sort, page, searchQuery]);
-
-  useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    loadTemplates(true);
   };
 
   const handlePageChange = (newPage: number) => {

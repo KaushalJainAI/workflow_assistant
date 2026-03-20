@@ -49,9 +49,9 @@ const GenericNode = ({ data, selected, type }: NodeProps) => {
   const iconName = data.icon || config?.icon || 'Box';
   const Icon = IconMap[iconName] || Box;
 
-  // Determine handles from config or fallbacks
-  const inputs = config?.inputs || data.inputs || (nodeType.includes('trigger') ? [] : ['main']);
-  const outputs = config?.outputs || data.outputs || ['main'];
+  // Determine handles — prefer user-customized handles in data over static config defaults
+  const inputs = data.inputs || config?.inputs || (nodeType.includes('trigger') ? [] : ['main']);
+  const outputs = data.outputs || config?.outputs || ['main'];
 
   // Helper to get string ID from handle (works for both string and object handles)
   const getHandleId = (handle: any) => typeof handle === 'object' ? handle.id : handle;
@@ -116,7 +116,7 @@ const GenericNode = ({ data, selected, type }: NodeProps) => {
             type="target" 
             position={Position.Left}
             id={handleId === 'main' ? `input-${index}` : handleId}
-            style={{ top: `${topPercent}%`, transform: 'translateY(-50%)' }}
+            style={{ top: `${topPercent}%`, marginTop: '-8px' }}
             className="w-4 h-4 border-2 border-background bg-muted-foreground/50 hover:bg-primary hover:scale-125 transition-all duration-200"
           />
         );
@@ -157,7 +157,7 @@ const GenericNode = ({ data, selected, type }: NodeProps) => {
               type="source" 
               position={Position.Right}
               id={handleId === 'main' ? `output-${index}` : handleId}
-              style={{ top: `${topPercent}%`, transform: 'translateY(-50%)' }}
+              style={{ top: `${topPercent}%`, marginTop: '-8px' }}
               className="w-4 h-4 border-2 border-background bg-muted-foreground/50 hover:bg-primary hover:scale-125 transition-all duration-200"
             />
             {/* Add node button for unconnected outputs */}
