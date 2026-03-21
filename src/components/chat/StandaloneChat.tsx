@@ -1109,303 +1109,229 @@ export default function StandaloneChat() {
                         )}
                       </div>
 
-                      {/* Quick Summary — Collapsible */}
-                      {message.role === 'assistant' && message.metadata?.summary && (
-                        <div className="mt-4 mb-2">
-                          {(() => {
-                            const isExpanded = expandedSummaryMsgId === message.id;
-                            return (
-                              <div className="group/summary animate-in fade-in slide-in-from-top-2 duration-500">
-                                <button
-                                  onClick={() => setExpandedSummaryMsgId(isExpanded ? null : message.id as number)}
-                                  className={cn(
-                                    "flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition-all border",
-                                    isExpanded 
-                                      ? "bg-primary/5 border-primary/20 text-primary w-full" 
-                                      : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
-                                  )}
-                                >
-                                  <Sparkles className={cn("w-4 h-4", isExpanded ? "text-primary" : "text-muted-foreground/70")} />
-                                  <span className="text-[13px] font-bold tracking-tight">
-                                    {isExpanded ? "Quick Summary" : "View Quick Summary"}
-                                  </span>
-                                  <div className="flex-1" />
-                                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isExpanded && "rotate-180")} />
-                                </button>
-                                
-                                {isExpanded && (
-                                  <div className="mt-2.5 p-5 bg-card/40 backdrop-blur-md border border-primary/20 rounded-2xl animate-in slide-in-from-top-2 duration-300 shadow-sm relative overflow-hidden group">
-                                    {/* Premium accent bar */}
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40" />
-                                    <p className="text-[14px] font-medium text-foreground/90 leading-relaxed italic tracking-tight">
-                                      {message.metadata.summary}
-                                    </p>
-                                  </div>
+                      {/* Quick Summary, Reasoning & Activity Row */}
+                      {message.role === 'assistant' && (message.metadata?.summary || message.metadata?.thinking || (message.metadata?.tool_trace && message.metadata.tool_trace.length > 0)) && (
+                        <div className="flex flex-wrap gap-2 mt-4 mb-2">
+                          {message.metadata?.summary && (
+                            <div className="flex-1 min-w-[140px] group/summary animate-in fade-in slide-in-from-top-2 duration-500">
+                              <button
+                                onClick={() => setExpandedSummaryMsgId(expandedSummaryMsgId === message.id ? null : message.id as number)}
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  expandedSummaryMsgId === message.id
+                                    ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
+                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
+                              >
+                                <Sparkles className={cn("w-4 h-4", expandedSummaryMsgId === message.id ? "text-primary" : "text-muted-foreground/70")} />
+                                <span className="text-[12px] font-bold tracking-tight">Summary</span>
+                                <div className="flex-1" />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedSummaryMsgId === message.id && "rotate-180")} />
+                              </button>
+                            </div>
+                          )}
 
-                      {/* Thinking Process — Collapsible */}
-                      {message.role === 'assistant' && (
-                        <div className="mt-4 mb-2">
-                          {message.metadata?.thinking ? (() => {
-                            const isExpanded = expandedThinkingMsgId === message.id;
-                            return (
-                              <div className="group/thinking animate-in fade-in slide-in-from-top-2 duration-500">
-                                <button
-                                  onClick={() => setExpandedThinkingMsgId(isExpanded ? null : message.id as number)}
-                                  className={cn(
-                                    "flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition-all border",
-                                    isExpanded 
-                                      ? "bg-primary/5 border-primary/20 text-primary w-full" 
-                                      : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
-                                  )}
-                                >
-                                  <BrainCircuit className={cn("w-4 h-4", isExpanded ? "text-primary" : "text-muted-foreground/70")} />
-                                  <span className="text-[13px] font-bold tracking-tight">
-                                    {isExpanded ? "Thinking Process" : "View Model Reasoning"}
-                                  </span>
-                                  <div className="flex-1" />
-                                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isExpanded && "rotate-180")} />
-                                </button>
-                                
-                                {isExpanded && (
-                                  <div className="mt-2.5 p-4 bg-muted/20 border border-border/30 rounded-2xl animate-in slide-in-from-top-2 duration-300">
-                                    <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed text-muted-foreground italic select-text">
-                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                        {message.metadata.thinking}
-                                      </ReactMarkdown>
-                                    </div>
-                                  </div>
+                          {message.metadata?.thinking && (
+                            <div className="flex-1 min-w-[140px] group/thinking animate-in fade-in slide-in-from-top-2 duration-500">
+                              <button
+                                onClick={() => setExpandedThinkingMsgId(expandedThinkingMsgId === message.id ? null : message.id as number)}
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  expandedThinkingMsgId === message.id
+                                    ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
+                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
-                              </div>
-                            );
-                          })() : (
-                            (!message.metadata?.tool_trace || message.metadata.tool_trace.length === 0) && (
-                              <div className="flex flex-col gap-2.5 px-3 py-2 rounded-xl border border-dashed border-border/30 bg-muted/5 text-muted-foreground/40 cursor-default">
-                                <div className="flex items-center gap-2">
-                                    <BrainCircuit className="w-4 h-4 opacity-30" />
-                                    <span className="text-[12px] font-medium italic">Model reasoning not fully captured</span>
-                                </div>
-                              </div>
-                            )
+                              >
+                                <BrainCircuit className={cn("w-4 h-4", expandedThinkingMsgId === message.id ? "text-primary" : "text-muted-foreground/70")} />
+                                <span className="text-[12px] font-bold tracking-tight">Reasoning</span>
+                                <div className="flex-1" />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedThinkingMsgId === message.id && "rotate-180")} />
+                              </button>
+                            </div>
+                          )}
+
+                          {message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
+                            <div className="flex-1 min-w-[140px] group/activity animate-in fade-in slide-in-from-top-2 duration-500">
+                              <button
+                                onClick={() => setExpandedActivityMsgId(expandedActivityMsgId === message.id ? null : message.id as number)}
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  expandedActivityMsgId === message.id
+                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-600 shadow-sm" 
+                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
+                                )}
+                              >
+                                <Zap className={cn("w-4 h-4", expandedActivityMsgId === message.id ? "text-amber-600" : "text-muted-foreground/70")} />
+                                <span className="text-[12px] font-bold tracking-tight">Activity</span>
+                                <div className="flex-1" />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedActivityMsgId === message.id && "rotate-180")} />
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
 
-                      {/* Tool Activity Trace — shows which tools the agent called */}
-                      {message.role === 'assistant' && message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
-                        <div className="mt-4 space-y-1.5">
-                          <div className="flex items-center gap-3 px-1 mb-2">
-                            <Zap className="w-4 h-4 text-amber-500/90" />
-                            <span className="text-sm font-black uppercase tracking-[0.15em] text-muted-foreground/90">Agent Activity</span>
-                            <div className="h-px flex-1 bg-border/30" />
-                          </div>
-                          <div className="space-y-1">
-                            {(() => {
-                              const allTraces = message.metadata.tool_trace;
-                              const isExpanded = expandedActivityMsgId === message.id;
-                              const INITIAL_COUNT = 3;
-                              const visibleTraces = isExpanded ? allTraces : allTraces.slice(0, INITIAL_COUNT);
-                              const hasMore = allTraces.length > INITIAL_COUNT;
+                      {/* Expanded Summary Content */}
+                      {message.role === 'assistant' && expandedSummaryMsgId === message.id && message.metadata?.summary && (
+                        <div className="mt-2 p-5 bg-card/40 backdrop-blur-md border border-primary/20 rounded-2xl animate-in slide-in-from-top-2 duration-300 shadow-sm relative overflow-hidden group">
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40" />
+                          <p className="text-[14px] font-medium text-foreground/90 leading-relaxed italic tracking-tight">
+                            {message.metadata.summary}
+                          </p>
+                        </div>
+                      )}
 
-                              return (
-                                <>
-                                  {visibleTraces.map((trace: any, i: number) => (
-                                    <div
-                                      key={i}
-                                      className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-left-2 py-1.5 group/trace border-b border-border/10 last:border-0"
-                                      style={{ animationDelay: `${i * 50}ms` }}
-                                    >
-                                      <div className="flex items-center gap-3.5 text-[14px] text-muted-foreground">
-                                        <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/15 text-xs font-black text-amber-600 shrink-0">
-                                          {trace.iteration || i + 1}
-                                        </span>
-                                        <span className="font-mono font-bold text-primary text-[15px]">{trace.tool}</span>
-                                        {trace.args?.query && (
-                                          <span className="truncate max-w-[360px] text-foreground/70 italic text-[14px] pl-1">"{stripXmlTags(trace.args.query)}"</span>
-                                        )}
-                                      </div>
-                                      {trace.thought && (
-                                        <div className="pl-[42px] flex flex-col gap-1">
-                                           <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.1em] text-muted-foreground/40">
-                                              <BrainCircuit className="w-3.5 h-3.5" />
-                                              <span>Reasoning</span>
-                                           </div>
-                                           <p className="text-[13px] text-muted-foreground/60 italic leading-relaxed border-l-2 border-primary/10 pl-3">
-                                              {trace.thought}
-                                           </p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                  {hasMore && (
-                                    <button
-                                      onClick={() => setExpandedActivityMsgId(isExpanded ? null : message.id as number)}
-                                      className="flex items-center gap-2 px-3 py-1.5 mt-2 text-[13px] font-bold text-foreground/70 bg-muted/50 hover:text-amber-600 hover:bg-amber-500/15 border border-border/40 rounded-lg transition-all shadow-sm"
-                                    >
-                                      <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} />
-                                      {isExpanded ? "Show less" : `+${allTraces.length - INITIAL_COUNT} more actions`}
-                                    </button>
-                                  )}
-                                </>
-                              );
-                            })()}
+                      {/* Expanded Thinking Content */}
+                      {message.role === 'assistant' && expandedThinkingMsgId === message.id && message.metadata?.thinking && (
+                        <div className="mt-2 p-4 bg-muted/20 border border-border/30 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                          <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed text-muted-foreground italic select-text">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {message.metadata.thinking}
+                            </ReactMarkdown>
                           </div>
                         </div>
                       )}
 
-                      {/* Discovered Sources Section — Link Capture Style */}
-                      {message.role === 'assistant' && message.metadata?.sources?.length > 0 && (() => {
-                        const allSources = (message.metadata.sources || []).map((s: any) => ({ ...s, type: 'link' as const }));
-                        const isExpanded = expandedSourcesMsgId === message.id;
+                      {/* Fallback reasoning indicator if not present */}
+                      {message.role === 'assistant' && !message.metadata?.thinking && (!message.metadata?.tool_trace || message.metadata.tool_trace.length === 0) && (
+                        <div className="mt-4 mb-2 flex flex-col gap-2.5 px-3 py-2 rounded-xl border border-dashed border-border/30 bg-muted/5 text-muted-foreground/40 cursor-default">
+                          <div className="flex items-center gap-2">
+                              <BrainCircuit className="w-4 h-4 opacity-30" />
+                              <span className="text-[12px] font-medium italic">Model reasoning not fully captured</span>
+                          </div>
+                        </div>
+                      )}
 
-                        return (
-                          <div className="mt-6 space-y-3">
-                            <button
-                              onClick={() => setExpandedSourcesMsgId(isExpanded ? null : message.id as number)}
-                              className={cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-xl transition-all w-full group",
-                                isExpanded ? "bg-primary/5 border border-primary/20" : "bg-muted/30 border border-border/40 hover:bg-muted/50"
-                              )}
-                            >
-                              <div className={cn(
-                                "w-7 h-7 rounded-lg flex items-center justify-center transition-colors",
-                                isExpanded ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground/60 group-hover:bg-primary/10 group-hover:text-primary/60"
-                              )}>
-                                <Globe2 className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1 text-left">
-                                <span className="text-[13px] font-bold text-foreground/80">
-                                  {allSources.length} {allSources.length === 1 ? 'Source' : 'Sources'} Found
-                                </span>
-                                {!isExpanded && (
-                                  <p className="text-[10px] text-muted-foreground/50 font-medium truncate max-w-[300px]">
-                                    {allSources.map((s: any) => (() => { try { return new URL(s.url).hostname; } catch { return 'Source'; } })()).join(', ')}
-                                  </p>
+                      {/* Tool Activity Trace — shows which tools the agent called */}
+                      {message.role === 'assistant' && expandedActivityMsgId === message.id && message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
+                        <div className="mt-2 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                          <div className="flex items-center gap-3 px-1 mb-3">
+                            <Zap className="w-3.5 h-3.5 text-amber-500/70" />
+                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600/70">Agent Activity Log</span>
+                            <div className="h-px flex-1 bg-amber-500/10" />
+                          </div>
+                          <div className="space-y-1">
+                            {message.metadata.tool_trace.map((trace: any, i: number) => (
+                              <div
+                                key={i}
+                                className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-left-2 py-2 group/trace border-b border-amber-500/5 last:border-0"
+                                style={{ animationDelay: `${i * 30}ms` }}
+                              >
+                                <div className="flex items-center gap-3.5 text-[14px] text-muted-foreground">
+                                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10 text-[10px] font-black text-amber-600 shrink-0 border border-amber-500/10">
+                                    {trace.iteration || i + 1}
+                                  </span>
+                                  <span className="font-mono font-bold text-amber-600/80 text-[14px]">{trace.tool}</span>
+                                  {trace.args?.query && (
+                                    <span className="truncate max-w-[360px] text-foreground/60 italic text-[13px] pl-1">"{stripXmlTags(trace.args.query)}"</span>
+                                  )}
+                                  {trace.summary && !trace.args?.query && (
+                                    <span className="truncate max-w-[360px] text-foreground/50 italic text-[12px] pl-1">{stripXmlTags(trace.summary)}</span>
+                                  )}
+                                </div>
+                                {trace.thought && (
+                                  <div className="pl-[38px] flex flex-col gap-1">
+                                     <p className="text-[12px] text-muted-foreground/60 italic leading-relaxed border-l-2 border-amber-500/10 pl-3">
+                                        {trace.thought}
+                                     </p>
+                                  </div>
                                 )}
                               </div>
-                              <ChevronDown className={cn("w-4 h-4 text-muted-foreground/30 group-hover:text-primary/50 transition-transform duration-300", isExpanded && "rotate-180")} />
-                            </button>
-
-                            {isExpanded && (
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
-                                {allSources.map((item: any, i: number) => (
-                                  <MediaPreview 
-                                    key={i}
-                                    url={item.url}
-                                    type="link"
-                                    title={item.title}
-                                    source={item.publisher || item.source}
-                                    thumbnail={item.thumbnail}
-                                    className="animate-in fade-in zoom-in-95 duration-500"
-                                  />
-                                ))}
-                              </div>
-                            )}
+                            ))}
                           </div>
-                        );
-                      })()}
+                        </div>
+                      )}
 
-                      {/* Discovered Images Section — Collapsible Menu */}
-                      {message.role === 'assistant' && message.metadata?.images?.length > 0 && (() => {
-                        const allImages = (message.metadata.images || []).map((i: any) => ({ 
-                          url: i.image, 
-                          title: i.title, 
-                          source: i.source, 
-                          type: 'image' as const 
-                        }));
-                        const isExpanded = expandedImagesMsgId === message.id;
-
-                        return (
-                          <div className="mt-6 space-y-3">
+                      {/* Discovered Media Row (Sources, Images, Videos on one line) */}
+                      {message.role === 'assistant' && (message.metadata?.sources?.length > 0 || message.metadata?.images?.length > 0 || message.metadata?.videos?.length > 0) && (
+                        <div className="mt-6 flex flex-wrap gap-2">
+                          {message.metadata?.sources?.length > 0 && (
                             <button
-                              onClick={() => setExpandedImagesMsgId(isExpanded ? null : message.id as number)}
+                              onClick={() => setExpandedSourcesMsgId(expandedSourcesMsgId === message.id ? null : message.id as number)}
                               className={cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-xl transition-all w-full group",
-                                isExpanded ? "bg-emerald-500/5 border border-emerald-500/20" : "bg-muted/30 border border-border/40 hover:bg-muted/50"
+                                "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
+                                expandedSourcesMsgId === message.id ? "bg-primary/10 border-primary/30 text-primary shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                               )}
                             >
-                              <div className={cn(
-                                "w-7 h-7 rounded-lg flex items-center justify-center transition-colors",
-                                isExpanded ? "bg-emerald-500/20 text-emerald-600" : "bg-muted text-muted-foreground/60 group-hover:bg-emerald-500/10 group-hover:text-emerald-500/60"
-                              )}>
-                                <ImageIcon className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1 text-left">
-                                <span className="text-[13px] font-bold text-foreground/80">
-                                  {allImages.length} {allImages.length === 1 ? 'Image' : 'Images'} Discovered
-                                </span>
-                              </div>
-                              <ChevronDown className={cn("w-4 h-4 text-muted-foreground/30 group-hover:text-emerald-500/50 transition-transform duration-300", isExpanded && "rotate-180")} />
+                              <Globe2 className={cn("w-3.5 h-3.5", expandedSourcesMsgId === message.id ? "text-primary" : "text-muted-foreground/60 group-hover:text-primary")} />
+                              <span className="text-[12px] font-bold">{message.metadata.sources.length} Sources</span>
                             </button>
+                          )}
 
-                            {isExpanded && (
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
-                                {allImages.map((item: any, i: number) => (
-                                  <MediaPreview 
-                                    key={i}
-                                    url={item.url}
-                                    type="image"
-                                    title={item.title}
-                                    source={item.source}
-                                    className="animate-in fade-in zoom-in-95 duration-500"
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {/* Discovered Videos Section — Collapsible Menu */}
-                      {message.role === 'assistant' && message.metadata?.videos?.length > 0 && (() => {
-                        const allVideos = (message.metadata.videos || []).map((v: any) => ({ ...v, type: 'video' as const }));
-                        const isExpanded = expandedVideosMsgId === message.id;
-
-                        return (
-                          <div className="mt-6 space-y-3">
+                          {message.metadata?.images?.length > 0 && (
                             <button
-                              onClick={() => setExpandedVideosMsgId(isExpanded ? null : message.id as number)}
+                              onClick={() => setExpandedImagesMsgId(expandedImagesMsgId === message.id ? null : message.id as number)}
                               className={cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-xl transition-all w-full group",
-                                isExpanded ? "bg-purple-500/5 border border-purple-500/20" : "bg-muted/30 border border-border/40 hover:bg-muted/50"
+                                "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
+                                expandedImagesMsgId === message.id ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                               )}
                             >
-                              <div className={cn(
-                                "w-7 h-7 rounded-lg flex items-center justify-center transition-colors",
-                                isExpanded ? "bg-purple-500/20 text-purple-600" : "bg-muted text-muted-foreground/60 group-hover:bg-purple-500/10 group-hover:text-purple-500/60"
-                              )}>
-                                <Video className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1 text-left">
-                                <span className="text-[13px] font-bold text-foreground/80">
-                                  {allVideos.length} {allVideos.length === 1 ? 'Video' : 'Videos'} Found
-                                </span>
-                              </div>
-                              <ChevronDown className={cn("w-4 h-4 text-muted-foreground/30 group-hover:text-purple-500/50 transition-transform duration-300", isExpanded && "rotate-180")} />
+                              <ImageIcon className={cn("w-3.5 h-3.5", expandedImagesMsgId === message.id ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
+                              <span className="text-[12px] font-bold">{message.metadata.images.length} Images</span>
                             </button>
+                          )}
 
-                            {isExpanded && (
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
-                                {allVideos.map((item: any, i: number) => (
-                                  <MediaPreview 
-                                    key={i}
-                                    url={item.url}
-                                    type="video"
-                                    title={item.title}
-                                    source={item.publisher || item.source}
-                                    className="animate-in fade-in zoom-in-95 duration-500"
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
+                          {message.metadata?.videos?.length > 0 && (
+                            <button
+                              onClick={() => setExpandedVideosMsgId(expandedVideosMsgId === message.id ? null : message.id as number)}
+                              className={cn(
+                                "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
+                                expandedVideosMsgId === message.id ? "bg-purple-500/10 border-purple-500/30 text-purple-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                              )}
+                            >
+                              <Video className={cn("w-3.5 h-3.5", expandedVideosMsgId === message.id ? "text-purple-600" : "text-muted-foreground/60 group-hover:text-purple-500")} />
+                              <span className="text-[12px] font-bold">{message.metadata.videos.length} Videos</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Content areas below the row triggers */}
+                      {message.role === 'assistant' && expandedSourcesMsgId === message.id && message.metadata?.sources?.length > 0 && (
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
+                          {message.metadata.sources.map((item: any, i: number) => (
+                            <MediaPreview 
+                              key={i}
+                              url={item.url}
+                              type="link"
+                              title={item.title}
+                              source={item.publisher || item.source}
+                              thumbnail={item.thumbnail}
+                              className="animate-in fade-in zoom-in-95 duration-500"
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {message.role === 'assistant' && expandedImagesMsgId === message.id && message.metadata?.images?.length > 0 && (
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
+                          {(message.metadata.images || []).map((item: any, i: number) => (
+                            <MediaPreview 
+                              key={i}
+                              url={item.image || item.url}
+                              type="image"
+                              title={item.title}
+                              source={item.source}
+                              className="animate-in fade-in zoom-in-95 duration-500"
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {message.role === 'assistant' && expandedVideosMsgId === message.id && message.metadata?.videos?.length > 0 && (
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
+                          {(message.metadata.videos || []).map((item: any, i: number) => (
+                            <MediaPreview 
+                              key={i}
+                              url={item.url}
+                              type="video"
+                              title={item.title}
+                              source={item.publisher || item.source}
+                              className="animate-in fade-in zoom-in-95 duration-500"
+                            />
+                          ))}
+                        </div>
+                      )}
 
 
                       {/* Workflow Suggestion Card */}
@@ -1681,99 +1607,81 @@ export default function StandaloneChat() {
                       </div>
                     )}
 
-                    {/* Live Sources — Link Capture Style */}
-                    {liveSources.length > 0 && (
-                      <div className="space-y-3 animate-in fade-in duration-300">
-                        <button
-                          onClick={() => setIsLiveSourcesExpanded(!isLiveSourcesExpanded)}
-                          className={cn(
-                            "flex items-center gap-3 px-3 py-2 rounded-xl transition-all w-full group",
-                            isLiveSourcesExpanded ? "bg-primary/5 border border-primary/20" : "bg-muted/30 border border-border/40 hover:bg-muted/50"
-                          )}
-                        >
-                          <div className={cn(
-                            "w-7 h-7 rounded-lg flex items-center justify-center transition-colors shadow-sm",
-                            isLiveSourcesExpanded ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground/60 group-hover:bg-primary/10 group-hover:text-primary/60"
-                          )}>
-                            <Globe2 className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 text-left">
-                            <span className="text-[13px] font-bold text-foreground/80">
-                              {liveSources.length} {liveSources.length === 1 ? 'Source' : 'Sources'} Discovered...
-                            </span>
-                          </div>
-                          <ChevronDown className={cn("w-4 h-4 text-muted-foreground/30 group-hover:text-primary/50 transition-transform duration-300", isLiveSourcesExpanded && "rotate-180")} />
-                        </button>
-
-                        {isLiveSourcesExpanded && (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 px-1">
-                            {liveSources.slice(0, 3).map((source, i) => (
-                              <MediaPreview 
-                                key={i}
-                                url={source.url}
-                                type="link"
-                                title={source.title}
-                                thumbnail={source.thumbnail}
-                                className="opacity-80 hover:opacity-100 animate-in zoom-in-95 duration-300"
-                              />
-                            ))}
-                            {liveSources.length > 3 && (
-                              <div className="flex items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/20 text-[10px] font-bold text-muted-foreground/40 italic">
-                                 +{liveSources.length - 3} more...
-                              </div>
+                    {/* Live Discoveries Row — Sources and Media */}
+                    {(liveSources.length > 0 || liveImages.length > 0 || liveVideos.length > 0) && (
+                      <div className="mt-4 flex flex-wrap gap-2 animate-in fade-in duration-300">
+                        {liveSources.length > 0 && (
+                          <button
+                            onClick={() => setIsLiveSourcesExpanded(!isLiveSourcesExpanded)}
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
+                              isLiveSourcesExpanded ? "bg-primary/10 border-primary/30 text-primary shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                             )}
+                          >
+                            <Globe2 className={cn("w-3.5 h-3.5", isLiveSourcesExpanded ? "text-primary" : "text-muted-foreground/60 group-hover:text-primary")} />
+                            <span className="text-[12px] font-bold">{liveSources.length} Sources</span>
+                            <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveSourcesExpanded && "rotate-180")} />
+                          </button>
+                        )}
+
+                        {(liveImages.length > 0 || liveVideos.length > 0) && (
+                          <button
+                            onClick={() => setIsLiveMediaExpanded(!isLiveMediaExpanded)}
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
+                              isLiveMediaExpanded ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                            )}
+                          >
+                            <Sparkles className={cn("w-3.5 h-3.5", isLiveMediaExpanded ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
+                            <span className="text-[12px] font-bold">{liveImages.length + liveVideos.length} Media</span>
+                            <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveMediaExpanded && "rotate-180")} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Live Expanded Areas */}
+                    {liveSources.length > 0 && isLiveSourcesExpanded && (
+                      <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 px-1 animate-in slide-in-from-top-2 duration-300">
+                        {liveSources.slice(0, 3).map((source, i) => (
+                          <MediaPreview 
+                            key={i}
+                            url={source.url}
+                            type="link"
+                            title={source.title}
+                            thumbnail={source.thumbnail}
+                            className="opacity-80 hover:opacity-100 animate-in zoom-in-95 duration-300"
+                          />
+                        ))}
+                        {liveSources.length > 3 && (
+                          <div className="flex items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/20 text-[10px] font-bold text-muted-foreground/40 italic">
+                             +{liveSources.length - 3} more...
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Live Media Discoveries — Collapsible Menu */}
-                    {(liveImages.length > 0 || liveVideos.length > 0) && (
-                       <div className="space-y-3 animate-in fade-in duration-300 pt-2">
-                         <button
-                            onClick={() => setIsLiveMediaExpanded(!isLiveMediaExpanded)}
-                            className={cn(
-                              "flex items-center gap-3 px-3 py-2 rounded-xl transition-all w-full group",
-                              isLiveMediaExpanded ? "bg-emerald-500/5 border border-emerald-500/20" : "bg-muted/30 border border-border/40 hover:bg-muted/50"
-                            )}
-                          >
-                            <div className={cn(
-                              "w-7 h-7 rounded-lg flex items-center justify-center transition-colors shadow-sm",
-                              isLiveMediaExpanded ? "bg-emerald-500/20 text-emerald-600" : "bg-muted text-muted-foreground/60 group-hover:bg-emerald-500/10 group-hover:text-emerald-500/60"
-                            )}>
-                              <Sparkles className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 text-left">
-                              <span className="text-[13px] font-bold text-foreground/80">
-                                {liveImages.length + liveVideos.length} Visual Findings Found
-                              </span>
-                            </div>
-                            <ChevronDown className={cn("w-4 h-4 text-muted-foreground/30 group-hover:text-emerald-500/50 transition-transform duration-300", isLiveMediaExpanded && "rotate-180")} />
-                          </button>
-
-                         {isLiveMediaExpanded && (
-                           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-1 animate-in slide-in-from-top-2 duration-300">
-                             {liveImages.slice(0, 4).map((img, i) => (
-                               <MediaPreview 
-                                 key={`img-${i}`}
-                                 url={img.image || img.url}
-                                 type="image"
-                                 className="w-32 h-20 shrink-0 shadow-sm"
-                               />
-                             ))}
-                             {liveVideos.slice(0, 4).map((vid, i) => (
-                               <MediaPreview 
-                                 key={`vid-${i}`}
-                                 url={vid.url}
-                                 type="video"
-                                 className="w-32 h-20 shrink-0 shadow-sm"
-                               />
-                             ))}
-                             {(liveImages.length > 4 || liveVideos.length > 4) && (
-                               <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-black text-muted-foreground/30 uppercase tracking-widest text-center px-2">
-                                  +{liveImages.length + liveVideos.length - 8} more
-                               </div>
-                             )}
+                    {(liveImages.length > 0 || liveVideos.length > 0) && isLiveMediaExpanded && (
+                       <div className="mt-3 flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-1 animate-in slide-in-from-top-2 duration-300">
+                         {liveImages.slice(0, 4).map((img, i) => (
+                           <MediaPreview 
+                             key={`img-${i}`}
+                             url={img.image || img.url}
+                             type="image"
+                             className="w-32 h-20 shrink-0 shadow-sm"
+                           />
+                         ))}
+                         {liveVideos.slice(0, 4).map((vid, i) => (
+                           <MediaPreview 
+                             key={`vid-${i}`}
+                             url={vid.url}
+                             type="video"
+                             className="w-32 h-20 shrink-0 shadow-sm"
+                           />
+                         ))}
+                         {(liveImages.length > 4 || liveVideos.length > 4) && (
+                           <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-black text-muted-foreground/30 uppercase tracking-widest text-center px-2">
+                              +{liveImages.length + liveVideos.length - 8} more
                            </div>
                          )}
                        </div>
