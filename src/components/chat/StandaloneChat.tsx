@@ -102,6 +102,7 @@ export default function StandaloneChat() {
   const [expandedVideosMsgId, setExpandedVideosMsgId] = useState<number | null>(null);
   const [expandedActivityMsgId, setExpandedActivityMsgId] = useState<number | null>(null);
   const [expandedThinkingMsgId, setExpandedThinkingMsgId] = useState<number | null>(null);
+  const [expandedCodeMsgId, setExpandedCodeMsgId] = useState<number | null>(null);
   
   // Text Selection State
   const [selectionPos, setSelectionPos] = useState<{ x: number; y: number } | null>(null);
@@ -138,7 +139,9 @@ export default function StandaloneChat() {
   
   const [liveThinking, setLiveThinking] = useState('');
   const [liveContent, setLiveContent] = useState('');
+  const [liveCodeExecutions, setLiveCodeExecutions] = useState<any[]>([]);
   const [isReasoningExpanded, setIsReasoningExpanded] = useState(false);
+  const [isLiveCodeExpanded, setIsLiveCodeExpanded] = useState(true);
   const [isLiveSourcesExpanded, setIsLiveSourcesExpanded] = useState(true);
   const [isLiveMediaExpanded, setIsLiveMediaExpanded] = useState(true);
 
@@ -509,7 +512,9 @@ export default function StandaloneChat() {
     setLiveVideos([]);
     setLiveThinking('');
     setLiveContent('');
+    setLiveCodeExecutions([]);
     setIsReasoningExpanded(false);
+    setIsLiveCodeExpanded(true);
     setIsLiveSourcesExpanded(true);
     setIsLiveMediaExpanded(true);
 
@@ -588,6 +593,13 @@ export default function StandaloneChat() {
             case 'images_update':
               setLiveImages(event.images || []);
               break;
+            case 'code_execution':
+              setLiveCodeExecutions(prev => [...prev, {
+                code: event.code,
+                output: event.output,
+                result: event.result
+              }]);
+              break;
             case 'videos_update':
               setLiveVideos(event.videos || []);
               break;
@@ -608,6 +620,7 @@ export default function StandaloneChat() {
               setLiveImages([]);
               setLiveVideos([]);
               setLiveContent('');
+              setLiveCodeExecutions([]);
               setActiveReference(null); // clear reference after successful response
               // Sync intent to session state if it was locked this turn
               if (currentSession && !['chat', 'search', 'normal'].includes(intentToSend) && currentSession.intent !== intentToSend) {
@@ -1108,9 +1121,8 @@ export default function StandaloneChat() {
                           </ReactMarkdown>
                         )}
                       </div>
-
                       {/* Quick Summary, Reasoning & Activity Row */}
-                      {message.role === 'assistant' && (message.metadata?.summary || message.metadata?.thinking || (message.metadata?.tool_trace && message.metadata.tool_trace.length > 0)) && (
+                      {message.role === 'assistant' && (message.metadata?.summary || message.metadata?.thinking || (message.metadata?.tool_trace && message.metadata.tool_trace.length > 0) || message.metadata?.has_code_execution) && (
                         <div className="flex flex-wrap gap-2 mt-4 mb-2">
                           {message.metadata?.summary && (
                             <div className="flex-1 min-w-[140px] group/summary animate-in fade-in slide-in-from-top-2 duration-500">
@@ -1149,7 +1161,6 @@ export default function StandaloneChat() {
                               </button>
                             </div>
                           )}
-
                           {message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
                             <div className="flex-1 min-w-[140px] group/activity animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
@@ -1165,6 +1176,25 @@ export default function StandaloneChat() {
                                 <span className="text-[12px] font-bold tracking-tight">Activity</span>
                                 <div className="flex-1" />
                                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedActivityMsgId === message.id && "rotate-180")} />
+                              </button>
+                            </div>
+                          )}
+
+                          {message.metadata?.has_code_execution && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
+                            <div className="flex-1 min-w-[140px] group/code animate-in fade-in slide-in-from-top-2 duration-500">
+                              <button
+                                onClick={() => setExpandedCodeMsgId(expandedCodeMsgId === message.id ? null : message.id as number)}
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  expandedCodeMsgId === message.id
+                                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" 
+                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
+                                )}
+                              >
+                                <Code className={cn("w-4 h-4", expandedCodeMsgId === message.id ? "text-emerald-600" : "text-muted-foreground/70")} />
+                                <span className="text-[12px] font-bold tracking-tight">Code</span>
+                                <div className="flex-1" />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedCodeMsgId === message.id && "rotate-180")} />
                               </button>
                             </div>
                           )}
@@ -1231,9 +1261,11 @@ export default function StandaloneChat() {
                                 </div>
                                 {trace.thought && (
                                   <div className="pl-[38px] flex flex-col gap-1">
-                                     <p className="text-[12px] text-muted-foreground/60 italic leading-relaxed border-l-2 border-amber-500/10 pl-3">
-                                        {trace.thought}
-                                     </p>
+                                     <div className="text-[13px] text-muted-foreground/70 italic leading-relaxed border-l-2 border-amber-500/10 pl-3 ai-activity-markdown pb-1">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                          {trace.thought}
+                                        </ReactMarkdown>
+                                     </div>
                                   </div>
                                 )}
                               </div>
@@ -1241,6 +1273,46 @@ export default function StandaloneChat() {
                           </div>
                         </div>
                       )}
+
+                      {/* Code Execution Log — shows sandbox results */}
+                      {message.role === 'assistant' && expandedCodeMsgId === message.id && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
+                        <div className="mt-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                          <div className="flex items-center gap-3 px-1 mb-3">
+                            <Code className="w-3.5 h-3.5 text-emerald-500/70" />
+                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-600/70">Secure Sandbox Code</span>
+                            <div className="h-px flex-1 bg-emerald-500/10" />
+                          </div>
+                          <div className="space-y-4">
+                            {message.metadata.code_executions.map((exec: any, i: number) => (
+                              <div key={i} className="space-y-2 border-b border-emerald-500/5 last:border-0 pb-4 last:pb-0">
+                                <div className="flex items-center gap-2">
+                                   <span className="text-[10px] font-black text-emerald-600/50">Execution #{exec.iteration || i+1}</span>
+                                   <div className="h-px flex-1 bg-emerald-500/5" />
+                                </div>
+                                <div className="rounded-xl overflow-hidden border border-emerald-500/10 bg-zinc-950 shadow-sm">
+                                   <div className="px-3 py-1.5 bg-zinc-900/50 flex items-center justify-between border-b border-white/5">
+                                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Input Code</span>
+                                   </div>
+                                   <pre className="p-4 text-[13px] overflow-x-auto text-zinc-300 font-mono leading-relaxed bg-zinc-950">
+                                      <code>{exec.code}</code>
+                                   </pre>
+                                </div>
+                                {(exec.output || exec.result) && (
+                                   <div className="rounded-xl overflow-hidden border border-blue-500/10 bg-zinc-950/50 shadow-sm">
+                                      <div className="px-3 py-1.5 bg-zinc-900/50 flex items-center justify-between border-b border-white/5">
+                                         <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Execution Output</span>
+                                      </div>
+                                      <pre className="p-4 text-[12px] overflow-x-auto text-blue-400/90 font-mono leading-relaxed whitespace-pre-wrap bg-zinc-950/20">
+                                         <code>{exec.output || exec.result}</code>
+                                      </pre>
+                                   </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
 
                       {/* Discovered Media Row (Sources, Images, Videos on one line) */}
                       {message.role === 'assistant' && (message.metadata?.sources?.length > 0 || message.metadata?.images?.length > 0 || message.metadata?.videos?.length > 0) && (
@@ -1556,10 +1628,12 @@ export default function StandaloneChat() {
                                       {thought && (
                                         <div className="mt-1.5 group/thought relative">
                                           <div className={cn(
-                                            "text-[13px] text-muted-foreground/70 italic leading-relaxed border-l-2 border-primary/10 pl-3 transition-all duration-300",
+                                            "text-[13.5px] text-muted-foreground/75 italic leading-relaxed border-l-2 border-primary/20 pl-3 transition-all duration-300 ai-activity-markdown pb-1",
                                             isLongThought && !expandedActivityMsgId && "max-h-[80px] overflow-hidden mask-fade-bottom"
                                           )}>
-                                            {thought}
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                              {thought}
+                                            </ReactMarkdown>
                                           </div>
                                           {isLongThought && (
                                             <button 
@@ -1570,13 +1644,60 @@ export default function StandaloneChat() {
                                             </button>
                                           )}
                                         </div>
-                                      )}
+                              )}
                                     </div>
                                   </div>
                                </div>
                              );
                            })}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Live Code Timeline */}
+                    {liveCodeExecutions.length > 0 && (
+                      <div className="space-y-3 animate-in fade-in duration-300 mt-4">
+                        <button 
+                          onClick={() => setIsLiveCodeExpanded(!isLiveCodeExpanded)}
+                          className="flex items-center gap-3 px-1 mb-2 w-full group"
+                        >
+                          <Code className="w-4 h-4 text-emerald-500/60 group-hover:text-emerald-500 transition-colors" />
+                          <span className="text-sm font-black uppercase tracking-[0.15em] text-muted-foreground/90">Code Sandbox</span>
+                          <div className="h-px flex-1 bg-border/20" />
+                          <ChevronDown className={cn("w-4 h-4 text-muted-foreground/40 transition-transform duration-300", isLiveCodeExpanded && "rotate-180")} />
+                        </button>
+                        
+                        {isLiveCodeExpanded && (
+                          <div className="space-y-3">
+                            {liveCodeExecutions.map((exec, i) => (
+                              <div key={i} className="rounded-2xl overflow-hidden border border-emerald-500/20 bg-emerald-500/5 animate-in slide-in-from-bottom-2 duration-300">
+                                <div className="px-4 py-2 bg-emerald-500/10 flex items-center justify-between border-b border-emerald-500/10">
+                                   <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                      <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Active Execution {i+1}</span>
+                                   </div>
+                                </div>
+                                <div className="p-4 space-y-3">
+                                   <pre className="text-[13px] text-foreground/80 font-mono bg-zinc-950/50 p-3 rounded-lg overflow-x-auto border border-white/5">
+                                      <code>{exec.code}</code>
+                                   </pre>
+                                   {(exec.output || exec.result) && (
+                                     <div className="space-y-1.5">
+                                        <div className="flex items-center gap-2 px-1">
+                                           <div className="h-px flex-1 bg-blue-500/10" />
+                                           <span className="text-[9px] font-bold text-blue-500/60 uppercase">Console Output</span>
+                                           <div className="h-px flex-1 bg-blue-500/10" />
+                                        </div>
+                                        <pre className="text-[12px] text-blue-400/80 font-mono bg-zinc-950/30 p-3 rounded-lg overflow-x-auto border border-blue-500/5 whitespace-pre-wrap">
+                                           <code>{exec.output || exec.result}</code>
+                                        </pre>
+                                     </div>
+                                   )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
