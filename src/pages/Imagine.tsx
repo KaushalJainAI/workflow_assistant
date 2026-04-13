@@ -254,8 +254,39 @@ export default function Imagine() {
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
 
       {/* Main Layout */}
-      <div className="flex-1 flex overflow-hidden h-full z-10">
+      <div className="flex-1 flex overflow-hidden h-full z-10 relative">
         
+        {/* Coming Soon Overlay */}
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-md">
+            <div className="max-w-xl p-12 rounded-[3rem] border border-primary/20 bg-card/40 backdrop-blur-2xl shadow-2xl text-center space-y-8 animate-in fade-in zoom-in-95 duration-700">
+                <div className="relative inline-block">
+                    <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full animate-pulse" />
+                    <div className="relative w-24 h-24 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center mx-auto">
+                        <Sparkles className="w-10 h-10 text-primary animate-bounce fill-primary" />
+                    </div>
+                </div>
+                <div className="space-y-4">
+                    <h2 className="text-[12px] font-black uppercase tracking-[0.5em] text-primary">Status: Neural Link Pending</h2>
+                    <h1 className="text-5xl font-black tracking-tighter uppercase leading-none italic text-foreground">
+                        Coming Soon
+                    </h1>
+                    <p className="text-muted-foreground/60 text-lg font-medium leading-relaxed">
+                        Our neural generation engines (DALL-E 3, Midjourney, Runway Gen-3) are currently being calibrated for peak performance. This module will be live shortly.
+                    </p>
+                </div>
+                <div className="pt-4 flex items-center justify-center gap-4">
+                    <button onClick={() => window.history.back()} className="px-8 py-3 bg-primary text-primary-foreground rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                        Return to Hub
+                    </button>
+                    <div className="px-5 py-3 border border-border/40 rounded-full text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                        In Calibration
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* THE ENTIRE UI IS HIDDEN WHILE IN 'COMING SOON' MODE */}
+        <div className="hidden">
         {/* Left Sidebar - Configuration */}
         <aside className="w-[450px] border-r border-border/40 bg-card/10 backdrop-blur-3xl overflow-y-auto custom-scrollbar p-6 space-y-8 glass">
           
@@ -786,6 +817,7 @@ export default function Imagine() {
 
             </div>
         </main>
+        </div>
 
       </div>
       

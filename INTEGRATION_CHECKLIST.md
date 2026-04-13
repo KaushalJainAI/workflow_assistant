@@ -231,6 +231,19 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
+### 🎨 Imagine Page
+
+#### Imagine.tsx
+- **Components Used**:
+  - `MediaPreview` - Media previewer
+- **API Dependencies**:
+  - [ ] `POST /api/imagine/generate/` - Imagine generation (image/video/audio) ⚠️ **MISSING**
+  - [ ] `GET /api/skills/search/` - Fetch skills (partially implemented)
+  - [x] `GET /api/skills/search/?tab=mine` - Fetch user skills
+  - [ ] `GET /api/imagine/history/` - Get generation history ⚠️ **MISSING**
+
+---
+
 ## 🧩 Shared Components
 
 ### Layout Components
@@ -304,6 +317,8 @@ This document maps all frontend pages, their components, and required backend AP
 
 | Endpoint | Page | Priority |
 |----------|------|----------|
+| `POST /api/imagine/generate/` | Imagine | High |
+| `GET /api/imagine/history/` | Imagine | Medium |
 | `POST /api/auth/forgot-password/` | Login | High |
 | `GET /api/logs/export/` | Logs | Medium |
 | `GET /api/settings/notifications/` | Settings | Medium |
@@ -342,4 +357,5 @@ This document maps all frontend pages, their components, and required backend AP
 | Insights | 1 | 1 | 2 (1 missing) |
 | Templates | 1 | 0 | 4 |
 | AI Chat | 1 | 1 | 3 |
-| **Total** | **16** | **29** | **63 (8 missing)** |
+| Imagine | 1 | 1 | 4 (2 missing) |
+| **Total** | **17** | **30** | **67 (10 missing)** |

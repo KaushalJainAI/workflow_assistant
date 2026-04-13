@@ -80,9 +80,27 @@ Your Nexus clone has solid foundations:
 
 ---
 
+---
+
+### 5. Imagine Page (Media Generation) Integration
+
+**Current State:** Frontend UI is beautiful but has no backend connection for DALL-E, Midjourney, or Video/Audio models. Currently shows "Coming Soon" overlay.
+
+**Required Changes:**
+- [ ] Connect `Imagine.tsx` to the `POST /api/imagine/generate/` endpoint.
+- [ ] Implement media polling for long-running generation tasks.
+- [ ] Add generation history view using `GET /api/imagine/history/`.
+- [ ] Support for model-specific parameters (motion strength, style, etc.) in the tool loop.
+
+**Files to modify:**
+- `src/pages/Imagine.tsx`
+- `src/api/imagine.ts` (to be created)
+
+---
+
 ## 🟡 Important Missing Features (Medium Priority)
 
-### 5. More Node Types (20 → 400+)
+### 6. More Node Types (20 → 400+)
 
 **Current State:** Only ~20 node types defined in `NodePanel.tsx`.
 
@@ -105,7 +123,7 @@ Expand the node library with categories:
 
 ---
 
-### 6. Drag & Drop from Node Panel
+### 7. Drag & Drop from Node Panel
 
 **Current State:** Clicking nodes adds them at random positions.
 
@@ -120,7 +138,7 @@ Expand the node library with categories:
 
 ---
 
-### 7. Keyboard Shortcuts
+### 8. Keyboard Shortcuts
 
 **Current State:** No keyboard shortcuts implemented.
 
@@ -144,7 +162,7 @@ Add shortcuts for common actions:
 
 ---
 
-### 8. Undo/Redo Functionality
+### 9. Undo/Redo Functionality
 
 **Current State:** Undo/Redo buttons exist but don't work.
 
@@ -159,7 +177,7 @@ Add shortcuts for common actions:
 
 ---
 
-### 9. Code Editor for Function Nodes
+### 10. Code Editor for Function Nodes
 
 **Current State:** No code editing capability.
 
@@ -181,7 +199,7 @@ Add shortcuts for common actions:
 
 ---
 
-### 10. Workflow Version History
+### 11. Workflow Version History
 
 **Current State:** No version control.
 
@@ -198,31 +216,31 @@ Add shortcuts for common actions:
 
 ## 🟢 Nice-to-Have Features (Lower Priority)
 
-### 11. Node Grouping / Sticky Notes
+### 12. Node Grouping / Sticky Notes
 
 - [ ] Group related nodes visually
 - [ ] Add sticky notes for documentation
 - [ ] Collapse/expand groups
 
-### 12. Workflow Import/Export
+### 13. Workflow Import/Export
 
 - [ ] Export workflow as JSON
 - [ ] Import workflow from JSON
 - [ ] Import from n8n format
 
-### 13. Template Gallery
+### 14. Template Gallery
 
 - [ ] Browse pre-built workflow templates
 - [ ] One-click template import
 - [ ] Community templates
 
-### 14. Real-time Collaboration
+### 15. Real-time Collaboration
 
 - [ ] Multiple users editing same workflow
 - [ ] Presence indicators
 - [ ] Conflict resolution
 
-### 15. Mobile Responsive Editor
+### 16. Mobile Responsive Editor
 
 - [ ] Touch-friendly node manipulation
 - [ ] Responsive toolbar
@@ -231,7 +249,7 @@ Add shortcuts for common actions:
 
 ## 🎨 UI/UX Improvements
 
-### 16. Canvas Improvements
+### 17. Canvas Improvements
 
 - [ ] **Grid snap toggle** - Already has snap, but no toggle
 - [ ] **Zoom to fit** button
@@ -239,17 +257,17 @@ Add shortcuts for common actions:
 - [ ] **Node alignment tools** (align left, right, center, distribute)
 - [ ] **Connection lines style options** (bezier, step, straight)
 
-### 17. Empty States
+### 18. Empty States
 
 - [ ] Better empty state for workflow canvas with quick-start tips
 - [ ] Onboarding tutorial for first-time users
 
-### 18. Loading States
+### 19. Loading States
 
 - [ ] Skeleton loaders for workflow list
 - [ ] Loading indicators for API calls
 
-### 19. Dark Mode Toggle
+### 20. Dark Mode Toggle
 
 **Current State:** Theme selector exists in Settings but doesn't actually apply.
 
