@@ -12,7 +12,7 @@ import {
   Loader2,
   Zap
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { workflowsService } from "../../api";
 import { toast } from "sonner";
@@ -22,8 +22,20 @@ import { toast } from "sonner";
 const Sidebar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState(() => window.innerWidth < 768);
     const [isCreating, setIsCreating] = useState(false);
+
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth < 768) {
+                setCollapsed(true);
+            } else {
+                setCollapsed(false);
+            }
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
     const { user } = useAuth();
 
     // Generate initials from user name or email
@@ -54,8 +66,10 @@ const Sidebar = () => {
     return (
         <div 
             className={cn(
-                "h-screen backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out relative z-40 overflow-hidden",
-                collapsed ? "w-16" : "w-56"
+                "h-screen backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out z-50 overflow-hidden flex-shrink-0",
+                collapsed 
+                  ? "w-16 relative" 
+                  : "w-64 absolute md:relative shadow-2xl md:shadow-none bg-background/95 md:bg-transparent left-0 top-0"
             )}
             style={{ 
                 backgroundColor: 'hsl(var(--sidebar-bg))',
@@ -73,7 +87,7 @@ const Sidebar = () => {
                     <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shadow-sm shrink-0">
                         <GitGraph className="w-4 h-4 text-primary" />
                     </div>
-                    <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap">AstraFlow</span>
+                    <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap">AIAAS</span>
                 </div>
                 <button 
                     onClick={() => setCollapsed(!collapsed)}

@@ -807,7 +807,7 @@ export default function StandaloneChat() {
       <div className="flex-1 flex flex-col h-full relative min-w-0 z-10">
         
         {/* Transparent Header */}
-        <header className="h-16 flex items-center px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50">
+        <header className="h-16 flex items-center px-4 md:px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50">
           <div className="flex items-center gap-3">
             {!showHistory && (
               <button 
@@ -834,8 +834,8 @@ export default function StandaloneChat() {
         {/* Dynamic Transition Area */}
         <div 
           className={cn(
-            "flex-1 overflow-y-auto px-6 pt-8 pb-24 transition-all duration-1000 ease-in-out relative",
-            isInitialState ? "flex items-center justify-center" : "py-10"
+            "flex-1 overflow-y-auto px-4 md:px-6 pt-8 pb-24 transition-all duration-1000 ease-in-out relative",
+            isInitialState ? "flex items-center justify-center" : "py-6 md:py-10"
           )}
           onMouseUp={() => {
             const selection = window.getSelection();
@@ -914,8 +914,8 @@ export default function StandaloneChat() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <h1 className="text-5xl font-black tracking-tight text-foreground/90 uppercase drop-shadow-sm">AIAAS Assistant</h1>
-                  <p className="text-muted-foreground font-medium text-xl max-w-lg mx-auto leading-relaxed">
+                  <h1 className="text-3xl md:text-5xl font-black tracking-tight text-foreground/90 uppercase drop-shadow-sm">AIAAS Assistant</h1>
+                  <p className="text-muted-foreground font-medium text-lg md:text-xl max-w-lg mx-auto leading-relaxed">
                     Deploying Quantum Intelligence for your most complex inquiries and creative tasks.
                   </p>
                 </div>
@@ -944,7 +944,7 @@ export default function StandaloneChat() {
                     </div>
 
                     <div className={cn(
-                      "max-w-[85%] space-y-3",
+                      "max-w-[92%] md:max-w-[85%] space-y-3",
                       message.role === 'user' ? "text-right" : ""
                     )}>
 
@@ -952,10 +952,10 @@ export default function StandaloneChat() {
                       <div className={cn(
                         "text-[17px] leading-[1.8] tracking-[-0.01em] prose prose-base dark:prose-invert max-w-none ai-chat-prose",
                         message.role === 'user' 
-                          ? "text-foreground font-semibold bg-primary/5 border border-primary/10 p-5 rounded-3xl rounded-tr-none shadow-sm inline-block text-left" 
+                          ? "text-foreground font-semibold bg-primary/5 border border-primary/10 p-4 md:p-5 rounded-3xl rounded-tr-none shadow-sm inline-block text-left" 
                           : message.role === 'system'
                           ? "w-full"
-                          : "text-foreground font-[450] bg-card/60 p-7 rounded-3xl rounded-tl-none shadow-sm glass border border-border/40 inline-block text-left"
+                          : "text-foreground font-[450] bg-card/60 p-5 md:p-7 rounded-3xl rounded-tl-none shadow-sm glass border border-border/40 inline-block text-left"
                       )}>
 
                         {message.role === 'system' ? (
@@ -1502,7 +1502,7 @@ export default function StandaloneChat() {
                 <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-border/40 shadow-md bg-muted text-muted-foreground">
                   <Settings2 className="w-5 h-5"/>
                 </div>
-                <div className="max-w-[85%] space-y-3">
+                <div className="max-w-[92%] md:max-w-[85%] space-y-3">
                   <div className="bg-muted/30 p-4 rounded-3xl shadow-sm border border-border/40 inline-flex flex-col gap-3 min-w-[300px] max-w-sm w-full">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-background border border-border/50 flex items-center justify-center shrink-0">
@@ -1538,7 +1538,7 @@ export default function StandaloneChat() {
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20 shadow-inner">
                     <div className="animate-pulse">{statusIcon}</div>
                   </div>
-                  <div className="flex-1 space-y-3 pt-1 max-w-[85%]">
+                  <div className="flex-1 space-y-3 pt-1 max-w-[92%] md:max-w-[85%]">
                     {/* Live Status */}
                     <div className="flex items-center justify-between gap-2.5">
                       <span className="text-[15px] font-semibold text-foreground/80 animate-pulse">{statusMessage}</span>

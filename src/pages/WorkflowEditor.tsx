@@ -1143,8 +1143,8 @@ export default function WorkflowEditor() {
   return (
     <div className="w-full h-full flex flex-col">
       {/* ======== STABLE ENTERPRISE TOP BAR ======== */}
-      <header className="h-16 shrink-0 border-b border-border/60 bg-card/80 backdrop-blur-xl z-20">
-        <div className="h-full px-6 flex items-center justify-between">
+      <header className="h-auto md:h-16 py-3 md:py-0 shrink-0 border-b border-border/60 bg-card/80 backdrop-blur-xl z-20">
+        <div className="h-full px-4 md:px-6 flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0">
 
           {/* LEFT — Navigation & History */}
           <div className="flex items-center gap-3 min-w-[220px]">
@@ -1522,9 +1522,9 @@ export default function WorkflowEditor() {
           </div>
         </div>
 
-        {/* Node Selection/Add Panel (Docked Sidebar) */}
+        {/* Node Selection/Add Panel (Docked Sidebar or Mobile Overlay) */}
         {(nodePanelOpen || triggerPanelOpen) && (
-          <div className="w-[320px] border-l border-border bg-card shadow-xl z-20 flex flex-col transition-all duration-300 shrink-0 overflow-hidden">
+          <div className="w-full md:w-[320px] absolute inset-y-0 right-0 md:relative border-l border-border bg-card shadow-xl z-30 flex flex-col transition-all duration-300 shrink-0 overflow-hidden">
             <NodePanel 
               isOpen={nodePanelOpen || triggerPanelOpen} 
               onClose={() => {

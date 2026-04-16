@@ -22,8 +22,8 @@ export default function PageHeader({
   className 
 }: PageHeaderProps) {
   return (
-    <div className={cn("px-8 py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20", className)}>
-      <div className={cn("flex flex-col md:flex-row md:items-center justify-between gap-6", children && "mb-8")}>
+    <div className={cn("px-4 py-6 md:px-8 md:py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20", className)}>
+      <div className={cn("flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6", children && "mb-6 md:mb-8")}>
         <div className="flex items-center gap-4">
           <div className="p-3 bg-primary/10 rounded-xl">
             <Icon className={cn("w-6 h-6 text-primary", iconClassName)} />

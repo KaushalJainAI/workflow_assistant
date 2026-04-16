@@ -164,7 +164,7 @@ export default function Skills() {
     return (
         <div className="flex flex-col h-screen bg-background text-foreground animate-in fade-in duration-500">
             {/* Header */}
-            <header className="px-8 py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
+            <header className="px-4 md:px-8 py-6 md:py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                     <div className="flex items-center gap-4">
                         <div className="p-3 bg-primary/10 rounded-xl">
@@ -229,7 +229,7 @@ export default function Skills() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto p-10">
+        <main className="flex-1 overflow-auto p-4 md:p-10">
             <div className="max-w-7xl mx-auto">
                 {isLoading && currentSkills.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 gap-3">
@@ -328,8 +328,8 @@ export default function Skills() {
                 <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
                     <div className="bg-card border border-border/60 w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in">
                         {/* Modal Header */}
-                        <div className="p-6 border-b border-border/60 flex items-center justify-between bg-card">
-                            <div className="flex items-center gap-4 flex-1 mr-4">
+                        <div className="p-4 md:p-6 border-b border-border/60 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 bg-card">
+                            <div className="flex items-center gap-2 md:gap-4 flex-1 lg:mr-4">
                                 <div className="p-2 bg-primary/10 rounded-lg">
                                     <Edit3 className="w-5 h-5 text-primary" />
                                 </div>
@@ -365,8 +365,8 @@ export default function Skills() {
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-2">
-                                <div className="flex items-center bg-muted p-1 rounded-lg mr-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center bg-muted p-1 rounded-lg lg:mr-4 w-full justify-between sm:w-auto">
                                     <button 
                                         onClick={() => setEditorMode('edit')}
                                         className={cn(
@@ -430,7 +430,7 @@ export default function Skills() {
                                 </div>
                             )}
                             {(editorMode === 'preview' || editorMode === 'split') && (
-                                <div className="flex-1 overflow-auto bg-card p-10 prose prose-invert max-w-none">
+                                <div className="flex-1 overflow-auto bg-card p-4 md:p-10 prose prose-invert max-w-none">
                                     <div className="max-w-3xl mx-auto">
                                         {renderMarkdown(editContent)}
                                     </div>

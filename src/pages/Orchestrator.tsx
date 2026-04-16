@@ -817,8 +817,8 @@ export default function Orchestrator() {
         </div>
       </header>
 
-      {/* Main Content Area - Fixed Height Viewport */}
-      <main className="flex-1 overflow-hidden p-6">
+      {/* Main Content Area - Scrollable on mobile, fixed height on desktop */}
+      <main className="flex-1 overflow-y-auto lg:overflow-hidden p-4 md:p-6 custom-scrollbar">
         {hasCredentials === false ? (
           /* Credential Gate */
           <div className="max-w-xl mx-auto mt-16 bg-card border border-border/60 rounded-2xl p-10 text-center shadow-2xl animate-in zoom-in-95 duration-500">
@@ -853,7 +853,7 @@ export default function Orchestrator() {
           </div>
         ) : (
           /* Main Dashboard */
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full stagger-children">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 h-auto lg:h-full stagger-children">
             {/* Timeline & Logs column */}
             <div className="lg:col-span-2 flex flex-col gap-6 h-full overflow-hidden">
               {/* Live Activity Segment - Scrollable */}

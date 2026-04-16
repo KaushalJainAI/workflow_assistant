@@ -527,27 +527,30 @@ export default function Settings() {
   };
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex flex-col md:flex-row">
       {/* Settings Sidebar */}
-      <div className="w-64 border-r border-border/60 bg-card/80 backdrop-blur-xl p-4">
-        <h2 className="text-lg font-semibold mb-4 px-2">Settings</h2>
-        <nav className="space-y-1">
+      <div className="w-full md:w-64 border-b md:border-r md:border-b-0 border-border/60 bg-card/80 backdrop-blur-xl p-2 md:p-4 shrink-0 overflow-x-auto scrollbar-none">
+        <h2 className="text-lg font-semibold mb-2 md:mb-4 px-2 hidden md:block">Settings</h2>
+        <nav className="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-1 min-w-max md:min-w-0 pb-1 md:pb-0">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 relative ${
+              className={`flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg transition-all duration-200 relative whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
               {activeTab === tab.id && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
+                <div className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
               )}
-              <tab.icon className="w-4 h-4" />
-              <span className="flex-1 text-left">{tab.label}</span>
-              <ChevronRight className={`w-4 h-4 transition-transform ${
+              {activeTab === tab.id && (
+                <div className="md:hidden absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-5 bg-primary rounded-t-full" />
+              )}
+              <tab.icon className="w-4 h-4 shrink-0" />
+              <span className="md:flex-1 text-left text-sm md:text-base">{tab.label}</span>
+              <ChevronRight className={`hidden md:block w-4 h-4 transition-transform ${
                 activeTab === tab.id ? 'rotate-90' : ''
               }`} />
             </button>

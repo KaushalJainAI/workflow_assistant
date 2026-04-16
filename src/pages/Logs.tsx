@@ -14,6 +14,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import Select from '../components/ui/Select';
+import { cn } from '../lib/utils';
 
 type LogLevel = 'info' | 'warning' | 'error' | 'debug' | 'success';
 
@@ -162,51 +163,53 @@ export default function Logs() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       {/* Header */}
-      <div className="border-b border-border/60 bg-card/80 backdrop-blur-xl px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
+      <div className="border-b border-border/60 bg-card/80 backdrop-blur-xl px-4 md:px-6 py-4 md:py-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-muted border border-border rounded-xl">
+            <div className="p-2.5 bg-muted border border-border rounded-xl shrink-0">
               <Activity className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Logs</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 className="text-xl md:text-2xl font-bold">Logs</h1>
+              <p className="text-xs md:text-sm text-muted-foreground">
                 Monitor workflow executions and debug issues
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 justify-end">
             <button 
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-all duration-200 ${
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 border rounded-lg transition-all duration-200 text-sm",
                 autoRefresh ? 'border-primary bg-primary/10 text-primary' : 'border-border/60 hover:bg-muted'
-              }`}
+              )}
             >
-              <RefreshCw className={`w-4 h-4 ${autoRefresh ? 'animate-spin' : ''}`} />
-              Auto-refresh
+              <RefreshCw className={cn("w-4 h-4", autoRefresh && "animate-spin")} />
+              <span className="hidden sm:inline">Auto-refresh</span>
             </button>
-            <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
+            <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors text-sm">
               <Download className="w-4 h-4" />
-              Export
+              <span className="hidden sm:inline">Export</span>
             </button>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search logs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-background/50 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all duration-200"
+              className="w-full pl-10 pr-4 py-2 bg-background/50 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all duration-200 text-sm"
             />
           </div>
 
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
             <Select
               value={selectedLevel}
               onChange={setSelectedLevel}
@@ -218,18 +221,19 @@ export default function Logs() {
                 { value: 'debug', label: 'Debug' },
                 { value: 'success', label: 'Success' },
               ]}
-              className="w-[180px]"
+              className="w-[160px] shrink-0"
             />
 
-          <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
-            <Filter className="w-4 h-4" />
-            More Filters
-          </button>
+            <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors text-sm shrink-0">
+              <Filter className="w-4 h-4" />
+              <span className="hidden sm:inline">Filters</span>
+            </button>
 
-          <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
-            <Clock className="w-4 h-4" />
-            Last 24 hours
-          </button>
+            <button className="flex items-center gap-2 px-3 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors text-sm shrink-0">
+              <Clock className="w-4 h-4" />
+              <span className="hidden sm:inline">Last 24h</span>
+            </button>
+          </div>
         </div>
 
         {/* Quick Stats */}
@@ -251,11 +255,11 @@ export default function Logs() {
           {filteredLogs.map((log) => (
             <div 
               key={log.id} 
-              className="px-6 py-3 hover:bg-muted/40 transition-colors duration-200 cursor-pointer"
+              className="px-4 md:px-6 py-3 hover:bg-muted/40 transition-colors duration-200 cursor-pointer"
               onClick={() => log.details && toggleExpand(log.id)}
             >
-              <div className="flex items-start gap-4">
-                <div className="flex items-center gap-2 min-w-[90px]">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
+                <div className="flex items-center justify-between sm:justify-start gap-2 sm:min-w-[90px]">
                   {getLevelIcon(log.level)}
                   {getLevelBadge(log.level)}
                 </div>

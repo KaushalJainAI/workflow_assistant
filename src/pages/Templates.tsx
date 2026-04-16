@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import templatesService from '../api/templates';
 import TemplateCard from './templates/TemplateCard';
 import Select from '../components/ui/Select';
+import { cn } from '../lib/utils';
 
 const CATEGORIES = [
     { id: 'all', label: 'All Templates' },
@@ -52,8 +53,8 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
-        <header className="px-8 py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
+    <div className="flex flex-col h-full bg-background overflow-hidden relative">
+        <header className="px-4 md:px-8 py-6 md:py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
             <div className="max-w-7xl mx-auto">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                     <div>
@@ -116,7 +117,7 @@ export default function TemplatesPage() {
             </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-8 py-10">
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 md:py-10">
             <div className="max-w-7xl mx-auto">
                 {loading || searching ? (
                     <div className="flex flex-col items-center justify-center h-64 gap-3">
@@ -206,6 +207,3 @@ export default function TemplatesPage() {
 }
 
 // Helper components & icons (keep or replace as needed)
-function cn(...classes: any[]) {
-    return classes.filter(Boolean).join(' ');
-}

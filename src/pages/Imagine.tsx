@@ -254,7 +254,7 @@ export default function Imagine() {
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
 
       {/* Main Layout */}
-      <div className="flex-1 flex overflow-hidden h-full z-10 relative">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden h-full z-10 relative">
         
         {/* Coming Soon Overlay */}
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-md">
@@ -288,7 +288,7 @@ export default function Imagine() {
         {/* THE ENTIRE UI IS HIDDEN WHILE IN 'COMING SOON' MODE */}
         <div className="hidden">
         {/* Left Sidebar - Configuration */}
-        <aside className="w-[450px] border-r border-border/40 bg-card/10 backdrop-blur-3xl overflow-y-auto custom-scrollbar p-6 space-y-8 glass">
+        <aside className="w-full md:w-[450px] shrink-0 border-t md:border-t-0 md:border-r border-border/40 bg-card/10 backdrop-blur-3xl overflow-y-auto custom-scrollbar p-6 space-y-8 glass order-2 md:order-1">
           
           {/* Global Mode Switcher */}
           <div className="space-y-4">
@@ -569,7 +569,7 @@ export default function Imagine() {
         </aside>
 
         {/* Right Area - MODULAR CANVAS */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-black/10 relative">
+        <main className="flex-1 min-h-[50vh] md:min-h-0 overflow-y-auto custom-scrollbar p-4 md:p-10 bg-black/10 relative order-1 md:order-2">
             <div className="max-w-6xl mx-auto space-y-12 h-fit mb-20 text-foreground">
               
               {/* Specialized Header */}
