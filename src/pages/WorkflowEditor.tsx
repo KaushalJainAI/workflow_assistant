@@ -1341,7 +1341,7 @@ export default function WorkflowEditor() {
 
                   <Controls className="bg-card border border-border shadow-lg rounded-lg" />
                   <MiniMap 
-                    className="bg-card border border-border rounded-lg shadow-sm"
+                    className="hidden md:block bg-card border border-border rounded-lg shadow-sm"
                     style={{ height: 100, width: 150 }} 
                     nodeColor={(node) => node.data?.color || 'hsl(var(--primary))'}
                     maskColor="rgba(0, 0, 0, 0.05)"
@@ -1382,7 +1382,7 @@ export default function WorkflowEditor() {
 
                   {/* Add Buttons - Only show when nodes exist */}
                   {nodes.length > 0 && (
-                    <Panel position="bottom-center" className="mb-4 flex gap-2">
+                    <Panel position="bottom-center" className="mb-20 md:mb-4 flex flex-col sm:flex-row gap-2 z-10 pointer-events-none">
                       <button 
                         onClick={() => {
                           setTriggerPanelOpen(true);
@@ -1391,9 +1391,9 @@ export default function WorkflowEditor() {
                           // Auto-collapse competitors
                           setConfigPanelOpen(false);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90 transition-all font-medium"
+                        className="pointer-events-auto flex items-center justify-center gap-2 px-5 py-3 bg-primary text-primary-foreground rounded-full shadow-xl hover:bg-primary/90 transition-all font-semibold whitespace-nowrap sm:w-auto w-48"
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-5 h-5" />
                         Add Trigger
                       </button>
                       <button 
@@ -1404,9 +1404,9 @@ export default function WorkflowEditor() {
                           // Auto-collapse competitors
                           setConfigPanelOpen(false);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-full shadow-lg hover:bg-secondary/80 transition-all font-medium"
+                        className="pointer-events-auto flex items-center justify-center gap-2 px-5 py-3 bg-secondary text-secondary-foreground rounded-full shadow-xl hover:bg-secondary/80 transition-all font-semibold whitespace-nowrap sm:w-auto w-48"
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-5 h-5" />
                         Add Node
                       </button>
                     </Panel>
