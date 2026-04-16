@@ -795,11 +795,18 @@ export default function WorkflowEditor() {
   useEffect(() => {
     if (executionId) {
       const token = tokenManager.getAccessToken();
-      setWsUrl(`ws://localhost:8000/ws/execution/${executionId}/?token=${token}`);
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+      const wsProtocol = apiUrl.startsWith('https') ? 'wss:' : 'ws:';
+      const wsHost = apiUrl.startsWith('http') 
+        ? new URL(apiUrl).host 
+        : window.location.host;
+      
+      setWsUrl(`${wsProtocol}//${wsHost}/ws/execution/${executionId}/?token=${token}`);
     } else {
       setWsUrl(null);
     }
   }, [executionId]);
+
   
   useEffect(() => {
     if (!wsUrl) return;
