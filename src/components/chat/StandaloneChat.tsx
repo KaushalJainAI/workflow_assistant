@@ -712,22 +712,14 @@ export default function StandaloneChat() {
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
 
       {/* 1. History Sidebar */}
-      <>
-        {/* Overlay */}
-        {showHistory && (
-          <div
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-30"
-            onClick={() => setShowHistory(false)}
-          />
+      <div
+        className={cn(
+          "h-full bg-card/80 backdrop-blur-xl border-r border-border/60 transition-all duration-300 ease-in-out flex flex-col z-30 shadow-2xl relative overflow-hidden flex-shrink-0",
+          showHistory ? "w-[300px]" : "w-0 opacity-0 border-none"
         )}
-
-        <div
-          className={cn(
-            "fixed left-0 top-0 h-full w-[300px] bg-card/80 backdrop-blur-xl border-r border-border/60 transition-transform duration-400 ease-in-out flex flex-col z-40 shadow-2xl",
-            showHistory ? "translate-x-0" : "-translate-x-full"
-          )}
-        >
-          <div className="h-16 px-6 flex items-center justify-between border-b border-border/40">
+      >
+        <div className="w-[300px] flex flex-col h-full">
+          <div className="h-16 px-6 flex items-center justify-between border-b border-border/40 shrink-0">
             <div className="flex items-center gap-2">
               <History className="w-4 h-4 text-primary/70" />
               <h2 className="font-bold text-xs uppercase tracking-widest">
@@ -742,7 +734,7 @@ export default function StandaloneChat() {
             </button>
           </div>
 
-          <div className="p-4">
+          <div className="p-4 shrink-0">
             <button
               onClick={() => {
                 setMessages([]);
@@ -801,10 +793,10 @@ export default function StandaloneChat() {
             ))}
           </div>
         </div>
-      </>
+      </div>
 
       {/* 2. Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full relative min-w-0 z-10">
+      <div className="flex-1 flex flex-col h-full relative min-w-0 z-10 transition-all duration-300">
         
         {/* Transparent Header */}
         <header className="h-16 flex items-center px-4 md:px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50">
@@ -1943,7 +1935,6 @@ export default function StandaloneChat() {
                         {[
                           { key: 'search' as const, icon: <Search className="w-3.5 h-3.5" />, label: 'Search', color: 'blue' },
                           { key: 'research' as const, icon: <Globe2 className="w-3.5 h-3.5" />, label: 'Research', color: 'purple' },
-                          { key: 'image' as const, icon: <ImageIcon className="w-3.5 h-3.5" />, label: 'Visualize', color: 'emerald' },
                           { key: 'coding' as const, icon: <Code className="w-3.5 h-3.5" />, label: 'Coding', color: 'blue' },
                         ].map(tool => (
                           <button
@@ -1988,19 +1979,17 @@ export default function StandaloneChat() {
                               ].map(tool => (
                                 <button
                                   key={tool.key}
-                                  onClick={() => toggleIntent(tool.key)}
+                                  onClick={() => toast.info(`${tool.label} is coming soon!`)}
                                   className={cn(
                                     "w-full flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg text-left transition-all text-[11px] font-bold uppercase tracking-wider",
-                                    activeIntent === tool.key
-                                      ? "bg-primary/10 text-primary"
-                                      : "hover:bg-muted/50 text-foreground/70"
+                                    "opacity-60 hover:bg-muted/30 text-foreground/50 cursor-default"
                                   )}
                                 >
                                   <div className="flex items-center gap-2">
                                     {tool.icon}
                                     <span>{tool.label}</span>
                                   </div>
-                                  {isLocked && tool.key === lockedIntent && <Lock className="w-3 h-3 opacity-50" />}
+                                  <span className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">Upcoming</span>
                                 </button>
                               ))}
                             </div>
