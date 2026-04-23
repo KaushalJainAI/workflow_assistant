@@ -22,7 +22,8 @@ import {
   Pencil,
   Globe2,
   Video,
-  Play
+  Play,
+  Monitor
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -32,6 +33,7 @@ import { cn } from '../../lib/utils';
 import { useAssistant } from '../../contexts/AssistantContext';
 import { TextSelectionMenu } from '../chat/TextSelectionMenu';
 import { useAIModels } from '../../hooks/useAIModels';
+import { useBuddy } from '../../hooks/useBuddy';
 
 interface ChatPanelProps {
   initialConversationId?: string;
@@ -76,6 +78,10 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
+  
+  // Buddy context integration
+  const [screenContextEnabled, setScreenContextEnabled] = useState(true);
+  const { isConnected: buddyConnected, buddyAction } = useBuddy(screenContextEnabled);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -398,6 +404,25 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
           </div>
           
           <div className="flex items-center gap-1">
+            <button 
+              onClick={() => setScreenContextEnabled(!screenContextEnabled)}
+              className={cn(
+                "p-2 rounded-md transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-3 relative",
+                screenContextEnabled 
+                  ? "bg-primary/10 text-primary border border-primary/20" 
+                  : "bg-muted text-muted-foreground border border-transparent hover:border-border"
+              )}
+              title={screenContextEnabled ? "Disable Screen Context" : "Enable Screen Context"}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              {screenContextEnabled ? 'Context ON' : 'Context OFF'}
+              {screenContextEnabled && (
+                <span className={cn(
+                  "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-background",
+                  buddyConnected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-yellow-500 animate-pulse"
+                )} />
+              )}
+            </button>
             <button 
               onClick={() => {
                 setMessages([messages[0]]);
@@ -760,6 +785,12 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
         )}
 
         {/* Input Area */}
+        {buddyAction && (
+          <div className="px-4 py-2 bg-blue-500/10 border-t border-blue-500/20 text-blue-500 text-xs flex items-center justify-center gap-2 font-medium">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Buddy: {buddyAction}
+          </div>
+        )}
         <div className={`p-4 border-t border-border bg-card relative z-20 ${isDocked ? 'pb-20' : 'pb-4'}`}>
           <div className="max-w-3xl mx-auto flex flex-col gap-3 mb-2">
             

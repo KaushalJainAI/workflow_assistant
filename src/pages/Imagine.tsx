@@ -1,39 +1,37 @@
-import { useState, useEffect, useRef } from 'react';
-import { 
-  Sparkles, 
-  Wand2, 
-  Play, 
-  Clock, 
-  History,
-  Image as ImageIcon,
-  Video,
-  Volume2,
-  Mic,
-  Camera,
-  Layers,
-  Zap,
-  ChevronDown,
-  X,
-  Film,
-  Maximize2,
-  Move,
-  RefreshCcw,
-  Plus,
-  Sliders,
-  Music,
+import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
   Activity,
-  Waves,
+  AudioLines,
+  Bot,
+  BrushCleaning,
+  Check,
+  Clock3,
+  Film,
   Headphones,
-  FastForward,
-  Cpu,
-  Layout,
+  Image as ImageIcon,
+  Layers3,
+  Mic,
+  Music4,
   Palette,
-  Timer
+  Play,
+  Plus,
+  SlidersHorizontal,
+  Sparkles,
+  Upload,
+  Video,
+  Wand2,
+  Waves,
+  Zap,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import apiClient from '../api/client';
-import { MediaPreview } from '../components/chat/MediaPreview';
+import PageHeader from '../components/layout/PageHeader';
+import Select from '../components/ui/Select';
+import { cn } from '../lib/utils';
+
+type Mode = 'image' | 'video' | 'audio';
 
 interface Skill {
   id: string;
@@ -45,791 +43,813 @@ interface ModelOption {
   id: string;
   name: string;
   description: string;
-  icon: any;
+  accent: string;
+  icon: LucideIcon;
+}
+
+interface ModeConfig {
+  title: string;
+  subtitle: string;
+  promptLabel: string;
+  promptPlaceholder: string;
+  previewLabel: string;
+  timelineLabel: string;
+  referencesLabel: string;
+  heroMetric: string;
+  accentClass: string;
+  icon: LucideIcon;
+}
+
+const modeConfigs: Record<Mode, ModeConfig> = {
+  image: {
+    title: 'Image Editing Studio',
+    subtitle: 'Retouch, restyle, composite, and generate stills with production-grade controls.',
+    promptLabel: 'Edit Brief',
+    promptPlaceholder: 'Describe the visual change: lighting, composition, cleanup, upscale, style transfer, or object edits.',
+    previewLabel: 'Canvas Preview',
+    timelineLabel: 'Variation Board',
+    referencesLabel: 'Reference Images',
+    heroMetric: '4 variants ready',
+    accentClass: 'from-orange-500/20 via-amber-500/10 to-transparent',
+    icon: ImageIcon,
+  },
+  video: {
+    title: 'Video Editing Suite',
+    subtitle: 'Shape motion, timing, framing, and scene continuity for short-form video generation and edits.',
+    promptLabel: 'Scene Direction',
+    promptPlaceholder: 'Describe the shot, motion changes, transitions, pacing, camera moves, or clip cleanup you want.',
+    previewLabel: 'Stage Monitor',
+    timelineLabel: 'Storyboard Timeline',
+    referencesLabel: 'Scene Assets',
+    heroMetric: '12s sequence mapped',
+    accentClass: 'from-sky-500/20 via-cyan-500/10 to-transparent',
+    icon: Video,
+  },
+  audio: {
+    title: 'Audio Editing Lab',
+    subtitle: 'Build narration, music beds, stems, and mastered mixes with mode-aware controls.',
+    promptLabel: 'Audio Direction',
+    promptPlaceholder: 'Describe the voice, arrangement, mood, instrumentation, mastering, or restoration change you need.',
+    previewLabel: 'Wave Monitor',
+    timelineLabel: 'Track Arrangement',
+    referencesLabel: 'Reference Audio',
+    heroMetric: 'Stereo mix prepared',
+    accentClass: 'from-emerald-500/20 via-teal-500/10 to-transparent',
+    icon: Headphones,
+  },
+};
+
+const modelsByMode: Record<Mode, ModelOption[]> = {
+  image: [
+    { id: 'dalle-3', name: 'DALL-E 3', description: 'Reliable prompt fidelity for commercial comps.', accent: 'bg-orange-500/10 text-orange-500', icon: Sparkles },
+    { id: 'midjourney', name: 'Midjourney v6', description: 'Strong artistic styling and editorial looks.', accent: 'bg-fuchsia-500/10 text-fuchsia-500', icon: Palette },
+    { id: 'sdxl', name: 'Stable Diffusion XL', description: 'Flexible open workflow for fast iteration.', accent: 'bg-blue-500/10 text-blue-500', icon: Zap },
+  ],
+  video: [
+    { id: 'runway-gen3', name: 'Runway Gen-3', description: 'Polished cinematic motion and realism.', accent: 'bg-sky-500/10 text-sky-500', icon: Film },
+    { id: 'luma-dream', name: 'Luma Dream Machine', description: 'Good for spatially coherent clips.', accent: 'bg-cyan-500/10 text-cyan-500', icon: Video },
+    { id: 'kling-ai', name: 'Kling AI', description: 'Longer beats and story progression.', accent: 'bg-indigo-500/10 text-indigo-500', icon: Activity },
+  ],
+  audio: [
+    { id: 'suno-v3', name: 'Suno v3.5', description: 'Song concepts and stylized structure.', accent: 'bg-emerald-500/10 text-emerald-500', icon: Music4 },
+    { id: 'udio', name: 'Udio', description: 'Detailed musical texture and layering.', accent: 'bg-teal-500/10 text-teal-500', icon: Waves },
+    { id: 'elevenlabs', name: 'ElevenLabs', description: 'Strong speech synthesis and narration.', accent: 'bg-lime-500/10 text-lime-500', icon: Mic },
+  ],
+};
+
+const imageAspectOptions = ['1:1', '4:5', '3:2', '16:9', '9:16'];
+const imageStyleOptions = ['Photoreal', 'Editorial', 'Product', 'Illustration', 'Cinematic'];
+const videoDurationOptions = ['6 sec', '12 sec', '20 sec'];
+const videoMotionOptions = ['Subtle', 'Balanced', 'Dynamic', 'Aggressive'];
+const audioFormatOptions = ['Voiceover', 'Song', 'Ambient', 'Podcast', 'Sound Design'];
+const audioVoiceOptions = ['Echo-1', 'Nova', 'Alloy', 'Onyx'];
+const qualityOptions = ['Draft', 'Studio', 'Production'];
+
+const waveformHeights = [28, 52, 34, 68, 44, 78, 56, 38, 64, 46, 82, 32, 58, 40, 72, 36, 49, 66, 41, 74, 54, 35, 62, 48];
+const storyboardFrames = ['Hook', 'Reveal', 'Motion', 'Detail', 'Climax', 'Outro'];
+const audioTracks = ['Lead Vox', 'Harmony', 'Bass', 'Atmos', 'FX'];
+const imageVariations = ['Base', 'Lighting', 'Texture', 'Delivery'];
+
+function formatFileSize(file: File) {
+  if (file.size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(file.size / 1024))} KB`;
+  }
+  return `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function Panel({
+  title,
+  description,
+  icon: Icon,
+  children,
+  className,
+}: {
+  title: string;
+  description?: string;
+  icon: LucideIcon;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn('rounded-[28px] border border-border/60 bg-card/75 p-5 shadow-sm backdrop-blur-xl', className)}>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="rounded-xl bg-primary/10 p-2 text-primary">
+              <Icon className="h-4 w-4" />
+            </div>
+            <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          </div>
+          {description && <p className="mt-2 text-xs leading-5 text-muted-foreground">{description}</p>}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ModeChip({
+  active,
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition-all',
+        active
+          ? 'border-primary/40 bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+          : 'border-border/60 bg-background/70 text-muted-foreground hover:border-primary/25 hover:text-foreground'
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
+      <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{label}</p>
+      <p className="mt-2 text-lg font-semibold tracking-tight">{value}</p>
+    </div>
+  );
 }
 
 export default function Imagine() {
-  const [mode, setMode] = useState<'image' | 'video' | 'audio'>('video');
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [prompt, setPrompt] = useState('');
-  const [magicRefine, setMagicRefine] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // Categorization / Shared Params
-  const [quality, setQuality] = useState('Professional');
-  const [duration, setDuration] = useState(10);
-  
-  // Image Specific
-  const [aspectRatio, setAspectRatio] = useState('16:9');
-  const [imageStyle, setImageStyle] = useState('Photorealistic');
-  
-  // Video Specific
-  const [motionStrength, setMotionStrength] = useState(5);
-  const [pan, setPan] = useState(0);
-  const [tilt, setTilt] = useState(0);
-  const [zoom, setZoom] = useState(0);
-  const [roll, setRoll] = useState(0);
-  const [audioSync, setAudioSync] = useState(true);
-  
-  // Audio Specific
-  const [bpm, setBpm] = useState(120);
-  const [audioStyle, setAudioStyle] = useState('Cinematic');
-  const [isInstrumental, setIsInstrumental] = useState(false);
-  const [voiceProfile, setVoiceProfile] = useState('Echo-1');
-  
-  // Skills
-  const [skills, setSkills] = useState<Skill[]>([]);
+  const [mode, setMode] = useState<Mode>('image');
+  const [selectedModel, setSelectedModel] = useState(modelsByMode.image[0].id);
   const [selectedSkillId, setSelectedSkillId] = useState('');
-  
-  // Media Uploads
-  const [refImages, setRefImages] = useState<File[]>([]);
-  const [refAudio, setRefAudio] = useState<File | null>(null);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [prompt, setPrompt] = useState('');
+  const [magicRefine, setMagicRefine] = useState(true);
+  const [quality, setQuality] = useState('Studio');
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Model Options Mapping
-  const modelsByMode: Record<string, ModelOption[]> = {
-    image: [
-      { id: 'dalle-3', name: 'DALL-E 3', description: 'Advanced photorealism & detail', icon: Cpu },
-      { id: 'midjourney', name: 'Midjourney v6', description: 'Artistic mastery & style', icon: Palette },
-      { id: 'sdxl', name: 'Stable Diffusion XL', description: 'High-speed open generation', icon: Zap }
-    ],
-    video: [
-      { id: 'runway-gen3', name: 'Runway Gen-3', description: 'Hyper-realistic cinematic motion', icon: Film },
-      { id: 'luma-dream', name: 'Luma Dream Machine', description: 'Spatial consistency & physics', icon: Move },
-      { id: 'kling-ai', name: 'Kling AI', description: 'Extended duration storytelling', icon: Timer },
-      { id: 'sora-draft', name: 'Sora (Draft)', description: 'World-scale synthesis', icon: Sparkles }
-    ],
-    audio: [
-      { id: 'suno-v3', name: 'Suno v3.5', description: 'Full song composition with lyrics', icon: Music },
-      { id: 'udio', name: 'Udio', description: 'High-fidelity audio architecture', icon: Activity },
-      { id: 'elevenlabs', name: 'ElevenLabs', description: 'Professional voice & narration', icon: Mic }
-    ]
-  };
+  const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [imageStyle, setImageStyle] = useState('Photoreal');
+  const [duration, setDuration] = useState('12 sec');
+  const [motionProfile, setMotionProfile] = useState('Balanced');
+  const [cameraMovement, setCameraMovement] = useState(56);
+  const [audioFormat, setAudioFormat] = useState('Voiceover');
+  const [voiceProfile, setVoiceProfile] = useState('Echo-1');
+  const [mixEnergy, setMixEnergy] = useState(48);
 
+  const [referenceImages, setReferenceImages] = useState<File[]>([]);
+  const [referenceAudio, setReferenceAudio] = useState<File[]>([]);
+  const [referenceVideo, setReferenceVideo] = useState<File[]>([]);
+
+  const config = modeConfigs[mode];
   const currentModels = modelsByMode[mode];
+  const selectedModelData = currentModels.find((model) => model.id === selectedModel) ?? currentModels[0];
 
   useEffect(() => {
-    setSelectedModel(currentModels[0].id);
+    setSelectedModel(modelsByMode[mode][0].id);
+    setSelectedSkillId('');
   }, [mode]);
 
   useEffect(() => {
+    let active = true;
+
     const fetchSkills = async () => {
       try {
         const response = await apiClient.get('/skills/search/', { params: { tab: 'mine' } });
-        setSkills(response.data.results || []);
+        if (active) {
+          setSkills(response.data.results || []);
+        }
       } catch (error) {
         console.error('Failed to fetch skills:', error);
       }
     };
+
     fetchSkills();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const handleSkillInjection = (skillId: string) => {
-    const skill = skills.find(s => s.id === skillId);
-    if (skill) {
-      setPrompt(prev => `${prev} ${skill.content}`.trim());
-      toast.success(`Injected skill: ${skill.title}`);
-    }
+  const selectedReferences = useMemo(() => {
+    if (mode === 'image') return referenceImages;
+    if (mode === 'video') return referenceVideo;
+    return referenceAudio;
+  }, [mode, referenceAudio, referenceImages, referenceVideo]);
+
+  const skillOptions = useMemo(
+    () => skills.map((skill) => ({ value: skill.id, label: skill.title })),
+    [skills]
+  );
+
+  const handleSkillSelect = (skillId: string) => {
+    setSelectedSkillId(skillId);
+    const skill = skills.find((item) => item.id === skillId);
+    if (!skill) return;
+
+    setPrompt((prev) => `${prev}\n${skill.content}`.trim());
+    toast.success(`Added "${skill.title}" to the brief`);
   };
 
   const handleGenerate = () => {
     if (!prompt.trim()) {
-      toast.error('Please enter a prompt to begin imagining');
+      toast.error('Add a prompt before starting the edit.');
       return;
     }
+
     setIsLoading(true);
-    toast.info(`Using ${modelsByMode[mode].find(m => m.id === selectedModel)?.name} to synthesize...`);
-    
-    setTimeout(() => {
+    toast.info(`Preparing ${mode} edit with ${selectedModelData.name}`);
+
+    window.setTimeout(() => {
       setIsLoading(false);
-      toast.success(`${mode.charAt(0).toUpperCase() + mode.slice(1)} generated successfully`);
-    }, 4000);
+      toast.success(`${config.title} is ready for preview.`);
+    }, 2200);
   };
 
-  const handleFileUpload = (type: string, files: FileList | null) => {
-    if (!files) return;
-    const file = files[0];
-    switch(type) {
-        case 'image': if (refImages.length < 4) setRefImages(prev => [...prev, file]); break;
-        case 'audio': setRefAudio(file); break;
+  const handleReferenceUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const incoming: File[] = Array.from(event.target.files ?? []);
+    if (incoming.length === 0) return;
+
+    if (mode === 'image') {
+      setReferenceImages((prev) => [...prev, ...incoming].slice(0, 6));
+    } else if (mode === 'video') {
+      setReferenceVideo((prev) => [...prev, ...incoming].slice(0, 4));
+    } else {
+      setReferenceAudio((prev) => [...prev, ...incoming].slice(0, 5));
+    }
+
+    event.target.value = '';
+  };
+
+  const removeReference = (fileName: string) => {
+    if (mode === 'image') {
+      setReferenceImages((prev) => prev.filter((file) => file.name !== fileName));
+    } else if (mode === 'video') {
+      setReferenceVideo((prev) => prev.filter((file) => file.name !== fileName));
+    } else {
+      setReferenceAudio((prev) => prev.filter((file) => file.name !== fileName));
     }
   };
 
-  // Custom Dropdown Component
-  const CustomDropdown = ({ 
-    label, 
-    value, 
-    onChange, 
-    options, 
-    icon: Icon, 
-    className,
-    isModelSelector = false
-  }: { 
-    label: string, 
-    value: string, 
-    onChange: (val: string) => void, 
-    options: (string | ModelOption)[], 
-    icon: any,
-    className?: string,
-    isModelSelector?: boolean
-  }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
+  const renderModeControls = () => {
+    if (mode === 'image') {
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">Aspect ratio</label>
+            <Select
+              value={aspectRatio}
+              onChange={setAspectRatio}
+              options={imageAspectOptions.map((option) => ({ label: option, value: option }))}
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">Style direction</label>
+            <Select
+              value={imageStyle}
+              onChange={setImageStyle}
+              options={imageStyleOptions.map((option) => ({ label: option, value: option }))}
+            />
+          </div>
+        </div>
+      );
+    }
 
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-          setIsOpen(false);
-        }
-      };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const displayValue = isModelSelector 
-      ? (options as ModelOption[]).find(m => m.id === value)?.name || value 
-      : value;
+    if (mode === 'video') {
+      return (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-medium text-muted-foreground">Sequence length</label>
+              <Select
+                value={duration}
+                onChange={setDuration}
+                options={videoDurationOptions.map((option) => ({ label: option, value: option }))}
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-medium text-muted-foreground">Motion profile</label>
+              <Select
+                value={motionProfile}
+                onChange={setMotionProfile}
+                options={videoMotionOptions.map((option) => ({ label: option, value: option }))}
+              />
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 flex items-center justify-between text-xs font-medium text-muted-foreground">
+              <span>Camera movement</span>
+              <span>{cameraMovement}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={cameraMovement}
+              onChange={(event) => setCameraMovement(Number(event.target.value))}
+              className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+            />
+          </div>
+        </div>
+      );
+    }
 
     return (
-      <div className={cn("space-y-2 relative", className)} ref={dropdownRef}>
-        {label && <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40 px-1">{label}</label>}
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className={cn(
-            "w-full h-11 bg-background/50 backdrop-blur-md border border-border/40 rounded-xl px-4 flex items-center justify-between group transition-all",
-            "hover:bg-accent/30 hover:border-primary/30",
-            isOpen && "border-primary/50 ring-2 ring-primary/10"
-          )}
-        >
-          <div className="flex items-center gap-3">
-             <Icon className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
-             <span className="text-[10px] font-black uppercase tracking-widest text-foreground/80">{displayValue}</span>
+      <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">Output type</label>
+            <Select
+              value={audioFormat}
+              onChange={setAudioFormat}
+              options={audioFormatOptions.map((option) => ({ label: option, value: option }))}
+            />
           </div>
-          <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground/40 transition-transform duration-300", isOpen && "rotate-180")} />
-        </button>
+          <div>
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">Voice profile</label>
+            <Select
+              value={voiceProfile}
+              onChange={setVoiceProfile}
+              options={audioVoiceOptions.map((option) => ({ label: option, value: option }))}
+            />
+          </div>
+        </div>
+        <div>
+          <div className="mb-2 flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>Mix energy</span>
+            <span>{mixEnergy}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={mixEnergy}
+            onChange={(event) => setMixEnergy(Number(event.target.value))}
+            className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+          />
+        </div>
+      </div>
+    );
+  };
 
-        {isOpen && (
-          <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-card/95 backdrop-blur-2xl border border-border/60 rounded-xl p-1.5 shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-200 origin-top">
-             <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                {options.map((opt) => {
-                  const optId = typeof opt === 'string' ? opt : opt.id;
-                  const optName = typeof opt === 'string' ? opt : opt.name;
-                  const optDesc = typeof opt === 'string' ? null : opt.description;
-                  const isSelected = value === optId;
-                  
-                  return (
-                    <button
-                      key={optId}
-                      onClick={() => {
-                        onChange(optId);
-                        setIsOpen(false);
-                      }}
-                      className={cn(
-                        "w-full flex flex-col items-start px-3 py-2.5 rounded-lg transition-all mb-0.5 last:mb-0",
-                        isSelected 
-                          ? "bg-primary/20 text-primary" 
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                      )}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-[9px] font-black uppercase tracking-widest">{optName}</span>
-                        {isSelected && <svg className="w-3 h-3 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-                      </div>
-                      {optDesc && <span className="text-[7px] font-medium opacity-60 normal-case mt-0.5">{optDesc}</span>}
-                    </button>
-                  );
-                })}
-             </div>
+  const renderPreview = () => {
+    if (mode === 'audio') {
+      return (
+        <div className="relative flex h-full min-h-[360px] flex-col justify-between rounded-[30px] border border-white/10 bg-zinc-950 p-6 text-white">
+          <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-white/60">
+            <span>{config.previewLabel}</span>
+            <span>{selectedModelData.name}</span>
           </div>
-        )}
+          <div className="flex flex-1 items-center gap-2 py-8">
+            {waveformHeights.map((height, index) => (
+              <div
+                key={`${height}-${index}`}
+                className="flex-1 rounded-full bg-gradient-to-t from-emerald-500/40 via-cyan-400/70 to-white/90"
+                style={{ height: `${height}%` }}
+              />
+            ))}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatCard label="Format" value={audioFormat} />
+            <StatCard label="Voice" value={voiceProfile} />
+            <StatCard label="Energy" value={`${mixEnergy}%`} />
+          </div>
+        </div>
+      );
+    }
+
+    if (mode === 'video') {
+      return (
+        <div className="relative min-h-[360px] overflow-hidden rounded-[30px] border border-white/10 bg-zinc-950 text-white">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.28),transparent_40%),linear-gradient(135deg,rgba(2,6,23,0.9),rgba(15,23,42,0.94))]" />
+          <div className="relative flex h-full flex-col justify-between p-6">
+            <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-white/65">
+              <span>{config.previewLabel}</span>
+              <span>{duration}</span>
+            </div>
+            <div className="space-y-6">
+              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-white/20 bg-white/10 backdrop-blur">
+                <Play className="ml-1 h-8 w-8 fill-white text-white" />
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <StatCard label="Motion" value={motionProfile} />
+                <StatCard label="Camera" value={`${cameraMovement}%`} />
+                <StatCard label="Quality" value={quality} />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative min-h-[360px] overflow-hidden rounded-[30px] border border-white/10 bg-zinc-950 text-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.28),transparent_35%),linear-gradient(135deg,rgba(24,24,27,0.96),rgba(9,9,11,0.92))]" />
+        <div className="relative flex h-full flex-col justify-between p-6">
+          <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-white/65">
+            <span>{config.previewLabel}</span>
+            <span>{aspectRatio}</span>
+          </div>
+          <div className="mx-auto flex w-full max-w-[440px] flex-1 items-center justify-center py-8">
+            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[28px] border border-white/15 bg-gradient-to-br from-orange-300/30 via-rose-300/10 to-zinc-900">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.32),transparent_22%),radial-gradient(circle_at_70%_70%,rgba(251,191,36,0.18),transparent_26%)]" />
+              <div className="absolute left-6 top-6 rounded-full bg-black/45 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/80">
+                {imageStyle}
+              </div>
+              <div className="absolute bottom-6 left-6 right-6 rounded-2xl bg-black/35 p-4 backdrop-blur">
+                <p className="text-sm font-medium text-white/85">Editable still composition with room for crop, cleanup, relight, and upscale passes.</p>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatCard label="Style" value={imageStyle} />
+            <StatCard label="Aspect" value={aspectRatio} />
+            <StatCard label="Quality" value={quality} />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTimeline = () => {
+    if (mode === 'video') {
+      return (
+        <div className="grid gap-3 md:grid-cols-6">
+          {storyboardFrames.map((frame, index) => (
+            <div key={frame} className="rounded-2xl border border-border/60 bg-background/70 p-3">
+              <div className="mb-3 aspect-video rounded-xl bg-gradient-to-br from-sky-500/20 via-slate-900 to-slate-950" />
+              <p className="text-xs font-semibold">{frame}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{index * 2}s - {index * 2 + 2}s</p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (mode === 'audio') {
+      return (
+        <div className="space-y-3">
+          {audioTracks.map((track, index) => (
+            <div key={track} className="grid grid-cols-[110px_1fr] items-center gap-3">
+              <div className="rounded-2xl border border-border/60 bg-background/70 px-3 py-3 text-xs font-semibold">{track}</div>
+              <div className="flex h-12 items-center gap-1 rounded-2xl border border-border/60 bg-background/70 px-3">
+                {waveformHeights.slice(index * 4, index * 4 + 12).map((height, waveformIndex) => (
+                  <div
+                    key={`${track}-${waveformIndex}`}
+                    className="flex-1 rounded-full bg-primary/55"
+                    style={{ height: `${Math.max(18, height - index * 4)}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid gap-3 md:grid-cols-4">
+        {imageVariations.map((variation) => (
+          <div key={variation} className="rounded-2xl border border-border/60 bg-background/70 p-3">
+            <div className="mb-3 aspect-square rounded-[20px] bg-gradient-to-br from-orange-500/20 via-rose-500/10 to-transparent" />
+            <p className="text-xs font-semibold">{variation}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">Version ready for compare view</p>
+          </div>
+        ))}
       </div>
     );
   };
 
   return (
-    <div className="flex h-full w-full bg-background overflow-hidden relative font-sans">
-      {/* Premium Background Elements */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(var(--primary-rgb),0.08),transparent_50%)] pointer-events-none" />
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-purple-500/5 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
-
-      {/* Main Layout */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden h-full z-10 relative">
-        
-        {/* Coming Soon Overlay */}
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-md">
-            <div className="max-w-xl p-12 rounded-[3rem] border border-primary/20 bg-card/40 backdrop-blur-2xl shadow-2xl text-center space-y-8 animate-in fade-in zoom-in-95 duration-700">
-                <div className="relative inline-block">
-                    <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full animate-pulse" />
-                    <div className="relative w-24 h-24 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center mx-auto">
-                        <Sparkles className="w-10 h-10 text-primary animate-bounce fill-primary" />
-                    </div>
-                </div>
-                <div className="space-y-4">
-                    <h2 className="text-[12px] font-black uppercase tracking-[0.5em] text-primary">Status: Neural Link Pending</h2>
-                    <h1 className="text-5xl font-black tracking-tighter uppercase leading-none italic text-foreground">
-                        Coming Soon
-                    </h1>
-                    <p className="text-muted-foreground/60 text-lg font-medium leading-relaxed">
-                        Our neural generation engines (DALL-E 3, Midjourney, Runway Gen-3) are currently being calibrated for peak performance. This module will be live shortly.
-                    </p>
-                </div>
-                <div className="pt-4 flex items-center justify-center gap-4">
-                    <button onClick={() => window.history.back()} className="px-8 py-3 bg-primary text-primary-foreground rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
-                        Return to Hub
-                    </button>
-                    <div className="px-5 py-3 border border-border/40 rounded-full text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                        In Calibration
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {/* THE ENTIRE UI IS HIDDEN WHILE IN 'COMING SOON' MODE */}
-        <div className="hidden">
-        {/* Left Sidebar - Configuration */}
-        <aside className="w-full md:w-[450px] shrink-0 border-t md:border-t-0 md:border-r border-border/40 bg-card/10 backdrop-blur-3xl overflow-y-auto custom-scrollbar p-6 space-y-8 glass order-2 md:order-1">
-          
-          {/* Global Mode Switcher */}
-          <div className="space-y-4">
-             <div className="flex items-center justify-between gap-2">
-                <div className="flex p-1 bg-muted/40 rounded-xl border border-border/40 w-full">
-                    {[
-                        { id: 'image', icon: <ImageIcon className="w-3.5 h-3.5" />, label: 'Image' },
-                        { id: 'video', icon: <Video className="w-3.5 h-3.5" />, label: 'Video' },
-                        { id: 'audio', icon: <Headphones className="w-3.5 h-3.5" />, label: 'Audio' }
-                    ].map(m => (
-                        <button 
-                            key={m.id}
-                            onClick={() => setMode(m.id as any)}
-                            className={cn(
-                                "flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                                mode === m.id ? "bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:text-foreground"
-                            )}
-                        >
-                            {m.icon}
-                            {m.label}
-                        </button>
-                    ))}
-                </div>
-             </div>
-             
-             {/* Model Selector - MODE AWARE */}
-             <div className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 px-1">Engine Selection</h3>
-                <CustomDropdown 
-                    label=""
-                    value={selectedModel}
-                    onChange={setSelectedModel}
-                    options={currentModels}
-                    icon={Cpu}
-                    isModelSelector
-                />
-             </div>
-          </div>
-
-          {/* Unified Prompting Container */}
-          <div className="space-y-6">
-             <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                   <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Creative Manifest</label>
-                   <div className="w-40">
-                      <CustomDropdown 
-                          label=""
-                          value={selectedSkillId ? (skills.find(s => s.id === selectedSkillId)?.title || '+ Inject Skill') : '+ Inject Skill'}
-                          onChange={(skillTitle) => {
-                            const skill = skills.find(s => s.title === skillTitle);
-                            if (skill) {
-                              setSelectedSkillId(skill.id);
-                              handleSkillInjection(skill.id);
-                            }
-                          }}
-                          options={skills.map(s => s.title)}
-                          icon={Sparkles}
-                          className="space-y-0"
-                      />
-                   </div>
-                </div>
-                <div className="relative group">
-                    <textarea 
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder={`Describe your vision for ${selectedModel || mode}...`}
-                        className="w-full min-h-[120px] bg-background/40 border border-border/40 rounded-[1.5rem] p-5 focus:ring-1 focus:ring-primary/30 outline-none resize-none text-sm leading-relaxed placeholder:text-muted-foreground/20 font-medium transition-all group-hover:border-primary/20"
-                    />
-                </div>
-             </div>
-
-             <div className="flex items-center justify-between px-1">
-                <button 
-                    onClick={() => setMagicRefine(!magicRefine)}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-full border text-[9px] font-black uppercase tracking-widest transition-all",
-                        magicRefine ? "bg-purple-500/10 border-purple-500/40 text-purple-500 shadow-sm" : "bg-muted/40 border-border/40 text-muted-foreground hover:text-foreground"
-                    )}
-                >
-                    <Wand2 className={cn("w-3.5 h-3.5", magicRefine && "animate-pulse")} />
-                    Magic Refine
-                </button>
-                <div className="flex items-center gap-2">
-                    <History className="w-3.5 h-3.5 text-muted-foreground/40" />
-                    <span className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-widest">History</span>
-                </div>
-             </div>
-          </div>
-
-          {/* MODE-SPECIFIC CONFIGURATION */}
-          <div className="space-y-8 pt-4">
-             <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Quantum Calibration</h3>
-                <Sliders className="w-3.5 h-3.5 text-primary/40" />
-             </div>
-
-             {/* IMAGE CONFIG */}
-             {mode === 'image' && (
-                <div className="grid grid-cols-2 gap-4">
-                    <CustomDropdown 
-                        label="Aspect Ratio"
-                        value={aspectRatio}
-                        onChange={setAspectRatio}
-                        options={['16:9', '9:16', '1:1', '4:3', '21:9']}
-                        icon={Maximize2}
-                    />
-                    <CustomDropdown 
-                        label="Visual Style"
-                        value={imageStyle}
-                        onChange={setImageStyle}
-                        options={['Photorealistic', 'Digital Art', 'Oil Painting', 'Abstract', 'Cinematic', 'Sketched']}
-                        icon={Palette}
-                    />
-                    <CustomDropdown 
-                        label="Quality"
-                        value={quality}
-                        onChange={setQuality}
-                        options={['Draft', 'Standard', 'HD', 'Super+']}
-                        icon={Zap}
-                    />
-                </div>
-             )}
-
-             {/* VIDEO CONFIG */}
-             {mode === 'video' && (
-                <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                        <CustomDropdown 
-                            label="Duration"
-                            value={`${duration}s`}
-                            onChange={(v) => setDuration(parseInt(v))}
-                            options={['5s', '10s', '15s']}
-                            icon={Clock}
-                        />
-                        <CustomDropdown 
-                            label="FPS / Quality"
-                            value={quality}
-                            onChange={setQuality}
-                            options={['Standard', 'Professional', 'Director Cut']}
-                            icon={Zap}
-                        />
-                    </div>
-                    <div className="space-y-4 bg-muted/20 rounded-2xl p-4">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground/60">
-                            <span className="uppercase tracking-widest">Motion Amplitude</span>
-                            <span className="text-primary">{motionStrength}</span>
-                        </div>
-                        <input type="range" min="1" max="10" step="1" value={motionStrength} onChange={(e) => setMotionStrength(parseInt(e.target.value))} className="w-full accent-primary h-1 bg-background/40 rounded-full" />
-                        
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-2">
-                            {[
-                                { label: 'Pan', val: pan, set: setPan, icon: <Move className="w-3 h-3" /> },
-                                { label: 'Tilt', val: tilt, set: setTilt, icon: <ChevronDown className="w-3 h-3" /> },
-                                { label: 'Zoom', val: zoom, set: setZoom, icon: <Maximize2 className="w-3 h-3" /> },
-                                { label: 'Roll', val: roll, set: setRoll, icon: <RefreshCcw className="w-3 h-3" /> }
-                            ].map(ctrl => (
-                                <div key={ctrl.label} className="space-y-1.5">
-                                     <div className="flex items-center justify-between text-[7px] font-black uppercase tracking-widest text-muted-foreground/40">
-                                        <div className="flex items-center gap-1">{ctrl.icon}<span>{ctrl.label}</span></div>
-                                        <span>{ctrl.val}</span>
-                                     </div>
-                                     <input type="range" min="-10" max="10" step="1" value={ctrl.val} onChange={(e) => ctrl.set(parseInt(e.target.value))} className="w-full accent-primary/60 h-0.5 bg-background/40 rounded-full" />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-             )}
-
-             {/* AUDIO CONFIG */}
-             {mode === 'audio' && (
-                <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                        <CustomDropdown 
-                            label="Acoustic Style"
-                            value={audioStyle}
-                            onChange={setAudioStyle}
-                            options={['Cinematic', 'Lo-Fi', 'Techno', 'Rock', 'Jazz', 'Epic']}
-                            icon={Music}
-                        />
-                        <CustomDropdown 
-                            label="Voice Architecture"
-                            value={voiceProfile}
-                            onChange={setVoiceProfile}
-                            options={['Echo-1', 'Nova-2', 'Atlas', 'Luna']}
-                            icon={Mic}
-                        />
-                    </div>
-                    <div className="space-y-4 bg-muted/20 rounded-2xl p-4">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground/60">
-                            <span className="uppercase tracking-widest">Tempo (BPM)</span>
-                            <span className="text-primary">{bpm}</span>
-                        </div>
-                        <input type="range" min="40" max="220" step="1" value={bpm} onChange={(e) => setBpm(parseInt(e.target.value))} className="w-full accent-primary h-1 bg-background/40 rounded-full" />
-                        
-                        <div className="flex items-center justify-start gap-4 pt-2">
-                           <div className="flex items-center gap-2">
-                               <input type="checkbox" checked={isInstrumental} onChange={() => setIsInstrumental(!isInstrumental)} className="w-3.5 h-3.5 rounded border-border/40 bg-background/40 accent-primary" />
-                               <label className="text-[8px] font-black uppercase text-muted-foreground flex items-center gap-1.5"><Headphones className="w-3 h-3" />Instrumental</label>
-                           </div>
-                           <div className="flex items-center gap-2">
-                               <input type="checkbox" checked={audioSync} onChange={() => setAudioSync(!audioSync)} className="w-3.5 h-3.5 rounded border-border/40 bg-background/40 accent-primary" />
-                               <label className="text-[8px] font-black uppercase text-muted-foreground flex items-center gap-1.5"><Layout className="w-3 h-3" />Auto-Mastering</label>
-                           </div>
-                        </div>
-                    </div>
-                </div>
-             )}
-          </div>
-
-          {/* UNIVERSAL REFERENCE HUB */}
-          <div className="space-y-6 pt-4 border-t border-border/40">
-             <div className="flex items-center justify-between px-1">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Reference Materials</h3>
-                <Layers className="w-3.5 h-3.5 text-muted-foreground/20" />
-             </div>
-
-             <div className="space-y-4">
-                {/* Reference Grid */}
-                <div className="grid grid-cols-4 gap-3">
-                   {mode === 'image' || mode === 'video' ? (
-                     <>
-                        {Array.from({ length: 4 }).map((_, i) => (
-                           <div key={i} className="aspect-square bg-background/40 border border-dashed border-border/40 rounded-xl relative group transition-all hover:border-primary/40">
-                                {refImages[i] ? (
-                                    <>
-                                        <img src={URL.createObjectURL(refImages[i])} className="w-full h-full object-cover rounded-xl" alt="Ref" />
-                                        <button onClick={() => setRefImages(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-2.5 h-2.5" /></button>
-                                    </>
-                                ) : (
-                                    <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer">
-                                        <Plus className="w-4 h-4 text-muted-foreground/20" />
-                                        <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload('image', e.target.files)} />
-                                    </label>
-                                )}
-                           </div>
-                        ))}
-                     </>
-                   ) : (
-                     <div className="col-span-4 aspect-video bg-background/40 border border-dashed border-border/40 rounded-2xl relative group transition-all hover:border-primary/40">
-                         {refAudio ? (
-                            <div className="flex flex-col items-center justify-center h-full p-4">
-                                <Waves className="w-8 h-8 text-primary animate-pulse mb-2" />
-                                <span className="text-[8px] font-bold text-primary truncate max-w-full px-4">{refAudio.name}</span>
-                                <button onClick={() => setRefAudio(null)} className="mt-2 text-[8px] font-black uppercase text-red-500/60 hover:text-red-500">Remove</button>
-                            </div>
-                         ) : (
-                            <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer">
-                                <Volume2 className="w-6 h-6 text-muted-foreground/20 mb-2" />
-                                <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40">Upload Audio Reference</span>
-                                <input type="file" className="hidden" accept="audio/*" onChange={(e) => handleFileUpload('audio', e.target.files)} />
-                            </label>
-                         )}
-                     </div>
-                   )}
-                </div>
-             </div>
-          </div>
-
-          {/* Action Hub */}
-          <div className="pt-6">
-             <button onClick={handleGenerate} disabled={isLoading} className={cn("w-full py-5 rounded-[2.5rem] flex items-center justify-center gap-4 transition-all font-black uppercase tracking-[0.3em] text-[11px] group relative overflow-hidden", isLoading ? "bg-muted cursor-not-allowed text-muted-foreground" : "bg-primary text-primary-foreground shadow-[0_20px_50px_rgba(var(--primary-rgb),0.3)] hover:scale-[1.01] active:scale-[0.99]")}>
-                {isLoading ? (
-                  <>
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer-fast" />
-                    < Zap className="w-5 h-5 animate-spin" />
-                    <span>SYNTHESIZING...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5 group-hover:scale-125 transition-transform duration-500" />
-                    <span>Initiate Neural Generation</span>
-                  </>
-                )}
-             </button>
-          </div>
-
-        </aside>
-
-        {/* Right Area - MODULAR CANVAS */}
-        <main className="flex-1 min-h-[50vh] md:min-h-0 overflow-y-auto custom-scrollbar p-4 md:p-10 bg-black/10 relative order-1 md:order-2">
-            <div className="max-w-6xl mx-auto space-y-12 h-fit mb-20 text-foreground">
-              
-              {/* Specialized Header */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-                 <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                        <div className="w-[3px] h-10 bg-primary/40 rounded-full" />
-                        <div>
-                           <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary mb-1">Modular Hub • {selectedModel}</h2>
-                           <h1 className="text-5xl font-black tracking-tighter uppercase leading-none italic">
-                              {mode === 'image' && "Still Horizon"}
-                              {mode === 'video' && "Continuum Flow"}
-                              {mode === 'audio' && "Sound Architecture"}
-                           </h1>
-                        </div>
-                    </div>
-                    <p className="max-w-2xl text-muted-foreground/60 text-lg font-medium leading-relaxed">
-                        {mode === 'image' && "Generate hyper-definition visuals with full artistic control over lighting, texture, and composition."}
-                        {mode === 'video' && "Construct cinematic motion sequences with temporal consistency and advanced physics simulation."}
-                        {mode === 'audio' && "Orchestrate high-fidelity acoustic masterworks, from ambient scores to professional narration."}
-                    </p>
-                 </div>
-                 
-                 <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2.5 px-6 py-3.5 bg-card/40 border border-border/40 hover:bg-muted/40 rounded-2xl text-[10px] font-black uppercase tracking-widest glass">
-                        <History className="w-4 h-4 text-primary/60" />History
-                    </button>
-                    <button className="flex items-center gap-2.5 px-6 py-3.5 bg-primary/10 border border-primary/20 hover:bg-primary/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-primary glass">
-                        <Activity className="w-4 h-4" />Live Synthesis
-                    </button>
-                 </div>
-              </div>
-
-              {/* DYNAMIC CANVAS AREA */}
-              <div className="space-y-10">
-                 
-                 {/* 1. Preview Area */}
-                 <div className="group relative">
-                    <div className="absolute -inset-1.5 bg-gradient-to-br from-primary/20 via-purple-500/20 to-primary/20 rounded-[3rem] blur-2xl opacity-20 group-hover:opacity-40 transition-opacity" />
-                    <div className={cn(
-                        "relative aspect-video bg-zinc-950 border border-border/40 rounded-[2.8rem] shadow-2xl overflow-hidden flex flex-col items-center justify-center transition-all duration-700 glass",
-                        mode === 'image' && "aspect-[4/3] md:aspect-video",
-                        mode === 'audio' && "aspect-video bg-[radial-gradient(circle_at_50%_120%,rgba(var(--primary-rgb),0.1),transparent)]"
-                    )}>
-                        {isLoading ? (
-                            <div className="flex flex-col items-center gap-10 animate-in fade-in zoom-in-95 duration-1000">
-                                <div className="relative">
-                                    <div className="absolute inset-0 bg-primary/40 blur-3xl rounded-full animate-pulse scale-150" />
-                                    <div className="relative w-28 h-28 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center">
-                                        <Zap className="w-10 h-10 text-primary animate-bounce fill-primary" />
-                                    </div>
-                                </div>
-                                <h3 className="text-2xl font-black uppercase tracking-[0.4em] text-white">Synthesizing...</h3>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center gap-8 text-muted-foreground/20">
-                                {mode === 'audio' ? (
-                                    <div className="w-full h-full flex flex-col items-center justify-center gap-6 p-12">
-                                        <div className="flex items-center gap-3 h-32 w-full max-w-2xl px-12">
-                                            {[1, 2, 4, 3, 6, 8, 10, 7, 5, 3, 2, 4, 6, 9, 7, 4, 2, 1].map((h, i) => (
-                                                <div key={i} className="flex-1 rounded-full bg-primary/10 transition-all duration-500 group-hover:bg-primary/20" style={{ height: `${h * 10}%` }} />
-                                            ))}
-                                        </div>
-                                        <div className="text-center space-y-4">
-                                            <div className="w-16 h-16 bg-muted/20 border border-border/40 rounded-[1.5rem] flex items-center justify-center mx-auto">
-                                                 <Music className="w-8 h-8 opacity-20" />
-                                            </div>
-                                            <p className="text-[10px] font-black uppercase tracking-[0.6em] opacity-40">Acoustic Manifest Awaiting</p>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div className="w-32 h-32 border-2 border-dashed border-border/40 rounded-[2.5rem] flex items-center justify-center group-hover:scale-110 transition-all">
-                                            {mode === 'video' ? <Film className="w-12 h-12" /> : <ImageIcon className="w-12 h-12" />}
-                                        </div>
-                                        <p className="text-[10px] font-black uppercase tracking-[0.6em] opacity-40">Input Manifest Awaiting</p>
-                                    </>
-                                )}
-                            </div>
-                        )}
-
-                        {/* HUD OVERLAY - MODE AWARE */}
-                        <div className="absolute top-8 left-8 flex flex-col gap-3">
-                            <div className="px-3 py-1.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-primary">Model: {selectedModel}</div>
-                            {mode === 'video' && <div className="px-3 py-1.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-white/60">Calib: {pan}P / {tilt}T / {zoom}Z</div>}
-                            {mode === 'audio' && <div className="px-3 py-1.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-white/60">BPM: {bpm} • Mono/Stereo</div>}
-                        </div>
-                    </div>
-
-                    <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 flex items-center gap-8 px-10 py-5 bg-card/80 backdrop-blur-2xl border border-border/40 rounded-[2rem] shadow-2xl glass transition-all duration-500 group-hover:translate-y-[-10px]">
-                        <button className="text-muted-foreground/40 hover:text-primary transition-colors cursor-pointer"><FastForward className="w-5 h-5 -scale-x-100" /></button>
-                        <button className="w-12 h-12 bg-primary border border-primary-foreground/20 rounded-full flex items-center justify-center text-primary-foreground hover:scale-110 active:scale-95 transition-all shadow-[0_10px_30px_rgba(var(--primary-rgb),0.3)]">
-                           <Play className="w-5 h-5 ml-1" fill="currentColor" />
-                        </button>
-                        <button className="text-muted-foreground/40 hover:text-primary transition-colors cursor-pointer"><FastForward className="w-5 h-5" /></button>
-                    </div>
-                 </div>
-
-                 {/* 2. Specialized Timeline / Waveform / Gallery */}
-                 <div className="pt-10 space-y-4">
-                    {mode === 'video' && (
-                        <div className="space-y-4 bg-muted/10 border border-border/40 rounded-[2.5rem] p-8 glass">
-                           <div className="flex items-center justify-between px-2">
-                               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Sequence Storyboard</h3>
-                               <div className="flex gap-2">
-                                   <div className="px-2 py-1 bg-primary/10 rounded text-[8px] font-black text-primary">00:00:15</div>
-                                   <div className="px-2 py-1 bg-muted/40 rounded text-[8px] font-black text-muted-foreground/60">30 FPS</div>
-                               </div>
-                           </div>
-                           <div className="grid grid-cols-6 gap-4 h-32">
-                                 {[...Array(6)].map((_, i) => (
-                                     <div key={i} className="relative overflow-hidden group transition-all" style={{ opacity: i < 4 ? 1 : 0.4 }}>
-                                         <MediaPreview 
-                                           url="" 
-                                           type="video" 
-                                           title={`Sequence ${i+1}`} 
-                                           className="w-full h-full"
-                                         />
-                                     </div>
-                                 ))}
-                           </div>
-                        </div>
-                    )}
-
-                    {mode === 'audio' && (
-                        <div className="space-y-4 bg-muted/10 border border-border/40 rounded-[2.5rem] p-8 glass">
-                           <div className="flex items-center justify-between px-2">
-                               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Acoustic Timeline</h3>
-                               <div className="flex items-center gap-6">
-                                   <div className="flex -space-x-2">
-                                       {Array.from({length: 4}).map((_, i) => <div key={i} className="w-6 h-6 rounded-full border-2 border-background bg-muted-foreground/20" />)}
-                                   </div>
-                                   <span className="text-[8px] font-black text-muted-foreground/40 uppercase tracking-widest">Mastering Active</span>
-                               </div>
-                           </div>
-                           <div className="h-24 bg-background/40 border border-border/40 rounded-2xl p-4 flex flex-col justify-center gap-4 relative overflow-hidden group">
-                                <div className="absolute left-[30%] top-0 bottom-0 w-[1px] bg-primary/40 z-10" />
-                                <div className="flex items-center gap-1 h-8 opacity-40">
-                                    {Array.from({length: 80}).map((_, i) => <div key={i} className="flex-1 bg-border/40 rounded-full" style={{ height: `${Math.random() * 100}%` }} />)}
-                                </div>
-                                <div className="flex items-center gap-1 h-4 opacity-20">
-                                    {Array.from({length: 80}).map((_, i) => <div key={i} className="flex-1 bg-primary/40 rounded-full" style={{ height: `${Math.random() * 100}%` }} />)}
-                                </div>
-                           </div>
-                        </div>
-                    )}
-
-                    {mode === 'image' && (
-                        <div className="space-y-4 bg-muted/10 border border-border/40 rounded-[2.5rem] p-8 glass">
-                           <div className="flex items-center justify-between px-2">
-                               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Variation Manifest</h3>
-                               <div className="flex gap-2 text-[8px] font-black uppercase text-muted-foreground/40 tracking-widest">
-                                   <span>Resolution: 1024 x 1024</span>
-                                   <span>•</span>
-                                   <span>HD Rendering</span>
-                               </div>
-                           </div>
-                           <div className="grid grid-cols-4 gap-6 h-32">
-                                 {[1, 2, 3, 4].map((i) => (
-                                     <div key={i} className="relative group transition-all">
-                                         <MediaPreview 
-                                           url="" 
-                                           type="image" 
-                                           title={`Variation ${i}`} 
-                                           className="w-full h-full"
-                                         />
-                                     </div>
-                                 ))}
-                           </div>
-                        </div>
-                    )}
-                 </div>
-
-              </div>
-
-              {/* Mode Specific Feature Cards - RE-ENGINEERED */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12">
-                 {mode === 'image' && (
-                    <>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Palette className="w-20 h-20" /></div>
-                           <ImageIcon className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Neural Textures</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Advanced latent diffusion for hyper-precise skin, fabric, and atmospheric rendering.</p>
-                        </div>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Layers className="w-20 h-20" /></div>
-                           <Sparkles className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Global Illumination</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Realistic light transport and ray-traced shadows for stunning visual fidelity.</p>
-                        </div>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Cpu className="w-20 h-20" /></div>
-                           <Maximize2 className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Style Manifest</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Direct model-level style injection from professional artistic engines.</p>
-                        </div>
-                    </>
-                 )}
-                 {mode === 'video' && (
-                    <>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Timer className="w-20 h-20" /></div>
-                           <Film className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Temporal Logic</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Physically accurate motion vectors and temporal coherence between keyframes.</p>
-                        </div>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Camera className="w-20 h-20" /></div>
-                           <Move className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Spatial Flow</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Infinite 3D camera control allowing for professional Hollywood pan-and-tilt shots.</p>
-                        </div>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Activity className="w-20 h-20" /></div>
-                           <Cpu className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Physics Engine</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Simulated world physics for fluid, gravity, and object collision synthesis.</p>
-                        </div>
-                    </>
-                 )}
-                 {mode === 'audio' && (
-                    <>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Waves className="w-20 h-20" /></div>
-                           <Music className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Harmonic Scale</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Neural multi-track orchestration for complex instrumental arrangements.</p>
-                        </div>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Headphones className="w-20 h-20" /></div>
-                           <Activity className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Acoustic DNA</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">High-fidelity voice cloning and emotional tone mapping for narration.</p>
-                        </div>
-                        <div className="p-8 rounded-[2.8rem] border border-border/40 space-y-5 glass glass-hover relative overflow-hidden group">
-                           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><Layout className="w-20 h-20" /></div>
-                           <Cpu className="w-10 h-10 text-primary/60" />
-                           <h3 className="text-sm font-black uppercase tracking-[0.2em]">Neural Mastering</h3>
-                           <p className="text-xs text-muted-foreground/60 leading-relaxed">Automated volume normalization, EQ, and spatial audio mastering.</p>
-                        </div>
-                    </>
-                 )}
-              </div>
-
-            </div>
-        </main>
-        </div>
-
+    <div className="relative h-full overflow-hidden bg-background">
+      <div className="pointer-events-none absolute inset-0">
+        <div className={cn('absolute inset-x-0 top-0 h-[320px] bg-gradient-to-b', config.accentClass)} />
+        <div className="absolute left-[-120px] top-16 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute right-[-80px] top-24 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
       </div>
-      
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(var(--primary-rgb), 0.1); border-radius: 10px; }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(var(--primary-rgb), 0.3); }
-        .glass { background: rgba(var(--card), 0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
-        @keyframes shimmer-fast { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-        .animate-shimmer-fast { animation: shimmer-fast 1.5s infinite; }
-      `}</style>
+
+      <div className="relative flex h-full flex-col overflow-hidden">
+        <PageHeader
+          title="Imagine"
+          subtitle="A polished workspace for image, video, and audio editing flows."
+          icon={Sparkles}
+          actions={(
+            <button
+              type="button"
+              onClick={handleGenerate}
+              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:scale-[1.01]"
+            >
+              <Wand2 className="h-4 w-4" />
+              {isLoading ? 'Rendering...' : 'Run Edit'}
+            </button>
+          )}
+        >
+          <div className="grid gap-3 md:grid-cols-4">
+            <StatCard label="Mode" value={config.title.split(' ')[0]} />
+            <StatCard label="Engine" value={selectedModelData.name} />
+            <StatCard label="Session" value={config.heroMetric} />
+            <StatCard label="Quality" value={quality} />
+          </div>
+        </PageHeader>
+
+        <div className="flex-1 overflow-auto p-4 md:p-6">
+          <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)_320px]">
+            <div className="space-y-6">
+              <Panel
+                title="Workspace Mode"
+                description={config.subtitle}
+                icon={config.icon}
+              >
+                <div className="grid gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                    <ModeChip active={mode === 'image'} label="Image" icon={ImageIcon} onClick={() => setMode('image')} />
+                    <ModeChip active={mode === 'video'} label="Video" icon={Video} onClick={() => setMode('video')} />
+                    <ModeChip active={mode === 'audio'} label="Audio" icon={Headphones} onClick={() => setMode('audio')} />
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel
+                title="Engine & Controls"
+                description="Choose a model and tune the core settings for the current medium."
+                icon={SlidersHorizontal}
+              >
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-muted-foreground">Model</label>
+                    <Select
+                      value={selectedModel}
+                      onChange={setSelectedModel}
+                      options={currentModels.map((model) => ({
+                        value: model.id,
+                        label: model.name,
+                        icon: <model.icon className="h-4 w-4" />,
+                      }))}
+                    />
+                    <div className="mt-3 rounded-2xl border border-border/60 bg-background/70 p-3">
+                      <div className="flex items-center gap-2">
+                        <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-semibold', selectedModelData.accent)}>
+                          Active Engine
+                        </span>
+                        <span className="text-xs font-medium">{selectedModelData.name}</span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">{selectedModelData.description}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-muted-foreground">Quality</label>
+                    <Select
+                      value={quality}
+                      onChange={setQuality}
+                      options={qualityOptions.map((option) => ({ label: option, value: option }))}
+                    />
+                  </div>
+
+                  {renderModeControls()}
+                </div>
+              </Panel>
+
+              <Panel
+                title="References"
+                description={`Upload files to guide the ${mode} edit.`}
+                icon={Upload}
+              >
+                <label className="flex cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-primary/35 bg-primary/5 px-4 py-6 text-center transition hover:border-primary/60 hover:bg-primary/10">
+                  <div className="rounded-2xl bg-background p-3 text-primary shadow-sm">
+                    <Plus className="h-5 w-5" />
+                  </div>
+                  <p className="mt-3 text-sm font-semibold">{config.referencesLabel}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Drop files here or browse from your device.</p>
+                  <input
+                    type="file"
+                    className="hidden"
+                    multiple
+                    accept={mode === 'image' ? 'image/*' : mode === 'video' ? 'video/*' : 'audio/*'}
+                    onChange={handleReferenceUpload}
+                  />
+                </label>
+
+                <div className="mt-4 space-y-2">
+                  {selectedReferences.length === 0 && (
+                    <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3 text-xs text-muted-foreground">
+                      No reference files added yet.
+                    </div>
+                  )}
+                  {selectedReferences.map((file) => (
+                    <div key={file.name} className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatFileSize(file)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeReference(file.name)}
+                        className="rounded-full border border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-destructive/40 hover:text-destructive"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+
+            <div className="space-y-6">
+              <section className="overflow-hidden rounded-[32px] border border-border/60 bg-card/70 p-5 shadow-sm backdrop-blur-xl">
+                <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.28em] text-primary">{config.title}</p>
+                    <h2 className="mt-2 text-2xl font-semibold tracking-tight">{config.subtitle}</h2>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-3 py-1.5">
+                      <Check className="h-3.5 w-3.5 text-emerald-500" />
+                      Editor-ready layout
+                    </div>
+                    <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-3 py-1.5">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      Autosave mock
+                    </div>
+                  </div>
+                </div>
+
+                {renderPreview()}
+              </section>
+
+              <Panel
+                title="Creative Direction"
+                description="Write the edit brief, inject a skill, and refine the output behavior."
+                icon={Bot}
+              >
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                    <div>
+                      <label className="mb-2 block text-xs font-medium text-muted-foreground">{config.promptLabel}</label>
+                      <textarea
+                        value={prompt}
+                        onChange={(event) => setPrompt(event.target.value)}
+                        placeholder={config.promptPlaceholder}
+                        className="min-h-[168px] w-full rounded-[24px] border border-border/60 bg-background/80 px-4 py-4 text-sm leading-6 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
+                      />
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Inject skill</label>
+                        <Select
+                          value={selectedSkillId}
+                          onChange={handleSkillSelect}
+                          options={skillOptions}
+                          placeholder={skills.length ? 'Choose a saved skill' : 'No saved skills'}
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setMagicRefine((prev) => !prev)}
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-[24px] border px-4 py-4 text-left transition',
+                          magicRefine
+                            ? 'border-primary/40 bg-primary/10 text-foreground'
+                            : 'border-border/60 bg-background/70 text-muted-foreground'
+                        )}
+                      >
+                        <div>
+                          <p className="text-sm font-semibold">Magic refine</p>
+                          <p className="mt-1 text-xs leading-5">
+                            Auto-structure the prompt for cleaner edits and more consistent output.
+                          </p>
+                        </div>
+                        <div className={cn(
+                          'rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                          magicRefine ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        )}>
+                          {magicRefine ? 'On' : 'Off'}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel
+                title={config.timelineLabel}
+                description="A specialized review area for the active media type."
+                icon={Layers3}
+              >
+                {renderTimeline()}
+              </Panel>
+            </div>
+
+            <div className="space-y-6">
+              <Panel
+                title="Inspector"
+                description="A quick summary of what the current edit session is optimizing for."
+                icon={BrushCleaning}
+              >
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Intent</p>
+                    <p className="mt-2 text-sm font-medium">
+                      {mode === 'image' && 'High-clarity still editing with style and delivery controls.'}
+                      {mode === 'video' && 'Short-form scene generation with motion-aware review.'}
+                      {mode === 'audio' && 'Voice and music workflow with mastering-oriented controls.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Current model</p>
+                    <p className="mt-2 text-sm font-medium">{selectedModelData.name}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedModelData.description}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Processing profile</p>
+                    <p className="mt-2 text-sm font-medium">{quality}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {mode === 'image' && `${imageStyle} render in ${aspectRatio}`}
+                      {mode === 'video' && `${duration} sequence with ${motionProfile.toLowerCase()} motion`}
+                      {mode === 'audio' && `${audioFormat} output with ${voiceProfile}`}
+                    </p>
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel
+                title="Recent Actions"
+                description="Useful session checkpoints for the next editing pass."
+                icon={Sparkles}
+              >
+                <div className="space-y-3">
+                  {[
+                    'Prompt scaffold prepared',
+                    'Reference dropzone enabled',
+                    'Mode-specific editor layout loaded',
+                    'Preview stage ready for output',
+                  ].map((item, index) => (
+                    <div key={item} className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
+                      <div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary">
+                        {index % 2 === 0 ? <Sparkles className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{item}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Ready to continue without the old placeholder overlay.</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel
+                title="Mode Benefits"
+                description="Each workspace now has a clear purpose instead of one generic layout."
+                icon={AudioLines}
+              >
+                <div className="grid gap-3">
+                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+                    <p className="text-sm font-semibold">Image</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Variation board, still preview, style controls, and aspect-ratio tuning.</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+                    <p className="text-sm font-semibold">Video</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Stage monitor, storyboard timeline, motion profile, and camera movement slider.</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+                    <p className="text-sm font-semibold">Audio</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Wave monitor, track arrangement, voice selection, and mix-energy controls.</p>
+                  </div>
+                </div>
+              </Panel>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
