@@ -7,6 +7,7 @@ import WorkflowEditor from './pages/WorkflowEditor';
 import Credentials from './pages/Credentials';
 import Settings from './pages/Settings';
 import Documents from './pages/Documents';
+import MCPServers from './pages/MCPServers';
 
 import AIChat from './pages/AIChat';
 import Login from './pages/Login';
@@ -103,6 +104,7 @@ const AppContent = () => {
               <Route path="/templates/:id" element={<TemplateDetail />} />
               <Route path="/ai-chat" element={<AIChat />} />
               <Route path="/documents" element={<Documents />} />
+              <Route path="/mcp-servers" element={<MCPServers />} />
               <Route path="/credentials" element={<Credentials />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/billing" element={<Navigate to="/settings" replace />} />

@@ -10,7 +10,8 @@ import {
   Brain,
   Layout,
   Loader2,
-  Zap
+  Zap,
+  Cpu
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -58,6 +59,7 @@ const Sidebar = () => {
         { icon: Key, label: "Credentials", path: "/credentials" },
         { icon: Zap, label: "Skills", path: "/skills" },
         { icon: Layout, label: "Templates", path: "/templates" },
+        { icon: Cpu, label: "MCP Servers", path: "/mcp-servers" },
         { icon: FileText, label: "Documents", path: "/documents" },
     ];
 

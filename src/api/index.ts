@@ -46,3 +46,9 @@ export {
 } from './logs';
 export { default as nodeService, type NodeSchema, type NodeField, type NodeHandle } from './nodeService';
 export { chatService, type ChatSession, type ChatMessage as StandaloneChatMessage } from './chat';
+export { 
+  default as mcpService, 
+  type MCPServer, 
+  type MCPServerType, 
+  type CreateMCPServerData 
+} from './mcp';
