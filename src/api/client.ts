@@ -149,9 +149,13 @@ const refreshToken = tokenManager.getRefreshToken();
       }
     }
 
-    // Handle other errors
-    const errorMessage = (error.response?.data as { detail?: string })?.detail || error.message;
-    return Promise.reject(new Error(errorMessage));
+    // Re-reject the original AxiosError so callers can inspect status / response.
+    // Attach a normalized `.message` for convenience without losing the original shape.
+    const detail = (error.response?.data as { detail?: string })?.detail;
+    if (detail) {
+      error.message = detail;
+    }
+    return Promise.reject(error);
   }
 );
 

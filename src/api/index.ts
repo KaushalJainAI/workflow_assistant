@@ -24,9 +24,12 @@ export {
   type GenerateWorkflowRequest,
   type GenerateWorkflowResponse,
 } from './orchestrator';
-export { 
+export {
   default as documentsService,
+  kbService,
   type Document,
+  type KnowledgeBase,
+  type KnowledgeBaseDetail,
   type SearchResult,
   type RAGQueryResponse,
 } from './documents';

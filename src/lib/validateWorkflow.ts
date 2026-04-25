@@ -111,11 +111,14 @@ export function isDAG(
   const cycleEdges: string[] = [];
   let hasCycle = false;
 
-  function dfs(nodeId: string, path: Set<string>, edgePath: string[]): boolean {
+  function dfs(nodeId: string, pathStack: string[], edgePath: string[]): boolean {
     if (color.get(nodeId) === 1) {
-      // Found cycle - collect nodes and edges in cycle path
-      path.forEach(id => cycleNodes.push(id));
-      cycleEdges.push(...edgePath);
+      // Found a back-edge to `nodeId`. Only the slice of pathStack from `nodeId`
+      // forward is actually on the cycle; earlier entries just lead to it.
+      const cycleStart = pathStack.indexOf(nodeId);
+      const cycleSlice = cycleStart >= 0 ? pathStack.slice(cycleStart) : pathStack.slice();
+      cycleSlice.forEach(id => cycleNodes.push(id));
+      cycleEdges.push(...edgePath.slice(cycleStart));
       return true;
     }
     if (color.get(nodeId) === 2) {
@@ -123,24 +126,24 @@ export function isDAG(
     }
 
     color.set(nodeId, 1);
-    path.add(nodeId);
-    
+    pathStack.push(nodeId);
+
     const neighbors = adjacencyList.get(nodeId) || [];
     for (const neighbor of neighbors) {
       const edgeKey = `${nodeId}->${neighbor}`;
-      if (dfs(neighbor, path, [...edgePath, edgeKey])) {
+      if (dfs(neighbor, pathStack, [...edgePath, edgeKey])) {
         return true;
       }
     }
-    
-    path.delete(nodeId);
+
+    pathStack.pop();
     color.set(nodeId, 2);
     return false;
   }
 
   for (const node of nodes) {
     if (color.get(node.id) === 0) {
-      if (dfs(node.id, new Set(), [])) {
+      if (dfs(node.id, [], [])) {
         hasCycle = true;
         break;
       }
@@ -411,9 +414,12 @@ export function validateCredentials(nodes: Node[], getNodeConfigFn?: (type: stri
         }
       });
 
-    // Integration nodes typically need credentials
+    // Integration nodes typically need credentials. Backend accepts any of these
+    // keys (see Backend/compiler/config_access.py); mirror that here so we don't
+    // false-positive when a node uses credential_id / credentialId.
     if (INTEGRATION_NODE_TYPES.includes(nodeType)) {
-      const credential = node.data?.config?.credential;
+      const cfg = node.data?.config || {};
+      const credential = cfg.credential ?? cfg.credential_id ?? cfg.credentialId;
       if (!credential) {
         errors.push({
           type: 'error',

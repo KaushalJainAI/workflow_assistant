@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { 
-  FileText, 
-  Upload, 
+import {
+  FileText,
+  Upload,
   File,
   Image,
   FileJson,
@@ -11,11 +11,15 @@ import {
   Loader2,
   AlertCircle,
   Globe,
-  Download
+  Download,
+  Database,
+  Plus,
+  ChevronRight,
+  Layers,
 } from 'lucide-react';
-import { documentsService, type Document } from '../api';
+import { documentsService, kbService, type Document, type KnowledgeBase } from '../api';
 import { toast } from '../components/ui/Toast';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
@@ -28,8 +32,52 @@ export default function Documents() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [localUploadingDocs, setLocalUploadingDocs] = useState<Document[]>([]);
+  const [showCreateKb, setShowCreateKb] = useState(false);
+  const [newKbName, setNewKbName] = useState('');
+  const [newKbDesc, setNewKbDesc] = useState('');
+  const [kbCreating, setKbCreating] = useState(false);
+  const [deletingKbId, setDeletingKbId] = useState<number | null>(null);
   const { isAssistantOpen } = useAssistant();
   const queryClient = useQueryClient();
+
+  const { data: kbsData, isLoading: kbsLoading } = useQuery({
+    queryKey: ['knowledge-bases'],
+    queryFn: () => kbService.list(),
+    staleTime: 30_000,
+  });
+  const kbs: KnowledgeBase[] = kbsData ?? [];
+
+  const handleCreateKb = async () => {
+    if (!newKbName.trim()) return;
+    setKbCreating(true);
+    try {
+      await kbService.create(newKbName.trim(), newKbDesc.trim());
+      queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] });
+      toast.success('Knowledge base created');
+      setNewKbName('');
+      setNewKbDesc('');
+      setShowCreateKb(false);
+    } catch (err) {
+      toast.error('Failed to create KB', err instanceof Error ? err.message : '');
+    } finally {
+      setKbCreating(false);
+    }
+  };
+
+  const handleDeleteKb = async (kb: KnowledgeBase) => {
+    if (!window.confirm(`Delete knowledge base "${kb.name}"? This removes all indexed vectors but keeps your documents.`)) return;
+    setDeletingKbId(kb.id);
+    try {
+      await kbService.delete(kb.id);
+      queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      toast.success(`KB "${kb.name}" deleted`);
+    } catch (err) {
+      toast.error('Failed to delete KB', err instanceof Error ? err.message : '');
+    } finally {
+      setDeletingKbId(null);
+    }
+  };
 
   const { data: documentsData, isLoading, error: queryError } = useQuery({
     queryKey: ['documents'],
@@ -280,6 +328,157 @@ export default function Documents() {
         "flex-1 overflow-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-white/5 z-10",
         isAssistantOpen && "xl:p-6"
       )}>
+
+        {/* ---- Knowledge Bases section ---- */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-primary" />
+              <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Knowledge Bases</h2>
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{kbs.length}</span>
+            </div>
+            <button
+              onClick={() => setShowCreateKb(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New KB
+            </button>
+          </div>
+
+          {kbsLoading ? (
+            <div className="flex gap-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex-1 h-24 bg-card/50 border border-border/40 rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : kbs.length === 0 ? (
+            <div className="flex items-center gap-3 p-4 bg-card/40 border border-dashed border-border/60 rounded-xl text-sm text-muted-foreground">
+              <Database className="w-5 h-5 shrink-0 opacity-50" />
+              No knowledge bases yet — one will be created automatically when you upload a file, or click <strong className="text-foreground mx-1">New KB</strong> to create one.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {kbs.map(kb => (
+                <div
+                  key={kb.id}
+                  className={cn(
+                    "group relative bg-card border border-border/60 rounded-xl p-4 hover:border-primary/40 hover:shadow-lg transition-all flex flex-col gap-3",
+                    kb.is_default && "ring-1 ring-primary/20"
+                  )}
+                >
+                  {kb.is_default && (
+                    <span className="absolute top-2 right-2 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Default</span>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-primary/10 rounded-lg shrink-0">
+                      <Database className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-foreground truncate">{kb.name}</p>
+                      {kb.description && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{kb.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-background/60 rounded-lg p-2">
+                      <p className="text-base font-bold text-foreground">{kb.doc_count}</p>
+                      <p className="text-[10px] text-muted-foreground">docs</p>
+                    </div>
+                    <div className="bg-background/60 rounded-lg p-2">
+                      <p className="text-base font-bold text-foreground">{kb.vector_count.toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground">vectors</p>
+                    </div>
+                    <div className="bg-background/60 rounded-lg p-2">
+                      <p className="text-base font-bold text-foreground">{kb.size_human}</p>
+                      <p className="text-[10px] text-muted-foreground">index</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                    <span className="text-[10px] text-muted-foreground">{kb.embedding_model}</span>
+                    {!kb.is_default && (
+                      <button
+                        onClick={() => handleDeleteKb(kb)}
+                        disabled={deletingKbId === kb.id}
+                        className="p-1 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        {deletingKbId === kb.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />
+                        }
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ---- Create KB modal ---- */}
+        {showCreateKb && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-md">
+              <div className="flex items-center justify-between p-6 border-b border-border/40">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Database className="w-5 h-5 text-primary" />
+                  </div>
+                  <h2 className="text-lg font-bold">New Knowledge Base</h2>
+                </div>
+                <button onClick={() => setShowCreateKb(false)} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Name *</label>
+                  <input
+                    type="text"
+                    value={newKbName}
+                    onChange={e => setNewKbName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateKb()}
+                    placeholder="e.g. Research Papers"
+                    autoFocus
+                    className="w-full bg-background border border-border/60 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Description</label>
+                  <input
+                    type="text"
+                    value={newKbDesc}
+                    onChange={e => setNewKbDesc(e.target.value)}
+                    placeholder="Optional description"
+                    className="w-full bg-background border border-border/60 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <ChevronRight className="w-3 h-3" />
+                  Uses <strong className="text-foreground">clip-ViT-B-32</strong> (512-dim, text + image embeddings)
+                </p>
+              </div>
+              <div className="p-6 border-t border-border/40 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowCreateKb(false)}
+                  className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateKb}
+                  disabled={kbCreating || !newKbName.trim()}
+                  className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                >
+                  {kbCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isLoading && allDocuments.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-primary/50" />

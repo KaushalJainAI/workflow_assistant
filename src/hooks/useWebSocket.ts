@@ -47,8 +47,15 @@ export function useWebSocket(
   const [lastMessage, setLastMessage] = useState<ExecutionEvent | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  // Use ref to hold the connect function for self-reference in onclose
+  const intentionalCloseRef = useRef(false);
   const connectRef = useRef<() => void>(() => {});
+
+  // Hold the latest callbacks in refs so connect() doesn't reset on every parent
+  // render (which would tear down and rebuild the socket on each render).
+  const handlersRef = useRef({ onMessage, onConnect, onDisconnect, onError });
+  useEffect(() => {
+    handlersRef.current = { onMessage, onConnect, onDisconnect, onError };
+  }, [onMessage, onConnect, onDisconnect, onError]);
 
   const connect = useCallback(() => {
     if (!executionId) return;
@@ -59,10 +66,12 @@ export function useWebSocket(
       return;
     }
 
-    // Close existing connection
+    // Close existing connection without triggering auto-reconnect
     if (wsRef.current) {
+      intentionalCloseRef.current = true;
       wsRef.current.close();
     }
+    intentionalCloseRef.current = false;
 
     setStatus('connecting');
 
@@ -71,14 +80,19 @@ export function useWebSocket(
 
     ws.onopen = () => {
       setStatus('connected');
-      onConnect?.();
+      handlersRef.current.onConnect?.();
     };
 
     ws.onclose = () => {
       setStatus('disconnected');
-      onDisconnect?.();
+      handlersRef.current.onDisconnect?.();
 
-      // Auto-reconnect using ref to avoid accessing connect before declaration
+      // Skip reconnect if the close was caused by us (unmount, executionId change, manual disconnect)
+      if (intentionalCloseRef.current) {
+        intentionalCloseRef.current = false;
+        return;
+      }
+
       if (autoReconnect && executionId) {
         reconnectTimeoutRef.current = window.setTimeout(() => {
           connectRef.current();
@@ -88,21 +102,20 @@ export function useWebSocket(
 
     ws.onerror = (event) => {
       setStatus('error');
-      onError?.(event);
+      handlersRef.current.onError?.(event);
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as ExecutionEvent;
         setLastMessage(data);
-        onMessage?.(data);
+        handlersRef.current.onMessage?.(data);
       } catch (err) {
         console.error('Failed to parse WebSocket message:', err);
       }
     };
-  }, [executionId, onMessage, onConnect, onDisconnect, onError, autoReconnect, reconnectInterval]);
+  }, [executionId, autoReconnect, reconnectInterval]);
 
-  // Keep the ref updated with the latest connect function
   useEffect(() => {
     connectRef.current = connect;
   }, [connect]);
@@ -110,8 +123,10 @@ export function useWebSocket(
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     if (wsRef.current) {
+      intentionalCloseRef.current = true;
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -154,6 +169,11 @@ export function useHITLWebSocket(
 ) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const onRequestRef = useRef(onRequest);
+
+  useEffect(() => {
+    onRequestRef.current = onRequest;
+  }, [onRequest]);
 
   useEffect(() => {
     const token = tokenManager.getAccessToken();
@@ -169,12 +189,9 @@ export function useHITLWebSocket(
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'hitl_request' || data.type === 'new_request') {
-          onRequest(data);
+          onRequestRef.current(data);
         } else if (data.type === 'notification') {
-          // Add a simple way to pass notifications back
-          // We can reuse onRequest or add a new callback.
-          // For simplicity, let's wrap it in an ExecutionEvent-like structure
-          onRequest({
+          onRequestRef.current({
             type: 'notification' as any,
             execution_id: '',
             data: data.data,
@@ -189,7 +206,7 @@ export function useHITLWebSocket(
     return () => {
       ws.close();
     };
-  }, [onRequest]);
+  }, []);
 
   const respond = useCallback((requestId: string, response: unknown) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
