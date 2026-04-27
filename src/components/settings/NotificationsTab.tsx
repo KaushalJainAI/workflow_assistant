@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Bell, CheckCircle, Clock, ShieldAlert, AlertTriangle, Info } from 'lucide-react';
-import { notificationsService, Notification } from '../../api/notifications';
+import { notificationsService, type Notification } from '../../api/notifications';
 import { cn } from '../../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 

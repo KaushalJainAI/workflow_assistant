@@ -30,7 +30,6 @@ import {
   RotateCcw,
   ArrowUpFromLine,
   Pencil,
-  MoreHorizontal,
   Code,
   Folder,
   Boxes,
@@ -99,8 +98,6 @@ export default function StandaloneChat() {
   // --- Agentic Features State ---
   const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(true);
   const [activeIntent, setActiveIntent] = useState<'normal' | 'search' | 'image' | 'video' | 'research' | 'coding' | 'file_manipulation' | 'workflow'>('normal');
-  const [showMoreIntents, setShowMoreIntents] = useState(false);
-  const moreIntentsRef = useRef<HTMLDivElement>(null);
   const [deletingMsgId, setDeletingMsgId] = useState<number | null>(null);
   const [expandedSummaryMsgId, setExpandedSummaryMsgId] = useState<number | null>(null);
   const [expandedSourcesMsgId, setExpandedSourcesMsgId] = useState<number | null>(null);
@@ -205,9 +202,6 @@ export default function StandaloneChat() {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowModelDropdown(false);
-      }
-      if (moreIntentsRef.current && !moreIntentsRef.current.contains(event.target as Node)) {
-        setShowMoreIntents(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -497,7 +491,6 @@ export default function StandaloneChat() {
       return next;
     });
     textareaRef.current?.focus();
-    setShowMoreIntents(false);
   };
 
   const handleApproveTool = async (callId: string) => {
