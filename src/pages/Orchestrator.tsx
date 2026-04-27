@@ -563,12 +563,18 @@ export default function Orchestrator() {
     refreshCredentials();
   }, [fetchCredentialsList, fetchPendingRequests, refreshCredentials]);
 
-  // Active Task Polling - Slower interval, doesn't re-trigger creds/HITL
+  // Active Task Polling - Only poll while there are running tasks; otherwise a
+  // single fetch on mount is enough (WS events handle live updates).
+  const hasActiveTasks = backgroundTasks.some(t => t.status === 'running' || t.status === 'pending');
   useEffect(() => {
     fetchActiveTasks();
-    const interval = setInterval(fetchActiveTasks, 20000); // 2-second polling as requested
-    return () => clearInterval(interval);
   }, [fetchActiveTasks]);
+
+  useEffect(() => {
+    if (!hasActiveTasks) return;
+    const interval = setInterval(fetchActiveTasks, 20000);
+    return () => clearInterval(interval);
+  }, [hasActiveTasks, fetchActiveTasks]);
 
   // HITL Handlers
   const handleActionClick = (action: PendingAction) => setSelectedAction(action);

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Brain, Activity, Sparkles, Database, ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface NodeLog {
   id: number;
@@ -150,11 +152,11 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                   <h3 className="text-sm font-bold text-purple-100">AI Narrative Review</h3>
                 </div>
               </div>
-              <div className="prose prose-invert prose-sm max-w-none">
-                <p className="text-[14px] leading-relaxed text-purple-50/90 whitespace-pre-wrap font-medium">
-                  {narrative.reasoning}
-                </p>
-              </div>
+                <div className="prose prose-invert prose-sm max-w-none ai-chat-prose">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {narrative.reasoning}
+                  </ReactMarkdown>
+                </div>
            </div>
         </div>
       )}
@@ -264,13 +266,15 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                                 </div>
                               </div>
 
-                              <div className="relative">
-                                <p className={cn(
+                              <div className="relative ai-chat-prose">
+                                <div className={cn(
                                   "text-[13px] text-foreground/90 leading-relaxed font-medium break-words",
                                   isLongContent && !isContentExpanded && "line-clamp-2"
                                 )}>
-                                  {activity.content}
-                                </p>
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {activity.content}
+                                  </ReactMarkdown>
+                                </div>
                                 {isLongContent && (
                                   <button 
                                     onClick={() => toggleContent(activity.id)}
@@ -287,9 +291,11 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                                       <Sparkles className="w-3 h-3" />
                                       <span className="text-[9px] font-black uppercase tracking-widest">Logic Analysis</span>
                                    </div>
-                                   <p className="text-muted-foreground italic text-[12px] whitespace-pre-wrap leading-relaxed border-l-2 border-primary/20 pl-4">
-                                     {activity.reasoning}
-                                   </p>
+                                   <div className="text-muted-foreground italic text-[12px] leading-relaxed border-l-2 border-primary/20 pl-4 ai-chat-prose">
+                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                       {activity.reasoning}
+                                     </ReactMarkdown>
+                                   </div>
                                 </div>
                               )}
                             </div>

@@ -253,6 +253,16 @@
   50% { transform: translateY(120%); opacity: 1; }
 }
 
+@keyframes indeterminate-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-indeterminate-slide {
+  width: 50%;
+  animation: indeterminate-slide 1.5s infinite linear;
+}
+
 /* ── Custom Markdown Styling ── */
 .ai-chat-prose {
   @apply text-foreground/90 leading-relaxed;
@@ -277,19 +287,22 @@
   @apply font-semibold text-foreground;
 }
 .ai-chat-prose table {
-  @apply w-full my-6 border-collapse overflow-hidden rounded-xl border border-border bg-card/40 shadow-sm text-sm block md:table overflow-x-auto;
+  @apply w-full my-4 border-collapse overflow-hidden rounded-2xl border border-primary/20 bg-card/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] text-[13px] block md:table overflow-x-auto;
 }
 .ai-chat-prose thead {
-  @apply bg-muted/60 border-b border-border text-left;
+  @apply bg-primary/10 border-b border-primary/20 text-left;
 }
 .ai-chat-prose thead th {
-  @apply p-3 font-semibold text-foreground/90 whitespace-nowrap;
+  @apply p-4 font-black text-primary/80 uppercase tracking-[0.15em] whitespace-nowrap;
 }
 .ai-chat-prose tbody tr {
-  @apply border-b border-border/40 last:border-0 hover:bg-muted/30 transition-colors;
+  @apply border-b border-border/40 last:border-0 hover:bg-primary/[0.03] transition-all duration-300;
+}
+.ai-chat-prose tbody tr:nth-child(even) {
+  @apply bg-muted/20;
 }
 .ai-chat-prose tbody td {
-  @apply p-3 align-top;
+  @apply p-4 align-middle text-foreground/90 font-medium leading-relaxed;
 }
 .ai-chat-prose h1, .ai-chat-prose h2, .ai-chat-prose h3, .ai-chat-prose h4 {
   @apply font-bold mt-6 mb-3 text-foreground tracking-tight;

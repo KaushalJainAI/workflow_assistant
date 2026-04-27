@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export interface OrchestratorStep {
   id: string;
@@ -270,12 +272,14 @@ export default function OrchestratorTimeline({ steps, currentStepId }: Orchestra
 
                         {/* Summary Thought */}
                         {(step.thought || step.thinkingMessage) && (
-                          <p className={cn(
-                            "text-sm leading-relaxed text-foreground/90",
+                          <div className={cn(
+                            "text-sm leading-relaxed text-foreground/90 ai-chat-prose",
                             !step.thought && "italic text-muted-foreground",
                           )}>
-                            {step.thought || step.thinkingMessage}
-                          </p>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {step.thought || step.thinkingMessage || ''}
+                            </ReactMarkdown>
+                          </div>
                         )}
 
                         {/* Deep Reasoning (Technical Thinking) */}
@@ -285,8 +289,10 @@ export default function OrchestratorTimeline({ steps, currentStepId }: Orchestra
                                <Sparkles className="w-3 h-3" />
                                <span className="text-[9px] font-bold uppercase tracking-wider">Internal Technical Reasoning</span>
                              </div>
-                             <div className="text-[12px] leading-snug text-foreground/70 bg-black/20 p-3 rounded-lg border border-primary/5 font-mono whitespace-pre-wrap">
-                                {step.reasoning}
+                             <div className="text-[12px] leading-snug text-foreground/70 bg-black/20 p-3 rounded-lg border border-primary/5 ai-chat-prose">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {step.reasoning || ''}
+                                </ReactMarkdown>
                              </div>
                           </div>
                         )}

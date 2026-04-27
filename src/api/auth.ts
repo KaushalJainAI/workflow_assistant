@@ -58,7 +58,7 @@ export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
       const response = await apiClient.post<AuthResponse>('/auth/login/', {
-        username: credentials.email, // Django uses username for auth
+        email: credentials.email,
         password: credentials.password,
       });
       const { access, refresh } = response.data;

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { tokenManager } from '../api/client';
 
+const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+
 export interface BuddyAction {
   type: string;
   action: string;
@@ -11,20 +13,22 @@ export function useBuddy(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [buddyAction, setBuddyAction] = useState<string | null>(null);
+  const reconnectAttempt = useRef(0);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentionalClose = useRef(false);
 
-  // Capture screen context
+  // Capture screen context on demand — called by callers, not continuously.
   const captureContext = useCallback(() => {
     const interactables = document.querySelectorAll('button, a, input, textarea, select, [role="button"]');
     const elements: any[] = [];
 
     interactables.forEach((el, index) => {
       const htmlEl = el as HTMLElement;
-      // Skip hidden elements
       if (htmlEl.offsetParent === null) return;
 
       const buddyId = `buddy-node-${index}`;
       htmlEl.setAttribute('data-buddy-id', buddyId);
-      
+
       elements.push({
         buddy_id: buddyId,
         tag: htmlEl.tagName.toLowerCase(),
@@ -42,15 +46,13 @@ export function useBuddy(enabled: boolean = true) {
 
   const sendContextUpdate = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const context = captureContext();
       wsRef.current.send(JSON.stringify({
         type: 'context_update',
-        context
+        context: captureContext(),
       }));
     }
   }, [captureContext]);
 
-  // Execute received actions
   const executeAction = useCallback((action: string, params: Record<string, any>) => {
     setBuddyAction(`Buddy is executing: ${action}`);
     setTimeout(() => setBuddyAction(null), 3000);
@@ -58,12 +60,11 @@ export function useBuddy(enabled: boolean = true) {
     if (action === 'frontend_click') {
       const el = document.querySelector(`[data-buddy-id="${params.buddy_id}"]`) as HTMLElement;
       if (el) {
-        // Visual feedback
         const originalOutline = el.style.outline;
         el.style.outline = '4px solid #3b82f6';
         setTimeout(() => {
-           el.style.outline = originalOutline;
-           el.click();
+          el.style.outline = originalOutline;
+          el.click();
         }, 500);
       }
     } else if (action === 'frontend_fill') {
@@ -72,10 +73,10 @@ export function useBuddy(enabled: boolean = true) {
         const originalOutline = el.style.outline;
         el.style.outline = '4px solid #3b82f6';
         setTimeout(() => {
-           el.style.outline = originalOutline;
-           el.value = params.value;
-           el.dispatchEvent(new Event('input', { bubbles: true }));
-           el.dispatchEvent(new Event('change', { bubbles: true }));
+          el.style.outline = originalOutline;
+          el.value = params.value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
         }, 500);
       }
     } else if (action === 'frontend_navigate') {
@@ -87,22 +88,24 @@ export function useBuddy(enabled: boolean = true) {
 
   useEffect(() => {
     if (!enabled) {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      intentionalClose.current = true;
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      wsRef.current?.close();
+      wsRef.current = null;
       setIsConnected(false);
       return;
     }
 
+    intentionalClose.current = false;
+
     const connect = () => {
       const token = tokenManager.getAccessToken();
-      const wsUrl = `ws://${window.location.host.split(':')[0]}:8000/ws/buddy/?token=${token}`;
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(`${WS_BASE}/buddy/?token=${token}`);
 
       ws.onopen = () => {
-        console.log('Buddy WS connected');
+        reconnectAttempt.current = 0;
         setIsConnected(true);
-        // Initial context sync
+        // Send context once on connect so the backend has a baseline.
         sendContextUpdate();
       };
 
@@ -114,10 +117,15 @@ export function useBuddy(enabled: boolean = true) {
       };
 
       ws.onclose = () => {
-        console.log('Buddy WS disconnected');
         setIsConnected(false);
-        // Reconnect after 3s
-        setTimeout(connect, 3000);
+        // Guard: if this socket is no longer the active one (e.g. a new connect()
+        // call already ran) or the close was intentional, do not reconnect.
+        if (intentionalClose.current || wsRef.current !== ws) return;
+
+        // Exponential backoff: 3s, 6s, 12s, 24s, 48s, cap at 60s.
+        const delay = Math.min(3000 * 2 ** reconnectAttempt.current, 60000);
+        reconnectAttempt.current += 1;
+        reconnectTimer.current = setTimeout(connect, delay);
       };
 
       wsRef.current = ws;
@@ -126,30 +134,38 @@ export function useBuddy(enabled: boolean = true) {
     connect();
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      intentionalClose.current = true;
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      wsRef.current?.close();
+      wsRef.current = null;
     };
   }, [enabled, executeAction, sendContextUpdate]);
 
-  // Optionally set up an observer to periodically update context when DOM changes
+  // Send context on navigation changes only (not on every DOM mutation).
   useEffect(() => {
     if (!isConnected || !enabled) return;
-    
-    // Send context updates when mutations occur, debounced
-    let timeout: ReturnType<typeof setTimeout>;
-    const observer = new MutationObserver(() => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        sendContextUpdate();
-      }, 1000);
-    });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    const handleNavigation = () => sendContextUpdate();
+
+    window.addEventListener('popstate', handleNavigation);
+
+    // Intercept pushState/replaceState to catch SPA route changes.
+    const origPush = history.pushState.bind(history);
+    const origReplace = history.replaceState.bind(history);
+
+    history.pushState = (...args) => {
+      origPush(...args);
+      handleNavigation();
+    };
+    history.replaceState = (...args) => {
+      origReplace(...args);
+      handleNavigation();
+    };
 
     return () => {
-      observer.disconnect();
-      clearTimeout(timeout);
+      window.removeEventListener('popstate', handleNavigation);
+      history.pushState = origPush;
+      history.replaceState = origReplace;
     };
   }, [isConnected, enabled, sendContextUpdate]);
 

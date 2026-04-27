@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import { orchestratorService, type ChatMessage } from '../../api';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../contexts/AssistantContext';
+import { useCanvasAgentContext } from '../../contexts/CanvasAgentContext';
 import { TextSelectionMenu } from '../chat/TextSelectionMenu';
 import { useAIModels } from '../../hooks/useAIModels';
 import { useBuddy } from '../../hooks/useBuddy';
@@ -64,6 +65,8 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
   const [deletingMsgId, setDeletingMsgId] = useState<number | null>(null);
   const [expandedImagesMsgId, setExpandedImagesMsgId] = useState<number | null>(null);
   const [expandedVideosMsgId, setExpandedVideosMsgId] = useState<number | null>(null);
+  const [thinkingTime, setThinkingTime] = useState(0);
+  const [thinkingStatus, setThinkingStatus] = useState('Thinking...');
 
   // Text Selection State
   const [selectionPos, setSelectionPos] = useState<{ x: number; y: number } | null>(null);
@@ -74,6 +77,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
   const [conversations, setConversations] = useState<{conversation_id: string}[]>([]);
   
   const { hasCredentials, llmProvider, setLlmProvider, llmModel, setLlmModel } = useAssistant();
+  const canvasAgent = useCanvasAgentContext();
   const { providers: dynamicProviders } = useAIModels();
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
@@ -81,7 +85,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
   
   // Buddy context integration
   const [screenContextEnabled, setScreenContextEnabled] = useState(true);
-  const { isConnected: buddyConnected, buddyAction } = useBuddy(screenContextEnabled);
+  const { isConnected: buddyConnected, captureContext, buddyAction } = useBuddy(screenContextEnabled);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -110,6 +114,41 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
       el.style.overflowY = "auto";
     }
   }, [input]);
+
+  // Thinking Timer & Status cycling
+  useEffect(() => {
+    let timer: any;
+    let statusInterval: any;
+    
+    if (isLoading) {
+      setThinkingTime(0);
+      setThinkingStatus('Thinking...');
+      
+      timer = setInterval(() => {
+        setThinkingTime(prev => prev + 0.1);
+      }, 100);
+
+      const statuses = [
+        'Analyzing workflow...',
+        'Checking credentials...',
+        'Orchestrating agent...',
+        'Generating response...',
+        'Polishing results...'
+      ];
+      let statusIdx = 0;
+      statusInterval = setInterval(() => {
+        statusIdx++;
+        setThinkingStatus(statuses[statusIdx % statuses.length]);
+      }, 2500);
+    } else {
+      setThinkingTime(0);
+    }
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(statusInterval);
+    };
+  }, [isLoading]);
 
   useEffect(() => {
     if (showHistory) {
@@ -194,19 +233,34 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
     setIsLoading(true);
 
     try {
-      // Pass the activeReference if present
+      // If user explicitly asks Copilot or we're in the Workflow Editor, route to Platform Copilot
+      const isCopilotMode = textToSend.startsWith('/copilot ');
+      const copilotText = isCopilotMode ? textToSend.replace('/copilot ', '') : textToSend;
+
+      // Use Copilot for Canvas/Platform actions if specifically requested
+      if (canvasAgent && isCopilotMode) {
+        const result = await canvasAgent.sendInstruction(copilotText);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: result ? result.message : 'No actions applied.',
+          created_at: new Date().toISOString(),
+        }]);
+        return;
+      }
+
       const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
+      const screenContext = screenContextEnabled ? captureContext() : undefined;
 
       const response = await orchestratorService.sendMessage(
         textToSend,
-        undefined, // workflowId
+        undefined,
         conversationId,
-        llmProvider, // Pass the selected provider
-        llmModel,    // Pass the selected model
-        reference
+        llmProvider,
+        llmModel,
+        reference,
+        screenContext
       );
 
-      // Clear reference after sending
       setActiveReference(null);
 
       setConversationId(response.conversation_id);
@@ -218,7 +272,6 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
         }
         return [...newMsgs, response.ai_response];
       });
-      // Refresh history list if new conversation
       if (!conversationId) loadHistory();
     } catch (err) {
       setMessages(prev => [...prev, {
@@ -407,19 +460,18 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
             <button 
               onClick={() => setScreenContextEnabled(!screenContextEnabled)}
               className={cn(
-                "p-2 rounded-md transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-3 relative",
+                "p-2 rounded-md transition-all relative",
                 screenContextEnabled 
-                  ? "bg-primary/10 text-primary border border-primary/20" 
-                  : "bg-muted text-muted-foreground border border-transparent hover:border-border"
+                  ? "bg-primary/10 text-primary" 
+                  : "text-muted-foreground hover:bg-muted"
               )}
-              title={screenContextEnabled ? "Disable Screen Context" : "Enable Screen Context"}
+              title={screenContextEnabled ? "Screen Context: On" : "Screen Context: Off"}
             >
-              <Monitor className="w-3.5 h-3.5" />
-              {screenContextEnabled ? 'Context ON' : 'Context OFF'}
+              <Monitor className="w-4 h-4" />
               {screenContextEnabled && (
                 <span className={cn(
-                  "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-background",
-                  buddyConnected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-yellow-500 animate-pulse"
+                  "absolute top-1 right-1 w-1.5 h-1.5 rounded-full",
+                  buddyConnected ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]" : "bg-yellow-500 animate-pulse"
                 )} />
               )}
             </button>
@@ -746,13 +798,23 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
               </div>
             ))}
 
-            {(isLoading) && (
-              <div className="flex gap-4">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-white" />
+            {isLoading && (
+              <div className="flex gap-4 animate-in fade-in duration-300">
+                <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-primary animate-pulse" />
                 </div>
-                <div className="p-4 bg-muted rounded-2xl rounded-tl-sm">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <div className="flex flex-col gap-2 pt-1.5 flex-1 min-w-0">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="text-[11px] font-black uppercase tracking-widest text-muted-foreground truncate">
+                       {buddyAction || thinkingStatus}
+                     </span>
+                     <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0">
+                       ({thinkingTime.toFixed(1)}s)
+                     </span>
+                   </div>
+                   <div className="w-full max-w-[200px] h-0.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-primary/40 rounded-full animate-indeterminate-slide" />
+                   </div>
                 </div>
               </div>
             )}

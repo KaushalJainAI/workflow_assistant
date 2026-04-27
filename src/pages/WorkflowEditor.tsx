@@ -48,6 +48,8 @@ import { generateUniqueNodeLabel } from '../lib/utils';
 import 'reactflow/dist/style.css';
 
 import GenericNode from '../components/workflow/GenericNode';
+import { useCanvasAgent } from '../hooks/useCanvasAgent';
+import { CanvasAgentProvider } from '../contexts/CanvasAgentContext';
 
 
 
@@ -303,6 +305,16 @@ export default function WorkflowEditor() {
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
+
+  const canvasAgent = useCanvasAgent({ setNodes, setEdges, onConnect });
+
+  // Keep backend canvas state cache in sync for AI assistant
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      canvasAgent.sendCanvasState(nodes, edges);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [nodes, edges]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
@@ -1148,6 +1160,7 @@ export default function WorkflowEditor() {
   }, [nodes, selectedNode]);
 
   return (
+    <CanvasAgentProvider value={{ sendInstruction: canvasAgent.sendInstruction, isConnected: canvasAgent.isConnected, isProcessing: canvasAgent.isProcessing }}>
     <div className="w-full h-full flex flex-col">
       {/* ======== STABLE ENTERPRISE TOP BAR ======== */}
       <header className="h-auto md:h-16 py-3 md:py-0 shrink-0 border-b border-border/60 bg-card/80 backdrop-blur-xl z-20">
@@ -1436,7 +1449,7 @@ export default function WorkflowEditor() {
                     </button>
                   </Panel>
 
-              </ReactFlow>
+      </ReactFlow>
             )}
 
 
@@ -1694,5 +1707,6 @@ export default function WorkflowEditor() {
         </div>
       )}
     </div>
+    </CanvasAgentProvider>
   );
 }

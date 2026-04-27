@@ -3,9 +3,7 @@ import type { ChangeEvent, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
-  AudioLines,
   Bot,
-  BrushCleaning,
   Check,
   Clock3,
   Film,
@@ -165,34 +163,6 @@ function Panel({
       </div>
       {children}
     </section>
-  );
-}
-
-function ModeChip({
-  active,
-  label,
-  icon: Icon,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  icon: LucideIcon;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'group flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition-all',
-        active
-          ? 'border-primary/40 bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-          : 'border-border/60 bg-background/70 text-muted-foreground hover:border-primary/25 hover:text-foreground'
-      )}
-    >
-      <Icon className="h-4 w-4" />
-      <span>{label}</span>
-    </button>
   );
 }
 
@@ -579,273 +549,256 @@ export default function Imagine() {
           </div>
         </PageHeader>
 
-        <div className="flex-1 overflow-auto p-4 md:p-6">
-          <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-            <div className="space-y-6">
-              <Panel
-                title="Workspace Mode"
-                description={config.subtitle}
-                icon={config.icon}
-              >
-                <div className="grid gap-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                    <ModeChip active={mode === 'image'} label="Image" icon={ImageIcon} onClick={() => setMode('image')} />
-                    <ModeChip active={mode === 'video'} label="Video" icon={Video} onClick={() => setMode('video')} />
-                    <ModeChip active={mode === 'audio'} label="Audio" icon={Headphones} onClick={() => setMode('audio')} />
-                  </div>
-                </div>
-              </Panel>
+        <div className="flex-1 overflow-auto p-4 lg:p-8">
+          <div className="mx-auto max-w-[1600px]">
+            <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
+              {/* Unified Controls Sidebar */}
+              <div className="flex flex-col gap-6">
+                <Panel
+                  title="Studio Controls"
+                  description="Configure your workspace engine and medium settings."
+                  icon={SlidersHorizontal}
+                  className="sticky top-0"
+                >
+                  <div className="space-y-6">
+                    {/* Mode Selector - Premium Tabs */}
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">Workspace Mode</label>
+                      <div className="flex rounded-2xl bg-background/50 p-1 border border-border/40">
+                        <button
+                          onClick={() => setMode('image')}
+                          className={cn(
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all",
+                            mode === 'image' ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          )}
+                        >
+                          <ImageIcon className="h-3.5 w-3.5" />
+                          Image
+                        </button>
+                        <button
+                          onClick={() => setMode('video')}
+                          className={cn(
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all",
+                            mode === 'video' ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          )}
+                        >
+                          <Video className="h-3.5 w-3.5" />
+                          Video
+                        </button>
+                        <button
+                          onClick={() => setMode('audio')}
+                          className={cn(
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all",
+                            mode === 'audio' ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          )}
+                        >
+                          <Headphones className="h-3.5 w-3.5" />
+                          Audio
+                        </button>
+                      </div>
+                    </div>
 
-              <Panel
-                title="Engine & Controls"
-                description="Choose a model and tune the core settings for the current medium."
-                icon={SlidersHorizontal}
-              >
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-muted-foreground">Model</label>
-                    <Select
-                      value={selectedModel}
-                      onChange={setSelectedModel}
-                      options={currentModels.map((model) => ({
-                        value: model.id,
-                        label: model.name,
-                        icon: <model.icon className="h-4 w-4" />,
-                      }))}
+                    <div className="h-px bg-border/40" />
+
+                    {/* Model & Quality */}
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold text-foreground/70">Creative Engine</label>
+                        <Select
+                          value={selectedModel}
+                          onChange={setSelectedModel}
+                          options={currentModels.map((model) => ({
+                            value: model.id,
+                            label: model.name,
+                            icon: <model.icon className="h-4 w-4" />,
+                          }))}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold text-foreground/70">Rendering Quality</label>
+                        <Select
+                          value={quality}
+                          onChange={setQuality}
+                          options={qualityOptions.map((option) => ({ label: option, value: option }))}
+                        />
+                      </div>
+
+                      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">{selectedModelData.name}</span>
+                        </div>
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground/90 font-medium">{selectedModelData.description}</p>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-border/40" />
+
+                    {/* Dynamic Controls */}
+                    <div className="space-y-4">
+                      <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">Medium Constraints</label>
+                      {renderModeControls()}
+                    </div>
+                  </div>
+                </Panel>
+
+                <Panel
+                  title="References"
+                  description="Guide the AI with visual or audio anchors."
+                  icon={Upload}
+                >
+                  <label className="group flex cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-border bg-background/40 px-4 py-8 text-center transition hover:border-primary/50 hover:bg-primary/5">
+                    <div className="rounded-2xl bg-background p-3 text-primary shadow-sm border border-border group-hover:scale-110 transition-transform">
+                      <Plus className="h-5 w-5" />
+                    </div>
+                    <p className="mt-4 text-sm font-bold tracking-tight">{config.referencesLabel}</p>
+                    <p className="mt-1 text-[11px] font-medium text-muted-foreground">JPG, PNG, MP4, or MP3</p>
+                    <input
+                      type="file"
+                      className="hidden"
+                      multiple
+                      accept={mode === 'image' ? 'image/*' : mode === 'video' ? 'video/*' : 'audio/*'}
+                      onChange={handleReferenceUpload}
                     />
-                    <div className="mt-3 rounded-2xl border border-border/60 bg-background/70 p-3">
+                  </label>
+
+                  <div className="mt-4 space-y-2">
+                    {selectedReferences.map((file) => (
+                      <div key={file.name} className="flex items-center justify-between rounded-xl border border-border/40 bg-background/50 px-3 py-2.5">
+                        <div className="min-w-0 flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                            {mode === 'image' && <ImageIcon className="h-4 w-4" />}
+                            {mode === 'video' && <Video className="h-4 w-4" />}
+                            {mode === 'audio' && <Headphones className="h-4 w-4" />}
+                          </div>
+                          <div>
+                            <p className="truncate text-xs font-bold">{file.name}</p>
+                            <p className="text-[10px] text-muted-foreground font-medium">{formatFileSize(file)}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeReference(file.name)}
+                          className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <Plus className="h-4 w-4 rotate-45" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              </div>
+
+              {/* Main Canvas Area */}
+              <div className="space-y-8">
+                {/* Preview Section */}
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 via-sky-500/10 to-primary/20 rounded-[40px] blur-2xl opacity-50 group-hover:opacity-75 transition duration-1000" />
+                  <section className="relative overflow-hidden rounded-[40px] border border-border/60 bg-card/80 shadow-2xl backdrop-blur-3xl">
+                    <div className="p-6 flex items-center justify-between border-b border-border/40">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                          <ImageIcon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold tracking-tight">{config.previewLabel}</h3>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{selectedModelData.name} • {quality}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
                       <div className="flex items-center gap-2">
-                        <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-semibold', selectedModelData.accent)}>
-                          Active Engine
-                        </span>
-                        <span className="text-xs font-medium">{selectedModelData.name}</span>
+                        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">
+                          <Check className="h-3 w-3 text-emerald-500" />
+                          Ready
+                        </div>
+                        <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">
+                          <Clock3 className="h-3 w-3" />
+                          Sync On
+                        </div>
                       </div>
-                      <p className="mt-2 text-xs leading-5 text-muted-foreground">{selectedModelData.description}</p>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="mb-2 block text-xs font-medium text-muted-foreground">Quality</label>
-                    <Select
-                      value={quality}
-                      onChange={setQuality}
-                      options={qualityOptions.map((option) => ({ label: option, value: option }))}
-                    />
-                  </div>
-
-                  {renderModeControls()}
-                </div>
-              </Panel>
-
-              <Panel
-                title="References"
-                description={`Upload files to guide the ${mode} edit.`}
-                icon={Upload}
-              >
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed border-primary/35 bg-primary/5 px-4 py-6 text-center transition hover:border-primary/60 hover:bg-primary/10">
-                  <div className="rounded-2xl bg-background p-3 text-primary shadow-sm">
-                    <Plus className="h-5 w-5" />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold">{config.referencesLabel}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Drop files here or browse from your device.</p>
-                  <input
-                    type="file"
-                    className="hidden"
-                    multiple
-                    accept={mode === 'image' ? 'image/*' : mode === 'video' ? 'video/*' : 'audio/*'}
-                    onChange={handleReferenceUpload}
-                  />
-                </label>
-
-                <div className="mt-4 space-y-2">
-                  {selectedReferences.length === 0 && (
-                    <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3 text-xs text-muted-foreground">
-                      No reference files added yet.
+                    <div className="p-8">
+                      {renderPreview()}
                     </div>
-                  )}
-                  {selectedReferences.map((file) => (
-                    <div key={file.name} className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{file.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatFileSize(file)}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeReference(file.name)}
-                        className="rounded-full border border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-destructive/40 hover:text-destructive"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </Panel>
-            </div>
-
-            <div className="space-y-6">
-              <section className="overflow-hidden rounded-[32px] border border-border/60 bg-card/70 p-5 shadow-sm backdrop-blur-xl">
-                <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.28em] text-primary">{config.title}</p>
-                    <h2 className="mt-2 text-2xl font-semibold tracking-tight">{config.subtitle}</h2>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-3 py-1.5">
-                      <Check className="h-3.5 w-3.5 text-emerald-500" />
-                      Editor-ready layout
-                    </div>
-                    <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-3 py-1.5">
-                      <Clock3 className="h-3.5 w-3.5" />
-                      Autosave mock
-                    </div>
-                  </div>
+                  </section>
                 </div>
 
-                {renderPreview()}
-              </section>
-
-              <Panel
-                title="Creative Direction"
-                description="Write the edit brief, inject a skill, and refine the output behavior."
-                icon={Bot}
-              >
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                    <div>
-                      <label className="mb-2 block text-xs font-medium text-muted-foreground">{config.promptLabel}</label>
+                {/* Creative Direction & Briefing */}
+                <Panel
+                  title="Creative Brief"
+                  description="Instruct the AI on the stylistic and technical requirements."
+                  icon={Bot}
+                  className="bg-primary/[0.02] border-primary/10"
+                >
+                  <div className="grid gap-6 xl:grid-cols-[1fr_260px]">
+                    <div className="relative">
                       <textarea
                         value={prompt}
                         onChange={(event) => setPrompt(event.target.value)}
                         placeholder={config.promptPlaceholder}
-                        className="min-h-[168px] w-full rounded-[24px] border border-border/60 bg-background/80 px-4 py-4 text-sm leading-6 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
+                        className="min-h-[200px] w-full rounded-[32px] border border-border/60 bg-background/60 p-6 text-base font-medium leading-relaxed outline-none transition-all focus:border-primary/40 focus:ring-4 focus:ring-primary/10 placeholder:text-muted-foreground/40"
                       />
+                      <div className="absolute bottom-4 right-4 flex gap-2">
+                        <button className="p-2 rounded-xl bg-background border border-border hover:border-primary transition-colors text-muted-foreground hover:text-primary">
+                          <Sparkles className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-4">
                       <div>
-                        <label className="mb-2 block text-xs font-medium text-muted-foreground">Inject skill</label>
+                        <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Expert Skill</label>
                         <Select
                           value={selectedSkillId}
                           onChange={handleSkillSelect}
                           options={skillOptions}
-                          placeholder={skills.length ? 'Choose a saved skill' : 'No saved skills'}
+                          placeholder="Select an anchor skill"
                         />
                       </div>
+
+                      <div className="h-px bg-border/40" />
 
                       <button
                         type="button"
                         onClick={() => setMagicRefine((prev) => !prev)}
                         className={cn(
-                          'flex w-full items-center justify-between rounded-[24px] border px-4 py-4 text-left transition',
+                          'flex w-full flex-col gap-3 rounded-[28px] border p-4 text-left transition-all duration-300',
                           magicRefine
-                            ? 'border-primary/40 bg-primary/10 text-foreground'
-                            : 'border-border/60 bg-background/70 text-muted-foreground'
+                            ? 'border-primary/30 bg-primary/5 ring-1 ring-primary/20'
+                            : 'border-border/60 bg-background/40 grayscale opacity-70'
                         )}
                       >
-                        <div>
-                          <p className="text-sm font-semibold">Magic refine</p>
-                          <p className="mt-1 text-xs leading-5">
-                            Auto-structure the prompt for cleaner edits and more consistent output.
-                          </p>
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs font-bold tracking-tight">Magic Refine</span>
+                          <div className={cn(
+                            'h-2 w-2 rounded-full',
+                            magicRefine ? 'bg-primary shadow-[0_0_8px_rgba(var(--primary),0.6)]' : 'bg-muted'
+                          )} />
                         </div>
-                        <div className={cn(
-                          'rounded-full px-2.5 py-1 text-[11px] font-semibold',
-                          magicRefine ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                        )}>
-                          {magicRefine ? 'On' : 'Off'}
-                        </div>
+                        <p className="text-[11px] leading-relaxed font-medium text-muted-foreground">
+                          Auto-restructures prompt for cleaner tokens and sharper output.
+                        </p>
                       </button>
                     </div>
                   </div>
-                </div>
-              </Panel>
+                </Panel>
 
-              <Panel
-                title={config.timelineLabel}
-                description="A specialized review area for the active media type."
-                icon={Layers3}
-              >
-                {renderTimeline()}
-              </Panel>
-            </div>
-
-            <div className="space-y-6">
-              <Panel
-                title="Inspector"
-                description="A quick summary of what the current edit session is optimizing for."
-                icon={BrushCleaning}
-              >
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Intent</p>
-                    <p className="mt-2 text-sm font-medium">
-                      {mode === 'image' && 'High-clarity still editing with style and delivery controls.'}
-                      {mode === 'video' && 'Short-form scene generation with motion-aware review.'}
-                      {mode === 'audio' && 'Voice and music workflow with mastering-oriented controls.'}
-                    </p>
+                {/* Media Review Area */}
+                <Panel
+                  title={config.timelineLabel}
+                  description="Review generated variations or sequence storyboards."
+                  icon={Layers3}
+                >
+                  <div className="rounded-[32px] border border-border/40 bg-background/40 p-2">
+                    {renderTimeline()}
                   </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Current model</p>
-                    <p className="mt-2 text-sm font-medium">{selectedModelData.name}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedModelData.description}</p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Processing profile</p>
-                    <p className="mt-2 text-sm font-medium">{quality}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {mode === 'image' && `${imageStyle} render in ${aspectRatio}`}
-                      {mode === 'video' && `${duration} sequence with ${motionProfile.toLowerCase()} motion`}
-                      {mode === 'audio' && `${audioFormat} output with ${voiceProfile}`}
-                    </p>
-                  </div>
-                </div>
-              </Panel>
-
-              <Panel
-                title="Recent Actions"
-                description="Useful session checkpoints for the next editing pass."
-                icon={Sparkles}
-              >
-                <div className="space-y-3">
-                  {[
-                    'Prompt scaffold prepared',
-                    'Reference dropzone enabled',
-                    'Mode-specific editor layout loaded',
-                    'Preview stage ready for output',
-                  ].map((item, index) => (
-                    <div key={item} className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
-                      <div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary">
-                        {index % 2 === 0 ? <Sparkles className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{item}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Ready to continue without the old placeholder overlay.</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Panel>
-
-              <Panel
-                title="Mode Benefits"
-                description="Each workspace now has a clear purpose instead of one generic layout."
-                icon={AudioLines}
-              >
-                <div className="grid gap-3">
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                    <p className="text-sm font-semibold">Image</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Variation board, still preview, style controls, and aspect-ratio tuning.</p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                    <p className="text-sm font-semibold">Video</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Stage monitor, storyboard timeline, motion profile, and camera movement slider.</p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                    <p className="text-sm font-semibold">Audio</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Wave monitor, track arrangement, voice selection, and mix-energy controls.</p>
-                  </div>
-                </div>
-              </Panel>
+                </Panel>
+              </div>
             </div>
           </div>
         </div>

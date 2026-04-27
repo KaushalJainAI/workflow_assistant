@@ -43,6 +43,17 @@ function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   return children ? <>{children}</> : <Outlet />;
 }
 
+import { useCanvasAgent } from './hooks/useCanvasAgent';
+import { CanvasAgentProvider } from './contexts/CanvasAgentContext';
+
+function GlobalCanvasAgentWrapper({ children }: { children: React.ReactNode }) {
+  const canvasAgent = useCanvasAgent();
+  return (
+    <CanvasAgentProvider value={{ sendInstruction: canvasAgent.sendInstruction, isConnected: canvasAgent.isConnected, isProcessing: canvasAgent.isProcessing }}>
+      {children}
+    </CanvasAgentProvider>
+  );
+}
 
 // Layout with sidebar
 const Layout = () => {
@@ -95,7 +106,7 @@ const AppContent = () => {
           
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
-            <Route element={<Layout />}>
+            <Route element={<GlobalCanvasAgentWrapper><Layout /></GlobalCanvasAgentWrapper>}>
               <Route path="/" element={<Navigate to="/workflows" replace />} />
               <Route path="/workflows" element={<WorkflowsDashboard />} />
               <Route path="/workflow/:id" element={<WorkflowEditor />} />

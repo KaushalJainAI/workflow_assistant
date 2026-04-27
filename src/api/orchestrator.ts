@@ -281,7 +281,8 @@ export const orchestratorService = {
     conversationId?: string,
     provider?: string,
     model?: string,
-    reference?: { message_id: number; snippet: string }
+    reference?: { message_id: number; snippet: string },
+    screenContext?: { url: string; title: string; interactables: any[] }
   ): Promise<{ conversation_id: string; user_message: ChatMessage; ai_response: ChatMessage }> {
     const response = await apiClient.post('/orchestrator/chat/', {
       content,
@@ -290,6 +291,7 @@ export const orchestratorService = {
       provider,
       model,
       reference,
+      ...(screenContext ? { screen_context: screenContext } : {}),
     });
     return response.data;
   },

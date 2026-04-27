@@ -144,6 +144,7 @@ export default function StandaloneChat() {
   const [isLiveCodeExpanded, setIsLiveCodeExpanded] = useState(true);
   const [isLiveSourcesExpanded, setIsLiveSourcesExpanded] = useState(true);
   const [isLiveMediaExpanded, setIsLiveMediaExpanded] = useState(true);
+  const [thinkingTime, setThinkingTime] = useState(0);
 
   // --- Effects ---
   useEffect(() => {
@@ -157,6 +158,20 @@ export default function StandaloneChat() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [input]);
+
+  // Thinking Timer
+  useEffect(() => {
+    let timer: any;
+    if (isLoading) {
+      setThinkingTime(0);
+      timer = setInterval(() => {
+        setThinkingTime(prev => prev + 0.1);
+      }, 100);
+    } else {
+      setThinkingTime(0);
+    }
+    return () => clearInterval(timer);
+  }, [isLoading]);
 
   useEffect(() => {
     const checkAuthAndSettings = async () => {
@@ -1533,7 +1548,10 @@ export default function StandaloneChat() {
                   <div className="flex-1 space-y-3 pt-1 max-w-[92%] md:max-w-[85%]">
                     {/* Live Status */}
                     <div className="flex items-center justify-between gap-2.5">
-                      <span className="text-[15px] font-semibold text-foreground/80 animate-pulse">{statusMessage}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[15px] font-semibold text-foreground/80 animate-pulse">{statusMessage}</span>
+                        <span className="text-[11px] font-mono text-muted-foreground/40 shrink-0">({thinkingTime.toFixed(1)}s)</span>
+                      </div>
                       {liveThinking && (
                         <button
                           onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
@@ -1802,8 +1820,8 @@ export default function StandaloneChat() {
 
                     {/* Progress bar */}
                     {!liveActivity.length && (
-                      <div className="w-48 h-1 bg-muted/30 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-primary/60 to-primary rounded-full animate-pulse" style={{ width: '60%' }} />
+                      <div className="w-48 h-0.5 bg-muted/30 rounded-full overflow-hidden">
+                        <div className="h-full bg-primary/40 rounded-full animate-indeterminate-slide" />
                       </div>
                     )}
                   </div>
