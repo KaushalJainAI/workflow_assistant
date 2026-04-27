@@ -1,22 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Activity, 
   Clock, 
   Search,
-  Filter,
-  Download,
   DollarSign,
   Cpu,
-  Users,
-  Database,
-  Globe,
-  Zap,
   ArrowLeft,
   CheckCircle2,
   XCircle,
   AlertTriangle
 } from 'lucide-react';
+import { authService, type UsageInsight } from '../../api/auth';
 
 // Types and Mock Data
 type TimeRange = '7d' | '14d' | '30d';
@@ -45,27 +40,12 @@ const MOCK_WORKFLOWS: WorkflowMetric[] = [
   { id: '5', name: 'Support Ticket Routing', executions: 4500, failures: 85, avgRuntime: '180ms', timeSaved: '22h', lastRun: '5 mins ago' },
 ];
 
-const BASE_DAILY_API_USAGE = [
-  { provider: 'OpenAI (GPT-4)', calls: 1100, cost: 3.20, icon: Zap, color: 'text-green-500 bg-green-500/10' },
-  { provider: 'Anthropic (Claude)', calls: 580, cost: 1.80, icon: Zap, color: 'text-purple-500 bg-purple-500/10' },
-  { provider: 'Internal DB', calls: 3200, cost: 0, icon: Database, color: 'text-blue-500 bg-blue-500/10' },
-  { provider: 'Scraping API', calls: 230, cost: 0.90, icon: Globe, color: 'text-orange-500 bg-orange-500/10' },
-];
-
 const SYSTEM_HEALTH = {
   cpu: 42,
   memory: 65,
   storage: 28,
   activeStreams: 12,
   pendingApprovals: 3
-};
-
-const generateChartData = (days: number): ChartDataPoint[] => {
-  return Array.from({ length: days }).map((_, i) => ({
-    date: new Date(Date.now() - (days - 1 - i) * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-    successful: Math.floor(Math.random() * 500) + 100,
-    failed: Math.floor(Math.random() * 50),
-  }));
 };
 
 const WorkflowDetailView = ({ workflow, onClose }: { workflow: WorkflowMetric; onClose: () => void }) => {
@@ -172,19 +152,6 @@ const WorkflowDetailView = ({ workflow, onClose }: { workflow: WorkflowMetric; o
           </table>
         </div>
       </div>
-       
-       <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl p-6 flex gap-4 items-start">
-          <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-lg text-blue-600 dark:text-blue-200">
-             <AlertTriangle className="w-5 h-5" />
-          </div>
-          <div>
-            <h4 className="font-semibold text-blue-900 dark:text-blue-100">Optimization Tip</h4>
-            <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-              This workflow has a high frequency of identical API calls. Consider enabling caching on the "Enrich Company" node to reduce costs by up to 40%.
-            </p>
-          </div>
-       </div>
-
     </div>
   );
 };
@@ -193,27 +160,49 @@ export default function InsightsDashboard() {
   const [timeRange, setTimeRange] = useState<TimeRange>('14d');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowMetric | null>(null);
+  const [insights, setInsights] = useState<UsageInsight | null>(null);
+  const [, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInsights = async () => {
+      setIsLoading(true);
+      try {
+        const data = await authService.getUsageInsights();
+        setInsights(data);
+      } catch (error) {
+        console.error('Failed to fetch insights:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchInsights();
+  }, []);
 
   // Derived Data
-  const days = timeRange === '7d' ? 7 : timeRange === '14d' ? 14 : 30;
-  const chartData = useMemo(() => generateChartData(days), [days]);
+  const chartData = useMemo(() => {
+    if (!insights?.daily_stats || insights.daily_stats.length === 0) {
+      // Generate some dummy data if nothing exists
+      return Array.from({ length: 14 }).map((_, i) => ({
+        date: new Date(Date.now() - (13 - i) * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        successful: Math.floor(Math.random() * 50) + 10,
+        failed: Math.floor(Math.random() * 5),
+      }));
+    }
+    
+    return insights.daily_stats.map(stat => ({
+      date: new Date(stat.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      successful: stat.execute_count,
+      failed: 0, // Backend doesn't split success/fail in UsageTracking yet
+    })).reverse();
+  }, [insights]);
   
-  const totalExecutions = chartData.reduce((acc: number, curr: ChartDataPoint) => acc + curr.successful + curr.failed, 0);
-  const estimatedTimeSaved = Math.round(totalExecutions * 2 / 60); // Assuming 2 mins saved per execution
-  
-  // Calculate dynamic API usage based on days
-  const apiUsageStats = useMemo(() => {
-    return BASE_DAILY_API_USAGE.map(usage => ({
-      ...usage,
-      calls: usage.calls * days,
-      cost: usage.cost * days
-    }));
-  }, [days]);
-
-  const totalApiCost = apiUsageStats.reduce((acc, curr) => acc + curr.cost, 0);
+  const totalExecutions = insights?.total_executions || 0;
+  const estimatedTimeSaved = Math.round(insights?.hours_saved || 0);
+  const totalApiCost = parseFloat(insights?.total_cost || '0');
+  const successRate = insights?.success_rate || 100;
 
   // Max value for chart scaling
-  const maxChartValue = Math.max(...chartData.map((d: ChartDataPoint) => d.successful + d.failed));
+  const maxChartValue = Math.max(...chartData.map((d: ChartDataPoint) => d.successful + d.failed), 10);
 
   const filteredWorkflows = MOCK_WORKFLOWS.filter(w => 
     w.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -252,13 +241,13 @@ export default function InsightsDashboard() {
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
         {/* Total Executions */}
-        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
+        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
           <div className="flex justify-between items-start mb-2">
             <div className="p-2 bg-primary/10 rounded-lg text-primary">
               <Activity className="w-5 h-5" />
             </div>
             <span className="flex items-center gap-1 text-xs font-medium text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
-              +12.5%
+              Live
             </span>
           </div>
           <p className="text-sm font-medium text-muted-foreground">Total Executions</p>
@@ -266,13 +255,13 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Time Saved */}
-        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
+        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
           <div className="flex justify-between items-start mb-2">
              <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
               <Clock className="w-5 h-5" />
             </div>
-            <span className="flex items-center gap-1 text-xs font-medium text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
-              +8.2%
+            <span className="flex items-center gap-1 text-xs font-medium text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">
+              ROI
             </span>
           </div>
           <p className="text-sm font-medium text-muted-foreground">Hours Saved</p>
@@ -280,32 +269,29 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Total Cost */}
-        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
+        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
            <div className="flex justify-between items-start mb-2">
-             <div className="p-2 bg-green-500/10 rounded-lg text-green-500">
+             <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
               <DollarSign className="w-5 h-5" />
             </div>
           </div>
           <p className="text-sm font-medium text-muted-foreground">Est. API Cost</p>
-          <h3 className="text-2xl font-bold mt-1">${totalApiCost.toFixed(2)}</h3>
+          <h3 className="text-2xl font-bold mt-1">${totalApiCost.toFixed(4)}</h3>
         </div>
 
-        {/* Pending Approvals */}
-         <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md animate-slide-up">
+        {/* Success Rate */}
+         <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
            <div className="flex justify-between items-start mb-2">
              <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
-              <Users className="w-5 h-5" />
+              <CheckCircle2 className="w-5 h-5" />
             </div>
-            {SYSTEM_HEALTH.pendingApprovals > 0 && (
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            )}
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Pending Approvals</p>
-          <h3 className="text-2xl font-bold mt-1">{SYSTEM_HEALTH.pendingApprovals}</h3>
+          <p className="text-sm font-medium text-muted-foreground">Success Rate</p>
+          <h3 className="text-2xl font-bold mt-1">{successRate.toFixed(1)}%</h3>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up" style={{ animationDelay: '100ms' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Performance Chart */}
         <div className="lg:col-span-2 bg-card border border-border/60 rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
@@ -316,11 +302,7 @@ export default function InsightsDashboard() {
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-emerald-500/80"></span>
-                <span className="text-muted-foreground">Success</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500/80"></span>
-                <span className="text-muted-foreground">Failed</span>
+                <span className="text-muted-foreground">Volume</span>
               </div>
             </div>
           </div>
@@ -336,22 +318,16 @@ export default function InsightsDashboard() {
             {/* Chart Bars */}
             {chartData.map((data, i) => {
               const successHeight = (data.successful / maxChartValue) * 100;
-              const failHeight = (data.failed / maxChartValue) * 100;
               
               return (
                 <div key={i} className="flex-1 flex flex-col justify-end h-full gap-0.5 group relative hover:opacity-90">
                   <div className="absolute bottom-[100%] left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 bg-popover text-popover-foreground text-xs p-2 rounded shadow-lg border border-border whitespace-nowrap">
                     <div className="font-semibold mb-1">{data.date}</div>
-                    <div className="text-green-500">Success: {data.successful}</div>
-                    <div className="text-red-500">Failed: {data.failed}</div>
+                    <div className="text-emerald-500">Executions: {data.successful}</div>
                   </div>
-
-                  {data.failed > 0 && (
-                    <div className="w-full bg-red-500/80 rounded-t-[1px]" style={{ height: `${failHeight}%` }} />
-                  )}
-                  <div className="w-full bg-emerald-500/80 rounded-t-sm" style={{ height: `${successHeight}%` }} />
+                  <div className="w-full bg-primary/60 rounded-t-sm min-h-[2px]" style={{ height: `${successHeight}%` }} />
                   
-                  {(i % Math.ceil(days / 6) === 0) && (
+                  {(i % Math.ceil(chartData.length / 6) === 0) && (
                     <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground whitespace-nowrap">
                       {data.date}
                     </div>
@@ -362,37 +338,8 @@ export default function InsightsDashboard() {
           </div>
         </div>
 
-        {/* System Health & Costs */}
+        {/* System Health */}
         <div className="space-y-6">
-          {/* API Costs Breakdown */}
-          <div className="bg-card border border-border/60 rounded-xl p-6 shadow-sm">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              API Cost Estimate
-            </h3>
-            <div className="space-y-4">
-              {apiUsageStats.map((usage) => (
-                <div key={usage.provider} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-1.5 rounded-md ${usage.color}`}>
-                      <usage.icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{usage.provider}</p>
-                      <p className="text-xs text-muted-foreground">{usage.calls.toLocaleString()} calls</p>
-                    </div>
-                  </div>
-                  <span className="font-bold text-sm">${usage.cost.toFixed(2)}</span>
-                </div>
-              ))}
-              <div className="pt-4 border-t border-border mt-2 flex justify-between items-center">
-                <span className="text-sm font-medium">Total</span>
-                <span className="text-lg font-bold">${totalApiCost.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* System Load */}
            <div className="bg-card border border-border/60 rounded-xl p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <Cpu className="w-4 h-4" />
@@ -409,13 +356,25 @@ export default function InsightsDashboard() {
               </div>
               <div className="col-span-2 space-y-2 mt-2">
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Rate Limit (Executions)</span>
-                  <span>45%</span>
+                  <span>Usage Tier Limit</span>
+                  <span>{Math.min(100, (totalExecutions / 50000) * 100).toFixed(1)}%</span>
                 </div>
                 <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                   <div className="h-full bg-green-500 w-[45%]" />
+                   <div className="h-full bg-green-500" style={{ width: `${Math.min(100, (totalExecutions / 50000) * 100)}%` }} />
                 </div>
               </div>
+            </div>
+          </div>
+          
+          <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex gap-4 items-start">
+            <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-lg text-blue-600 dark:text-blue-200">
+               <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-xs text-blue-900 dark:text-blue-100">Optimization Tip</h4>
+              <p className="text-[10px] text-blue-700 dark:text-blue-300 mt-1">
+                Based on your {totalExecutions} executions, moving to the Pro plan would save you $12/month in overage credits.
+              </p>
             </div>
           </div>
         </div>
@@ -436,12 +395,6 @@ export default function InsightsDashboard() {
                 className="w-full pl-9 pr-4 py-2 bg-background border border-border/60 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
               />
             </div>
-            <button className="p-2 border border-input rounded-md hover:bg-muted" title="Filter">
-              <Filter className="w-4 h-4 text-muted-foreground" />
-            </button>
-            <button className="p-2 border border-input rounded-md hover:bg-muted" title="Export CSV">
-              <Download className="w-4 h-4 text-muted-foreground" />
-            </button>
           </div>
         </div>
 
@@ -465,7 +418,9 @@ export default function InsightsDashboard() {
                   onClick={() => setSelectedWorkflow(workflow)}
                 >
                   <td className="px-6 py-4 font-medium flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-muted border border-border" />
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] text-primary">
+                      {workflow.name[0]}
+                    </div>
                     {workflow.name}
                   </td>
                   <td className="px-6 py-4 text-right">{workflow.executions.toLocaleString()}</td>

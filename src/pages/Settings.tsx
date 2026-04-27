@@ -24,18 +24,54 @@ import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../api/auth';
 import Select from '../components/ui/Select';
+import NotificationsTab from '../components/settings/NotificationsTab';
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
+
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { theme, setTheme, colorTheme, setColorTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
-  const [timezone, setTimezone] = useState('UTC');
-  const [language, setLanguage] = useState('English');
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Form State
+  const [formData, setFormData] = useState<any>({
+    instance_name: '',
+    timezone: 'UTC',
+    language: 'English',
+    display_name: '',
+    bio: '',
+    first_name: '',
+    last_name: '',
+    email: '',
+    llm_provider: 'openrouter',
+    llm_model: 'google/gemini-2.0-flash-exp:free',
+    default_temperature: 0.7,
+    default_max_tokens: 2048,
+  });
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        instance_name: user.instance_name || 'AIAAS Instance',
+        timezone: user.timezone || 'UTC',
+        language: user.language || 'English',
+        display_name: user.display_name || '',
+        bio: user.bio || '',
+        first_name: user.name?.split(' ')[0] || '',
+        last_name: user.name?.split(' ').slice(1).join(' ') || '',
+        email: user.email || '',
+        llm_provider: user.llm_provider || 'openrouter',
+        llm_model: user.llm_model || 'google/gemini-2.0-flash-exp:free',
+        default_temperature: user.default_temperature || 0.7,
+        default_max_tokens: user.default_max_tokens || 2048,
+      });
+    }
+  }, [user]);
 
   useEffect(() => {
     if (activeTab === 'api') {
@@ -49,6 +85,41 @@ export default function Settings() {
       setApiKey(data.key);
     } catch (error) {
       console.error('Failed to load API key:', error);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev: any) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData((prev: any) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      // Prepare data for backend
+      const patchData = {
+        ...formData,
+        user: {
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+        },
+        theme_preference: theme,
+        accent_color: colorTheme,
+      };
+
+      await authService.updateProfile(patchData);
+      await refreshUser();
+      alert('Settings saved successfully');
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      alert('Failed to save settings');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -82,10 +153,6 @@ export default function Settings() {
     }
     return '??';
   };
-
-  // Parse name into first and last name
-  const getFirstName = () => user?.name?.split(' ')[0] || '';
-  const getLastName = () => user?.name?.split(' ').slice(1).join(' ') || '';
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,12 +166,10 @@ export default function Settings() {
 
     try {
       await authService.uploadAvatar(file);
-      // We should ideally reload the profile to get the new avatar URL
-      // assuming useAuth exposes a reload method or we force a refresh
-      window.location.reload(); 
+      await refreshUser();
     } catch (error) {
       console.error('Failed to upload avatar:', error);
-      alert('Failed to upload avatar'); // Simple alert for now
+      alert('Failed to upload avatar');
     }
   };
 
@@ -139,27 +204,52 @@ export default function Settings() {
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
                     <p className="font-medium">Instance Name</p>
-                    <p className="text-sm text-muted-foreground">The name of your AstraFlow instance</p>
+                    <p className="text-sm text-muted-foreground">Personalize your platform title</p>
                   </div>
                   <input 
                     type="text" 
-                    defaultValue="My AstraFlow" 
+                    name="instance_name"
+                    value={formData.instance_name}
+                    onChange={handleInputChange}
                     className="px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
                   />
                 </div>
+                
+                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-primary/10">
+                  <div>
+                    <p className="font-medium flex items-center gap-2">
+                      Default AI Model
+                      <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
+                    </p>
+                    <p className="text-sm text-muted-foreground">The primary model for AI features</p>
+                  </div>
+                  <Select
+                    value={formData.llm_model}
+                    onChange={(val) => handleSelectChange('llm_model', val)}
+                    options={[
+                      { value: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash' },
+                      { value: 'openai/gpt-4o', label: 'GPT-4o' },
+                      { value: 'anthropic/claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
+                      { value: 'meta-llama/llama-3.1-405b', label: 'Llama 3.1 405B' },
+                    ]}
+                    className="w-[250px]"
+                  />
+                </div>
+
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
                     <p className="font-medium">Timezone</p>
                     <p className="text-sm text-muted-foreground">Set your default timezone</p>
                   </div>
                   <Select
-                    value={timezone}
-                    onChange={setTimezone}
+                    value={formData.timezone}
+                    onChange={(val) => handleSelectChange('timezone', val)}
                     options={[
                       { value: 'UTC', label: 'UTC' },
                       { value: 'America/New_York', label: 'America/New_York' },
                       { value: 'Europe/London', label: 'Europe/London' },
                       { value: 'Asia/Tokyo', label: 'Asia/Tokyo' },
+                      { value: 'Asia/Kolkata', label: 'Asia/Kolkata' },
                     ]}
                     className="w-[200px]"
                   />
@@ -170,8 +260,8 @@ export default function Settings() {
                     <p className="text-sm text-muted-foreground">Choose your preferred language</p>
                   </div>
                   <Select
-                    value={language}
-                    onChange={setLanguage}
+                    value={formData.language}
+                    onChange={(val) => handleSelectChange('language', val)}
                     options={[
                       { value: 'English', label: 'English' },
                       { value: 'Spanish', label: 'Spanish' },
@@ -192,8 +282,18 @@ export default function Settings() {
             <div>
               <h3 className="text-lg font-medium mb-4">Account Settings</h3>
               <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-xl font-bold text-primary ring-4 ring-primary/5">
-                  {getInitials()}
+                <div 
+                  onClick={handleAvatarClick}
+                  className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-xl font-bold text-primary ring-4 ring-primary/5 overflow-hidden cursor-pointer group relative"
+                >
+                  {user?.avatar ? (
+                    <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    getInitials()
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <User className="w-6 h-6 text-white" />
+                  </div>
                 </div>
                 <div>
                   <p className="font-medium">{user?.name || 'User'}</p>
@@ -219,7 +319,9 @@ export default function Settings() {
                     <label className="block text-sm font-medium mb-2">First Name</label>
                     <input 
                       type="text" 
-                      defaultValue={getFirstName()} 
+                      name="first_name"
+                      value={formData.first_name}
+                      onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
                     />
                   </div>
@@ -227,17 +329,32 @@ export default function Settings() {
                     <label className="block text-sm font-medium mb-2">Last Name</label>
                     <input 
                       type="text" 
-                      defaultValue={getLastName()} 
+                      name="last_name"
+                      value={formData.last_name}
+                      onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Email</label>
+                  <label className="block text-sm font-medium mb-2">Email Address</label>
                   <input 
                     type="email" 
-                    defaultValue={user?.email || ''} 
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Bio</label>
+                  <textarea 
+                    name="bio"
+                    value={formData.bio}
+                    onChange={handleInputChange}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 resize-none"
+                    placeholder="Tell us a bit about yourself..."
                   />
                 </div>
               </div>
@@ -316,16 +433,6 @@ export default function Settings() {
                     ))}
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Sidebar Collapsed</p>
-                    <p className="text-sm text-muted-foreground">Start with sidebar collapsed</p>
-                  </div>
-                  <button className="w-10 h-6 rounded-full bg-muted relative">
-                    <div className="w-4 h-4 bg-white rounded-full shadow absolute top-1 left-1" />
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -365,7 +472,7 @@ export default function Settings() {
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <p className="font-medium mb-2">Webhook URL</p>
                   <code className="block p-2 bg-background/50 border border-input rounded-lg text-sm font-mono break-all">
-                    https://your-astraflow-instance.com/webhook/
+                    {window.location.origin}/api/webhook/
                   </code>
                 </div>
               </div>
@@ -400,7 +507,7 @@ export default function Settings() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Monthly Executions</p>
-                    <h3 className="text-2xl font-bold">12,842 / 50,000</h3>
+                    <h3 className="text-2xl font-bold">{user?.credits || 0} / 50,000</h3>
                   </div>
                 </div>
                 <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
@@ -414,8 +521,8 @@ export default function Settings() {
                     <Rocket className="w-5 h-5 text-purple-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Active Workflows</p>
-                    <h3 className="text-2xl font-bold">18 / ∞</h3>
+                    <p className="text-sm font-medium text-muted-foreground">Tier</p>
+                    <h3 className="text-2xl font-bold capitalize">{user?.tier || 'Free'}</h3>
                   </div>
                 </div>
                 <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
@@ -429,12 +536,12 @@ export default function Settings() {
                     <CreditCard className="w-5 h-5 text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Current Plan</p>
-                    <h3 className="text-2xl font-bold">Pro</h3>
+                    <p className="text-sm font-medium text-muted-foreground">Credits Remaining</p>
+                    <h3 className="text-2xl font-bold">{user?.credits || 0}</h3>
                   </div>
                 </div>
                 <div className="mt-4">
-                  <span className="text-sm text-muted-foreground">Next billing date: Feb 20, 2026</span>
+                  <span className="text-sm text-muted-foreground">Next refill: Next Month</span>
                 </div>
               </div>
             </div>
@@ -493,29 +600,16 @@ export default function Settings() {
                       ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm" 
                       : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
                   )}>
-                    {plan.name === 'Pro' ? 'Current Plan' : 'Upgrade'}
+                    {user?.tier?.toLowerCase() === plan.name.toLowerCase() ? 'Current Plan' : 'Upgrade'}
                   </button>
                 </div>
               ))}
             </div>
-
-            <div className="mt-12 p-8 bg-muted/30 rounded-2xl border border-border/60 flex flex-col md:flex-row items-center justify-between gap-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-blue-400" />
-                  Enterprise Security
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-2xl">
-                  Need advanced security features, audit logs, and dedicated support? 
-                  Contact our sales team for a custom enterprise package.
-                </p>
-              </div>
-              <button className="whitespace-nowrap px-6 py-2.5 bg-background border border-border/60 rounded-lg hover:bg-accent font-medium transition-colors">
-                Contact Sales
-              </button>
-            </div>
           </div>
         );
+
+      case 'notifications':
+        return <NotificationsTab />;
 
       default:
         return (
@@ -566,13 +660,17 @@ export default function Settings() {
         )}>
           {renderContent()}
           
-          {['general', 'account'].includes(activeTab) && (
+          {['general', 'account', 'appearance'].includes(activeTab) && (
             <div className="mt-8 pt-6 border-t border-border flex justify-end gap-2">
               <button className="px-4 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
                 Cancel
               </button>
-              <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-200 shadow-sm active:scale-[0.98] font-medium">
-                Save Changes
+              <button 
+                onClick={handleSave}
+                disabled={isSaving}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-200 shadow-sm active:scale-[0.98] font-medium disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           )}

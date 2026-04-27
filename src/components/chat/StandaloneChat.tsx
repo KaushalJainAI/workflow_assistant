@@ -48,6 +48,12 @@ import { MediaPreview } from './MediaPreview';
 import { useAIModels } from '../../hooks/useAIModels';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
+interface PendingToolCall {
+  tool: string;
+  args: any;
+  call_id: string;
+}
+
 export default function StandaloneChat() {
   const navigate = useNavigate();
   
@@ -140,6 +146,7 @@ export default function StandaloneChat() {
   const [liveThinking, setLiveThinking] = useState('');
   const [liveContent, setLiveContent] = useState('');
   const [liveCodeExecutions, setLiveCodeExecutions] = useState<any[]>([]);
+  const [pendingToolCall, setPendingToolCall] = useState<PendingToolCall | null>(null);
   const [isReasoningExpanded, setIsReasoningExpanded] = useState(false);
   const [isLiveCodeExpanded, setIsLiveCodeExpanded] = useState(true);
   const [isLiveSourcesExpanded, setIsLiveSourcesExpanded] = useState(true);
@@ -493,13 +500,142 @@ export default function StandaloneChat() {
     setShowMoreIntents(false);
   };
 
+  const handleApproveTool = async (callId: string) => {
+    if (!conversationId || !pendingToolCall) return;
+    
+    setPendingToolCall(null);
+    setIsLoading(true);
+    
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      await chatService.sendMessageStream(
+        conversationId,
+        "Approve",
+        activeIntent,
+        (event) => handleStreamEvent(event),
+        undefined,
+        controller.signal,
+        llmProvider,
+        llmModel,
+        callId
+      );
+    } catch (err) {
+      console.error("Failed to approve tool", err);
+      setIsLoading(false);
+    }
+  };
+
+  const handleStreamEvent = (event: any, optimisticId?: number, intentToSend?: string) => {
+    switch (event.type) {
+      case 'status':
+        setLiveStatus({ phase: event.phase, message: event.message });
+        if (optimisticId && event.user_message_id) {
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const userMsgIndex = newMsgs.findIndex(m => m.id === optimisticId);
+            if (userMsgIndex !== -1) {
+              newMsgs[userMsgIndex] = { ...newMsgs[userMsgIndex], id: event.user_message_id };
+            }
+            return newMsgs;
+          });
+        }
+        break;
+      case 'thinking_chunk':
+        setLiveThinking(prev => prev + event.content);
+        break;
+      case 'content_chunk':
+        setLiveContent(prev => prev + event.content);
+        break;
+      case 'tool_call':
+        // Legacy support for older backend versions
+        setLiveActivity(prev => [...prev, { type: 'tool', tool: event.tool, args: event.args, iteration: event.iteration }]);
+        break;
+      case 'agent_trace':
+        if (event.sub_type === 'thought') {
+          setLiveActivity(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.type === 'thought') {
+              return [...prev.slice(0, -1), { ...last, thought: event.content }];
+            }
+            return [...prev, { type: 'thought', thought: event.content }];
+          });
+        } else {
+          setLiveActivity(prev => [...prev, { 
+              type: 'tool', 
+              tool: event.tool, 
+              args: event.args, 
+              iteration: event.iteration,
+              thought: event.thought
+          }]);
+        }
+        break;
+      case 'sources_update':
+        setLiveSources(event.sources || []);
+        break;
+      case 'images_update':
+        setLiveImages(event.images || []);
+        break;
+      case 'code_execution':
+        setLiveCodeExecutions(prev => [...prev, {
+          code: event.code,
+          output: event.output,
+          result: event.result
+        }]);
+        break;
+      case 'ask_permission':
+        setPendingToolCall({
+          tool: event.tool,
+          args: event.args,
+          call_id: event.call_id
+        });
+        setIsLoading(false);
+        break;
+      case 'videos_update':
+        setLiveVideos(event.videos || []);
+        break;
+      case 'done':
+        setMessages(prev => {
+          const newMsgs = [...prev];
+          if (optimisticId && event.user_message) {
+            const userMsgIndex = newMsgs.findIndex(m => m.id === optimisticId || m.id === event.user_message.id);
+            if (userMsgIndex !== -1) {
+              newMsgs[userMsgIndex] = { ...newMsgs[userMsgIndex], id: event.user_message.id };
+            }
+          }
+          return [...newMsgs, event.ai_response as unknown as ChatMessage];
+        });
+        setIsLoading(false);
+        setLiveStatus(null);
+        setLiveActivity([]);
+        setLiveSources([]);
+        setLiveImages([]);
+        setLiveVideos([]);
+        setLiveContent('');
+        setLiveThinking('');
+        setLiveCodeExecutions([]);
+        setActiveReference(null);
+        
+        // Sync intent to session state if it was locked this turn
+        if (intentToSend && currentSession && !['chat', 'search', 'normal'].includes(intentToSend) && currentSession.intent !== intentToSend) {
+          setCurrentSession({ ...currentSession, intent: intentToSend });
+        }
+        break;
+      case 'error':
+        toast.error(event.message);
+        setIsLoading(false);
+        setLiveStatus(null);
+        break;
+    }
+  };
+
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput ?? input;
     if (!textToSend.trim() || isLoading || !hasCredentials) return;
 
     const intentToSend = activeIntent;
     
-    // Create new AbortController
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -513,12 +649,8 @@ export default function StandaloneChat() {
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
-    
-    // Intent is now sticky: we DON'T reset activeIntent here.
-    // If it was the session default (lockedIntent), it stays selected.
-    // If the user manually toggled it to 'normal', it stays normal.
-    
     setIsLoading(true);
+    
     // Reset live streaming state
     setLiveStatus(null);
     setLiveActivity([]);
@@ -549,110 +681,13 @@ export default function StandaloneChat() {
         if (showHistory) loadHistory();
       }
 
-      // Pass the activeReference if present
       const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
 
-      // Use SSE streaming endpoint
       await chatService.sendMessageStream(
         currentSessionId,
         textToSend,
         intentToSend,
-        (event) => {
-          switch (event.type) {
-            case 'status':
-              setLiveStatus({ phase: event.phase, message: event.message });
-              if (event.user_message_id) {
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const userMsgIndex = newMsgs.findIndex(m => m.id === userMessage.id);
-                  if (userMsgIndex !== -1) {
-                    newMsgs[userMsgIndex] = { ...newMsgs[userMsgIndex], id: event.user_message_id };
-                  }
-                  return newMsgs;
-                });
-              }
-              break;
-            case 'thinking_chunk':
-              setLiveThinking(prev => prev + event.content);
-              break;
-            case 'content_chunk':
-              setLiveContent(prev => prev + event.content);
-              break;
-            case 'tool_call':
-              // Legacy support for older backend versions
-              setLiveActivity(prev => [...prev, { type: 'tool', tool: event.tool, args: event.args, iteration: event.iteration }]);
-              break;
-            case 'agent_trace':
-              if (event.sub_type === 'thought') {
-                setLiveActivity(prev => {
-                  const last = prev[prev.length - 1];
-                  if (last?.type === 'thought') {
-                    // Update last thought snippet to keep list clean
-                    return [...prev.slice(0, -1), { ...last, thought: event.content }];
-                  }
-                  return [...prev, { type: 'thought', thought: event.content }];
-                });
-              } else {
-                setLiveActivity(prev => [...prev, { 
-                    type: 'tool', 
-                    tool: event.tool, 
-                    args: event.args, 
-                    iteration: event.iteration,
-                    thought: event.thought
-                }]);
-              }
-              break;
-            case 'sources_update':
-              setLiveSources(event.sources || []);
-              break;
-            case 'images_update':
-              setLiveImages(event.images || []);
-              break;
-            case 'code_execution':
-              setLiveCodeExecutions(prev => [...prev, {
-                code: event.code,
-                output: event.output,
-                result: event.result
-              }]);
-              break;
-            case 'videos_update':
-              setLiveVideos(event.videos || []);
-              break;
-            case 'done':
-              setMessages(prev => {
-                const newMsgs = [...prev];
-                // Check if we still have the optimistic ID or if it was already updated
-                const userMsgIndex = newMsgs.findIndex(m => m.id === userMessage.id || m.id === event.user_message.id);
-                if (userMsgIndex !== -1) {
-                  newMsgs[userMsgIndex] = { ...newMsgs[userMsgIndex], id: event.user_message.id };
-                }
-                return [...newMsgs, event.ai_response as unknown as ChatMessage];
-              });
-              setIsLoading(false);
-              setLiveStatus(null);
-              setLiveActivity([]);
-              setLiveSources([]);
-              setLiveImages([]);
-              setLiveVideos([]);
-              setLiveContent('');
-              setLiveCodeExecutions([]);
-              setActiveReference(null); // clear reference after successful response
-              // Sync intent to session state if it was locked this turn
-              if (currentSession && !['chat', 'search', 'normal'].includes(intentToSend) && currentSession.intent !== intentToSend) {
-                setCurrentSession({ ...currentSession, intent: intentToSend });
-              }
-              break;
-            case 'error':
-              setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: `Error: ${event.message}`,
-                created_at: new Date().toISOString(),
-                metadata: {}
-              } as ChatMessage]);
-              setIsLoading(false);
-              break;
-          }
-        },
+        (event) => handleStreamEvent(event, userMessage.id as number, intentToSend),
         reference,
         controller.signal,
         llmProvider,
@@ -1828,6 +1863,65 @@ export default function StandaloneChat() {
                 </div>
               );
             })()}
+
+            {/* Approval UI */}
+            {pendingToolCall && (
+              <div className="flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20 shadow-lg shadow-amber-500/20">
+                  <Shield className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1 space-y-4 max-w-[92%] md:max-w-[85%]">
+                  <div className="bg-card/60 p-6 rounded-3xl rounded-tl-none shadow-sm glass border border-amber-500/30 space-y-4">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-black uppercase tracking-tight text-amber-600">Permission Required</h3>
+                      <p className="text-muted-foreground text-sm font-medium">The agent wants to execute a sensitive operation:</p>
+                    </div>
+                    
+                    <div className="bg-muted/30 p-4 rounded-2xl border border-border/40 font-mono text-[13px] space-y-2 overflow-hidden">
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-600 font-black tracking-widest uppercase text-[10px]">Tool:</span>
+                        <span className="font-bold text-foreground">{pendingToolCall.tool}</span>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-amber-600 font-black tracking-widest uppercase text-[10px]">Arguments:</span>
+                        {pendingToolCall.tool === 'execute_shell' && typeof pendingToolCall.args?.command === 'string' && /[;&|>]/.test(pendingToolCall.args.command) ? (
+                          <>
+                            <div className="text-[10px] text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded my-1 border border-red-500/20">
+                              ⚠️ Warning: Command contains chaining/redirection (;, &, |, &gt;)
+                            </div>
+                            <pre className="text-xs text-red-400 overflow-x-auto custom-scrollbar pt-1">
+                              {JSON.stringify(pendingToolCall.args, null, 2)}
+                            </pre>
+                          </>
+                        ) : (
+                          <pre className="text-xs text-muted-foreground/80 overflow-x-auto custom-scrollbar pt-1">
+                            {JSON.stringify(pendingToolCall.args, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleApproveTool(pendingToolCall.call_id)}
+                        className="flex-1 h-11 bg-primary text-primary-foreground font-black rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
+                      >
+                        <Check className="w-4 h-4" />
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => setPendingToolCall(null)}
+                        className="flex-1 h-11 bg-muted text-muted-foreground font-black rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
+                      >
+                        <X className="w-4 h-4" />
+                        Deny
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
         </div>
@@ -1954,6 +2048,8 @@ export default function StandaloneChat() {
                           { key: 'search' as const, icon: <Search className="w-3.5 h-3.5" />, label: 'Search', color: 'blue' },
                           { key: 'research' as const, icon: <Globe2 className="w-3.5 h-3.5" />, label: 'Research', color: 'purple' },
                           { key: 'coding' as const, icon: <Code className="w-3.5 h-3.5" />, label: 'Coding', color: 'blue' },
+                          { key: 'file_manipulation' as const, icon: <Folder className="w-3.5 h-3.5" />, label: 'Files', color: 'emerald' },
+                          { key: 'workflow' as const, icon: <Boxes className="w-3.5 h-3.5" />, label: 'Workflow', color: 'purple' },
                         ].map(tool => (
                           <button
                             key={tool.key}
@@ -1974,45 +2070,6 @@ export default function StandaloneChat() {
                             </span>
                           </button>
                         ))}
-                      </div>
-
-                      {/* MORE DROPDOWN (Outside scroll area to prevent clipping) */}
-                      <div className="relative shrink-0" ref={moreIntentsRef}>
-                        <button
-                          onClick={() => setShowMoreIntents(!showMoreIntents)}
-                          className={cn(
-                            "flex items-center gap-1 h-8 px-2 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40 transition-all border border-transparent",
-                            ['coding', 'file_manipulation', 'workflow'].includes(activeIntent) && "text-foreground bg-muted/40 border-border/40"
-                          )}
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                        
-                        {showMoreIntents && (
-                          <>
-                            <div className="absolute bottom-[calc(100%+12px)] left-0 w-[180px] bg-card border border-border rounded-xl shadow-2xl z-[9999] backdrop-blur-2xl overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200 p-1">
-                              {[
-                                { key: 'file_manipulation' as const, icon: <Folder className="w-3.5 h-3.5" />, label: 'Files' },
-                                { key: 'workflow' as const, icon: <Boxes className="w-3.5 h-3.5" />, label: 'Workflow' },
-                              ].map(tool => (
-                                <button
-                                  key={tool.key}
-                                  onClick={() => toast.info(`${tool.label} is coming soon!`)}
-                                  className={cn(
-                                    "w-full flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg text-left transition-all text-[11px] font-bold uppercase tracking-wider",
-                                    "opacity-60 hover:bg-muted/30 text-foreground/50 cursor-default"
-                                  )}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {tool.icon}
-                                    <span>{tool.label}</span>
-                                  </div>
-                                  <span className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">Upcoming</span>
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
                       </div>
                     </div>
 

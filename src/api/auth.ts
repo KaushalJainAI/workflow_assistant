@@ -21,9 +21,31 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  display_name?: string;
+  avatar?: string;
+  bio?: string;
+  instance_name?: string;
+  timezone?: string;
+  language?: string;
   tier: 'free' | 'pro' | 'enterprise';
   credits: number;
+  llm_provider?: string;
+  llm_model?: string;
+  default_temperature?: number;
+  default_max_tokens?: number;
+  theme_preference?: 'light' | 'dark' | 'system';
+  accent_color?: string;
   createdAt: string;
+}
+
+export interface UsageInsight {
+  total_executions: number;
+  total_cost: string;
+  success_rate: number;
+  hours_saved: number;
+  daily_stats: any[];
+  tier: string;
+  credits_remaining: number;
 }
 
 export interface AuthResponse {
@@ -136,15 +158,29 @@ export const authService = {
    * Get current user profile
    */
   async getProfile(): Promise<User> {
-    const response = await apiClient.get<{ user: { id: number; email: string; name: string }; tier: string; credits_remaining: number }>('/auth/profile/');
-    const { user, tier, credits_remaining } = response.data;
+    const response = await apiClient.get<any>('/auth/profile/');
+    const data = response.data;
+    
+    // The backend returns the UserProfile structure
     return {
-      id: user.id,
-      email: user.email,
-      name: user.name || '',
-      tier: tier as 'free' | 'pro' | 'enterprise',
-      credits: credits_remaining,
-      createdAt: new Date().toISOString(),
+      id: data.user.id,
+      email: data.user.email,
+      name: `${data.user.first_name || ''} ${data.user.last_name || ''}`.trim() || data.user.username,
+      display_name: data.display_name,
+      avatar: data.avatar,
+      bio: data.bio,
+      instance_name: data.instance_name,
+      timezone: data.timezone,
+      language: data.language,
+      tier: data.tier,
+      credits: data.credits_remaining,
+      llm_provider: data.llm_provider,
+      llm_model: data.llm_model,
+      default_temperature: data.default_temperature,
+      default_max_tokens: data.default_max_tokens,
+      theme_preference: data.theme_preference,
+      accent_color: data.accent_color,
+      createdAt: data.created_at,
     };
   },
 
@@ -167,6 +203,14 @@ export const authService = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return response.data;
+  },
+
+  /**
+   * Get usage insights
+   */
+  async getUsageInsights(): Promise<UsageInsight> {
+    const response = await apiClient.get<UsageInsight>('/usage/insights/');
     return response.data;
   },
 

@@ -79,7 +79,8 @@ export const chatService = {
     reference?: { message_id: number; snippet: string },
     signal?: AbortSignal,
     llmProvider?: string,
-    llmModel?: string
+    llmModel?: string,
+    approveToolCall?: string
   ): Promise<void> {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
     const token = localStorage.getItem('access_token');
@@ -88,6 +89,7 @@ export const chatService = {
     if (reference) body.reference = reference;
     if (llmProvider) body.llm_provider = llmProvider;
     if (llmModel) body.llm_model = llmModel;
+    if (approveToolCall) body.approve_tool_call = approveToolCall;
 
     const response = await fetch(`${API_URL}/chat/sessions/${sessionId}/message/stream/`, {
       method: 'POST',
