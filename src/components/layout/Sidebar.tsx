@@ -1,8 +1,8 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
-import { 
-  GitGraph, 
-  Key, 
+import {
+  GitGraph,
+  Key,
   Menu,
   Plus,
   FileText,
@@ -11,7 +11,8 @@ import {
   Layout,
   Loader2,
   Zap,
-  Cpu
+  Plug,
+  Code2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -56,10 +57,10 @@ const Sidebar = () => {
 
     const navItems = [
         { icon: GitGraph, label: "Workflows", path: "/workflows" },
-        { icon: Key, label: "Credentials", path: "/credentials" },
+        { icon: Plug, label: "Connectors", path: "/connectors" },
         { icon: Zap, label: "Skills", path: "/skills" },
         { icon: Layout, label: "Templates", path: "/templates" },
-        { icon: Cpu, label: "MCP Servers", path: "/mcp-servers" },
+        { icon: Key, label: "Credentials", path: "/credentials" },
         { icon: FileText, label: "Documents", path: "/documents" },
     ];
 
@@ -247,8 +248,31 @@ const Sidebar = () => {
                 ))}
             </nav>
 
+            {/* Developer section — de-emphasised, for power users */}
+            <div className="px-2 pt-2 pb-1 border-t border-border/30">
+                <Link
+                    to="/mcp-servers"
+                    className={cn(
+                        "flex items-center rounded-lg transition-all duration-200 group py-1.5",
+                        location.pathname === '/mcp-servers'
+                            ? "bg-muted text-muted-foreground"
+                            : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40",
+                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-2"
+                    )}
+                    title={collapsed ? "Developer: MCP Servers" : undefined}
+                >
+                    <Code2 className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className={cn(
+                        "text-[11px] font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
+                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                    )}>
+                        MCP Servers
+                    </span>
+                </Link>
+            </div>
+
             {/* User Section */}
-            <div className="p-2 border-t border-border/60 mt-auto">
+            <div className="p-2 border-t border-border/60">
                 <Link 
                     to="/settings"
                     className={cn(

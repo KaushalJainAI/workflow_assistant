@@ -8,6 +8,7 @@ import Credentials from './pages/Credentials';
 import Settings from './pages/Settings';
 import Documents from './pages/Documents';
 import MCPServers from './pages/MCPServers';
+import Connectors from './pages/Connectors';
 import Profile from './pages/Profile';
 
 import AIChat from './pages/AIChat';
@@ -118,6 +119,7 @@ const AppContent = () => {
               <Route path="/templates/:id" element={<TemplateDetail />} />
               <Route path="/ai-chat" element={<AIChat />} />
               <Route path="/documents" element={<Documents />} />
+              <Route path="/connectors" element={<Connectors />} />
               <Route path="/mcp-servers" element={<MCPServers />} />
               <Route path="/credentials" element={<Credentials />} />
               <Route path="/settings" element={<Settings />} />

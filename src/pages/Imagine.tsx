@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { StylePresetCard } from '../components/imagine/StylePresetCard';
 import { Lightbox } from '../components/imagine/Lightbox';
+import { ImagineChat } from '../components/imagine/ImagineChat';
 import apiClient from '../api/client';
 import { useEffect } from 'react';
 
@@ -40,7 +41,12 @@ interface Result {
   timestamp: Date;
 }
 
+type ViewMode = 'agent' | 'advanced';
+
 export default function Imagine() {
+  const [viewMode, setViewMode] = useState<ViewMode>('agent');
+  const [latestAgentResult, setLatestAgentResult] = useState<{ url: string; type: 'image' | 'video' | 'audio'; prompt: string } | null>(null);
+  const [agentLightbox, setAgentLightbox] = useState(false);
   const [mode, setMode] = useState<Mode>('image');
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -184,8 +190,96 @@ export default function Imagine() {
     }
   };
 
+  if (viewMode === 'agent') {
+    return (
+      <div className="flex h-full bg-background text-foreground font-sans overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 border-r border-border/40">
+          <div className="flex items-center justify-between px-6 pt-6 pb-3 border-b border-border/10">
+            <div className="flex items-center gap-2">
+              <Sparkles size={18} className="text-primary" />
+              <h1 className="text-lg font-semibold">Imagine</h1>
+            </div>
+            <div className="flex p-1 bg-muted/30 rounded-full border border-border/40">
+              <button
+                onClick={() => setViewMode('agent')}
+                className={cn(
+                  'px-4 py-1.5 rounded-full text-xs font-bold transition-all',
+                  'bg-primary text-primary-foreground'
+                )}
+              >
+                Agent
+              </button>
+              <button
+                onClick={() => setViewMode('advanced')}
+                className="px-4 py-1.5 rounded-full text-xs font-bold text-muted-foreground hover:text-foreground transition-all"
+              >
+                Advanced
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0">
+            <ImagineChat onLatestGeneration={setLatestAgentResult} />
+          </div>
+        </div>
+
+        <div className="hidden lg:flex w-[420px] flex-col bg-card/30">
+          <div className="px-6 py-4 border-b border-border/40">
+            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground">
+              Latest Result
+            </h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 flex items-start justify-center">
+            {latestAgentResult ? (
+              <button
+                onClick={() => setAgentLightbox(true)}
+                className="w-full rounded-2xl overflow-hidden border border-border/50 bg-black/5"
+              >
+                {latestAgentResult.type === 'image' && (
+                  <img src={latestAgentResult.url} alt={latestAgentResult.prompt} className="w-full" />
+                )}
+                {latestAgentResult.type === 'video' && (
+                  <video src={latestAgentResult.url} controls className="w-full" />
+                )}
+                {latestAgentResult.type === 'audio' && (
+                  <div className="p-6">
+                    <audio src={latestAgentResult.url} controls className="w-full" />
+                  </div>
+                )}
+              </button>
+            ) : (
+              <div className="text-sm text-muted-foreground text-center py-16">
+                Your generations will appear here.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <Lightbox
+          isOpen={agentLightbox}
+          onClose={() => setAgentLightbox(false)}
+          result={latestAgentResult ? { ...latestAgentResult, timestamp: new Date() } : null}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden">
+      {/* Mode toggle (Advanced view) */}
+      <div className="absolute top-6 right-6 z-10 flex p-1 bg-muted/30 rounded-full border border-border/40">
+        <button
+          onClick={() => setViewMode('agent')}
+          className="px-4 py-1.5 rounded-full text-xs font-bold text-muted-foreground hover:text-foreground transition-all"
+        >
+          Agent
+        </button>
+        <button
+          onClick={() => setViewMode('advanced')}
+          className="px-4 py-1.5 rounded-full text-xs font-bold bg-primary text-primary-foreground transition-all"
+        >
+          Advanced
+        </button>
+      </div>
       {/* Left Sidebar - Style Presets */}
       <div className="w-64 border-r border-border/40 bg-card/30 hidden lg:flex flex-col">
         <div className="p-6 border-b border-border/40">
