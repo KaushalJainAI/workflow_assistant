@@ -13,6 +13,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import authService from '../api/auth';
 
 export default function Profile() {
   const { user, logout, refreshUser, isLoading } = useAuth();
@@ -26,6 +27,15 @@ export default function Profile() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [passwordStep, setPasswordStep] = useState<'start' | 'otp' | 'reset'>('start');
+  const [passwordForm, setPasswordForm] = useState({
+    oldPassword: '',
+    otpCode: '',
+    verificationToken: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +62,61 @@ export default function Profile() {
       navigate('/login');
     } catch (err) {
       setError('Failed to logout');
+    }
+  };
+
+  const requestPasswordOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setIsPasswordSaving(true);
+    try {
+      const response = await authService.requestPasswordChangeOTP(passwordForm.oldPassword);
+      setSuccess(response.detail);
+      setPasswordStep('otp');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send OTP');
+    } finally {
+      setIsPasswordSaving(false);
+    }
+  };
+
+  const verifyPasswordOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setIsPasswordSaving(true);
+    try {
+      const response = await authService.verifyPasswordChangeOTP(passwordForm.otpCode);
+      setPasswordForm({ ...passwordForm, verificationToken: response.verification_token });
+      setSuccess(response.detail);
+      setPasswordStep('reset');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid or expired OTP');
+    } finally {
+      setIsPasswordSaving(false);
+    }
+  };
+
+  const submitPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setIsPasswordSaving(true);
+    try {
+      const response = await authService.changePassword({
+        old_password: passwordForm.oldPassword,
+        verification_token: passwordForm.verificationToken,
+        new_password: passwordForm.newPassword,
+        confirm_password: passwordForm.confirmPassword,
+      });
+      setSuccess(response.detail);
+      setPasswordStep('start');
+      setPasswordForm({ oldPassword: '', otpCode: '', verificationToken: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to change password');
+    } finally {
+      setIsPasswordSaving(false);
     }
   };
 
@@ -198,6 +263,62 @@ export default function Profile() {
               )}
             </button>
           </form>
+        </div>
+
+        <div className="bg-card border border-border/60 rounded-xl p-6">
+          <h3 className="text-lg font-semibold mb-4">Change Password</h3>
+
+          {passwordStep === 'start' && (
+            <form onSubmit={requestPasswordOTP} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="old-password">Current Password</label>
+                <input
+                  id="old-password"
+                  type="password"
+                  value={passwordForm.oldPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
+                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  required
+                />
+              </div>
+              <button disabled={isPasswordSaving} className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground h-10 px-4 py-2 text-sm font-semibold disabled:opacity-50">
+                {isPasswordSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Send OTP
+              </button>
+            </form>
+          )}
+
+          {passwordStep === 'otp' && (
+            <form onSubmit={verifyPasswordOTP} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="password-otp">Email OTP</label>
+                <input
+                  id="password-otp"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={passwordForm.otpCode}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, otpCode: e.target.value.replace(/\D/g, '') })}
+                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-center tracking-[0.4em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  required
+                />
+              </div>
+              <button disabled={isPasswordSaving || passwordForm.otpCode.length !== 6} className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground h-10 px-4 py-2 text-sm font-semibold disabled:opacity-50">
+                {isPasswordSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Verify OTP
+              </button>
+            </form>
+          )}
+
+          {passwordStep === 'reset' && (
+            <form onSubmit={submitPasswordChange} className="space-y-4">
+              <input type="password" placeholder="New password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" required />
+              <input type="password" placeholder="Confirm new password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" required />
+              <button disabled={isPasswordSaving} className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground h-10 px-4 py-2 text-sm font-semibold disabled:opacity-50">
+                {isPasswordSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Update Password
+              </button>
+            </form>
+          )}
         </div>
 
         {/* Danger Zone */}

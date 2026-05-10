@@ -15,6 +15,13 @@ import { credentialsService, type CredentialType } from '../../api/credentials';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 
+// LLM provider credential slugs — these are used by the platform's own AI,
+// not by MCP servers, so they should not appear in the MCP credentials picker.
+const LLM_PROVIDER_SLUGS = new Set([
+  'anthropic', 'openai', 'cohere', 'deepseek', 'gemini-api', 'groq',
+  'huggingface', 'mistral', 'openrouter', 'perplexity-api', 'xai',
+]);
+
 interface MCPServerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -341,7 +348,7 @@ export default function MCPServerModal({
                   </div>
                 </label>
                 <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1 custom-scrollbar">
-                  {credentialTypes.map((ct) => (
+                  {credentialTypes.filter((ct) => !LLM_PROVIDER_SLUGS.has(ct.slug)).map((ct) => (
                     <button
                       key={ct.slug}
                       type="button"

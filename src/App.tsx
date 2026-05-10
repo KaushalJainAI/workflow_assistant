@@ -8,9 +8,11 @@ import Credentials from './pages/Credentials';
 import Settings from './pages/Settings';
 import Documents from './pages/Documents';
 import MCPServers from './pages/MCPServers';
+import Profile from './pages/Profile';
 
 import AIChat from './pages/AIChat';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
 import Signup from './pages/Signup';
 import GoogleCallback from './pages/GoogleCallback';
 import Orchestrator from './pages/Orchestrator';
@@ -101,6 +103,7 @@ const AppContent = () => {
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/auth/google/callback" element={<GoogleCallback />} />
           
@@ -123,7 +126,7 @@ const AppContent = () => {
               <Route path="/orchestrator" element={<Orchestrator />} />
               <Route path="/skills" element={<Skills />} />
               <Route path="/imagine" element={<Imagine />} />
-              <Route path="/profile" element={<Navigate to="/settings" replace />} />
+              <Route path="/profile" element={<Profile />} />
               <Route path="/executions" element={<Navigate to="/workflows" replace />} />
             </Route>
           </Route>

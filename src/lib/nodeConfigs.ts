@@ -927,6 +927,75 @@ export const nodeConfigs: Record<string, NodeConfig> = {
     ],
   },
 
+  nvidia: {
+    nodeType: 'nvidia',
+    displayName: 'NVIDIA NIM',
+    description: 'Optimized inference on NVIDIA and open-source models',
+    icon: '⚙️',
+    color: '#76b900',
+    outputs: [{ id: 'output-0', label: 'Output' }],
+    fields: [
+      {
+        id: 'credential',
+        label: 'NVIDIA API Key',
+        type: 'credential',
+        credentialType: 'nvidia',
+        required: true,
+      },
+      {
+        id: 'model',
+        label: 'Model',
+        type: 'select',
+        options: [
+          { value: 'nvidia/llama-3.3-nemotron-super-49b-v1', label: 'Nemotron Super 49B' },
+          { value: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', label: 'Nemotron Ultra 253B' },
+          { value: 'nvidia/nemotron-3-super-120b-a12b', label: 'Nemotron 3 Super 120B' },
+          { value: 'meta/llama-3.3-70b-instruct', label: 'Llama 3.3 70B Instruct' },
+          { value: 'meta/llama-3.1-405b-instruct', label: 'Llama 3.1 405B Instruct' },
+          { value: 'mistralai/mistral-large-2-instruct', label: 'Mistral Large 2' },
+          { value: 'deepseek-ai/deepseek-r1', label: 'DeepSeek R1 671B' },
+          { value: 'qwen/qwen3-235b-a22b', label: 'Qwen3 235B A22B' },
+          { value: 'microsoft/phi-4-mini-instruct', label: 'Phi-4 Mini Instruct' },
+          { value: 'google/gemma-3-27b-it', label: 'Gemma 3 27B IT' },
+        ],
+        defaultValue: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+      },
+      {
+        id: 'system_message',
+        label: 'System Message',
+        type: 'textarea',
+        description: 'Sets the behavior and persona of the AI',
+      },
+      {
+        id: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        required: true,
+      },
+      {
+        id: 'temperature',
+        label: 'Temperature',
+        type: 'number',
+        defaultValue: 0.6,
+        description: '0-1, higher = more creative',
+      },
+      {
+        id: 'max_tokens',
+        label: 'Max Tokens',
+        type: 'number',
+        defaultValue: 4096,
+        description: 'Maximum length of the response',
+      },
+      {
+        id: 'thinking',
+        label: 'Show Reasoning',
+        type: 'boolean',
+        defaultValue: false,
+        description: 'Capture internal reasoning for reasoning models',
+      },
+    ],
+  },
+
   // ============= DATABASE NODES =============
   postgres: {
     nodeType: 'postgres',

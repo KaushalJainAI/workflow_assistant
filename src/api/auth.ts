@@ -54,6 +54,11 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface OTPVerifyResponse {
+  detail: string;
+  verification_token: string;
+}
+
 export const authService = {
   /**
    * Login with Google
@@ -203,6 +208,53 @@ export const authService = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return response.data;
+  },
+
+  async requestPasswordChangeOTP(oldPassword: string): Promise<{ detail: string }> {
+    const response = await apiClient.post('/auth/change-password/request-otp/', {
+      old_password: oldPassword,
+    });
+    return response.data;
+  },
+
+  async verifyPasswordChangeOTP(otpCode: string): Promise<OTPVerifyResponse> {
+    const response = await apiClient.post('/auth/change-password/verify-otp/', {
+      otp_code: otpCode,
+    });
+    return response.data;
+  },
+
+  async changePassword(data: {
+    old_password: string;
+    verification_token: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ detail: string }> {
+    const response = await apiClient.post('/auth/change-password/', data);
+    return response.data;
+  },
+
+  async requestPasswordReset(email: string): Promise<{ detail: string }> {
+    const response = await apiClient.post('/auth/password-reset-request/', { email });
+    return response.data;
+  },
+
+  async verifyPasswordResetOTP(email: string, otpCode: string): Promise<OTPVerifyResponse> {
+    const response = await apiClient.post('/auth/password-reset-verify/', {
+      email,
+      otp_code: otpCode,
+    });
+    return response.data;
+  },
+
+  async confirmPasswordReset(data: {
+    email: string;
+    verification_token: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ detail: string }> {
+    const response = await apiClient.post('/auth/password-reset-confirm/', data);
     return response.data;
   },
 
