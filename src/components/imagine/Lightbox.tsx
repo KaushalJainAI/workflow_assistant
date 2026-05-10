@@ -1,6 +1,4 @@
-import React from 'react';
 import { X, Download, Share2, Trash2 } from 'lucide-react';
-import { cn } from '../../lib/utils';
 
 interface LightboxProps {
   isOpen: boolean;
