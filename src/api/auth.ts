@@ -43,9 +43,37 @@ export interface UsageInsight {
   total_cost: string;
   success_rate: number;
   hours_saved: number;
-  daily_stats: any[];
+  daily_stats: Array<{
+    date: string;
+    execute_count: number;
+  }>;
   tier: string;
   credits_remaining: number;
+}
+
+interface BackendProfileResponse {
+  user: {
+    id: number;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    username: string;
+  };
+  display_name?: string;
+  avatar?: string;
+  bio?: string;
+  instance_name?: string;
+  timezone?: string;
+  language?: string;
+  tier: User['tier'];
+  credits_remaining: number;
+  llm_provider?: string;
+  llm_model?: string;
+  default_temperature?: number;
+  default_max_tokens?: number;
+  theme_preference?: User['theme_preference'];
+  accent_color?: string;
+  created_at: string;
 }
 
 export interface AuthResponse {
@@ -54,9 +82,40 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface ProfileUpdatePayload extends Partial<User> {
+  user?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+  };
+}
+
 export interface OTPVerifyResponse {
   detail: string;
   verification_token: string;
+}
+
+function mapProfileResponse(data: BackendProfileResponse): User {
+  return {
+    id: data.user.id,
+    email: data.user.email,
+    name: `${data.user.first_name || ''} ${data.user.last_name || ''}`.trim() || data.user.username,
+    display_name: data.display_name,
+    avatar: data.avatar,
+    bio: data.bio,
+    instance_name: data.instance_name,
+    timezone: data.timezone,
+    language: data.language,
+    tier: data.tier,
+    credits: data.credits_remaining,
+    llm_provider: data.llm_provider,
+    llm_model: data.llm_model,
+    default_temperature: data.default_temperature,
+    default_max_tokens: data.default_max_tokens,
+    theme_preference: data.theme_preference,
+    accent_color: data.accent_color,
+    createdAt: data.created_at,
+  };
 }
 
 export const authService = {
@@ -163,38 +222,16 @@ export const authService = {
    * Get current user profile
    */
   async getProfile(): Promise<User> {
-    const response = await apiClient.get<any>('/auth/profile/');
-    const data = response.data;
-    
-    // The backend returns the UserProfile structure
-    return {
-      id: data.user.id,
-      email: data.user.email,
-      name: `${data.user.first_name || ''} ${data.user.last_name || ''}`.trim() || data.user.username,
-      display_name: data.display_name,
-      avatar: data.avatar,
-      bio: data.bio,
-      instance_name: data.instance_name,
-      timezone: data.timezone,
-      language: data.language,
-      tier: data.tier,
-      credits: data.credits_remaining,
-      llm_provider: data.llm_provider,
-      llm_model: data.llm_model,
-      default_temperature: data.default_temperature,
-      default_max_tokens: data.default_max_tokens,
-      theme_preference: data.theme_preference,
-      accent_color: data.accent_color,
-      createdAt: data.created_at,
-    };
+    const response = await apiClient.get<BackendProfileResponse>('/auth/profile/');
+    return mapProfileResponse(response.data);
   },
 
   /**
    * Update user profile
    */
-  async updateProfile(data: Partial<User>): Promise<User> {
-    const response = await apiClient.patch('/auth/profile/', data);
-    return response.data;
+  async updateProfile(data: ProfileUpdatePayload): Promise<User> {
+    const response = await apiClient.patch<BackendProfileResponse>('/auth/profile/', data);
+    return mapProfileResponse(response.data);
   },
 
   /**
@@ -280,10 +317,11 @@ export const authService = {
     const response = await apiClient.get('/auth/api-keys/');
     // Assuming the backend returns a list, we take the first one or a specific structure
     // If backend returns { results: [...] } or just [...]
-    const data = response.data as any;
+    const data = response.data as { key: string; created_at: string }[] | { results?: { key: string; created_at: string }[] };
     if (Array.isArray(data) && data.length > 0) {
       return data[0];
-    } else if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+    }
+    if (!Array.isArray(data) && data.results && data.results.length > 0) {
       return data.results[0];
     }
     return { key: '', created_at: '' };

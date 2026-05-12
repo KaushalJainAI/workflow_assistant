@@ -338,8 +338,6 @@ export default function WorkflowEditor() {
   }, []);
 
   const handleAddNode = useCallback((nodeType: any) => {
-    console.log('handleAddNode called with:', nodeType);
-
     // Determine the correct node type based on the node id
     const typeId = nodeType.baseNodeTypeId || nodeType.id || 'unknown';
     let type = 'custom';
@@ -348,8 +346,6 @@ export default function WorkflowEditor() {
        else if (typeId === 'if') type = 'conditional';
        else if (typeId === 'switch') type = 'switch';
     }
-
-    console.log('Determined node type:', { typeId, type });
 
     // If adding from a node's + button, position to the right of that node
     let position = { x: 100, y: 200 };
@@ -373,8 +369,6 @@ export default function WorkflowEditor() {
           };
       }
     }
-
-    console.log('Adding node:', { type, typeId, position });
 
     const newNodeId = `node-${Date.now()}`;
     const uniqueLabel = generateUniqueNodeLabel(nodeType.name, nodes);
@@ -656,7 +650,6 @@ export default function WorkflowEditor() {
       
       lastSavedStateRef.current = { nodes, edges, workflowName };
       setIsDirty(false);
-      console.log('Workflow saved:', savedWorkflow);
       
       // Save version history for manual saves
       if (!isAutoSave) {
@@ -823,12 +816,7 @@ export default function WorkflowEditor() {
   useEffect(() => {
     if (!wsUrl) return;
 
-    console.log('Connecting to WebSocket:', wsUrl);
     const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-    };
 
     ws.onmessage = (event) => {
       try {
@@ -944,7 +932,6 @@ export default function WorkflowEditor() {
         }
         else if (message.type === 'execution.state_sync') {
            const { nodes: syncedNodes, overall_status } = message.data;
-           console.log('Received state sync for nodes:', syncedNodes.length, 'overall_status:', overall_status);
            
            // If the execution is already in a terminal state, reset the button
            if (overall_status === 'completed' || overall_status === 'failed' || overall_status === 'cancelled') {
@@ -1109,7 +1096,6 @@ export default function WorkflowEditor() {
     // Execute if we have an ID
     if (workflowBackendId) {
       try {
-        console.log('Executing workflow...', workflowBackendId);
         const response = await orchestratorService.executeWorkflow(workflowBackendId);
         toast.success(`Execution started! ID: ${response.execution_id}`);
         setExecutionId(response.execution_id);

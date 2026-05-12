@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { documentsService, kbService, type Document, type KnowledgeBase } from '../api';
 import { toast } from '../components/ui/Toast';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';

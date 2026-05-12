@@ -771,7 +771,6 @@ export default function NodeConfigPanel({
       }
     } catch (error: any) {
       if (error.name === 'AbortError' || signal.aborted) {
-        console.log('Execution was cancelled');
         return;
       }
       

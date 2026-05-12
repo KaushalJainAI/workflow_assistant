@@ -93,7 +93,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
 
         case 'open_modal':
           // Can be hooked into a global modal state manager later
-          console.log(`Opening modal: ${payload.modal_id}`);
           actionsApplied++;
           break;
 

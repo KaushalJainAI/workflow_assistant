@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   User, 
@@ -37,6 +37,13 @@ export default function Profile() {
   });
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
+  useEffect(() => {
+    setFormData({
+      name: user?.name || '',
+      email: user?.email || '',
+    });
+  }, [user?.name, user?.email]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -44,9 +51,14 @@ export default function Profile() {
     setIsSaving(true);
 
     try {
-      // TODO: Implement profile update API call
-      // await authService.updateProfile(formData);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+      const [firstName, ...lastNameParts] = formData.name.trim().split(/\s+/);
+      await authService.updateProfile({
+        user: {
+          first_name: firstName || '',
+          last_name: lastNameParts.join(' '),
+          email: formData.email.trim(),
+        },
+      });
       await refreshUser();
       setSuccess('Profile updated successfully!');
     } catch (err) {
@@ -60,7 +72,7 @@ export default function Profile() {
     try {
       await logout();
       navigate('/login');
-    } catch (err) {
+    } catch {
       setError('Failed to logout');
     }
   };

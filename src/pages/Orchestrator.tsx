@@ -415,7 +415,6 @@ export default function Orchestrator() {
       const notifData = payload?.category ? payload : eventData;
       
       if (notifData.category === 'orchestrator_activity') {
-        console.log('Orchestrator Activity Received:', notifData.type, notifData);
         if (notifData.type === 'thinking') {
           setLiveSteps(prev => {
             const existing = nodeId ? prev.find(s => 

@@ -989,7 +989,7 @@ export const nodeConfigs: Record<string, NodeConfig> = {
       {
         id: 'thinking',
         label: 'Show Reasoning',
-        type: 'boolean',
+        type: 'checkbox',
         defaultValue: false,
         description: 'Capture internal reasoning for reasoning models',
       },

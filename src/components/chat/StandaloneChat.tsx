@@ -219,7 +219,6 @@ export default function StandaloneChat() {
           const defaultModel = currentProvider.models[0].value;
           setLlmModel(defaultModel);
           localStorage.setItem('standalone_chat_llm_model', defaultModel);
-          console.log(`StandaloneChat: Reset invalid model ${llmModel} to ${defaultModel} for provider ${llmProvider}`);
         }
       }
     }
@@ -688,7 +687,6 @@ export default function StandaloneChat() {
       );
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        console.log('Fetch aborted');
         return;
       }
       setMessages(prev => [...prev, {

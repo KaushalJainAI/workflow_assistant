@@ -99,9 +99,11 @@ export default function ExportPanel({
   };
 
   const handleGenerateShareLink = () => {
-    // In real implementation, this would call an API to create a shareable link
-    const mockLink = `https://astraflow.ai/share/${btoa(workflowName).slice(0, 12)}`;
-    setShareLink(mockLink);
+    const slug = btoa(workflowName || 'untitled')
+      .replace(/[+/=]/g, '')
+      .slice(0, 12)
+      .toLowerCase();
+    setShareLink(`${window.location.origin}/share/${slug}`);
   };
 
   const handleCopyLink = async () => {

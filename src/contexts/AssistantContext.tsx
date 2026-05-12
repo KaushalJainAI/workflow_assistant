@@ -44,7 +44,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           const defaultModel = currentProvider.models[0].value;
           setLlmModel(defaultModel);
           localStorage.setItem('orchestrator_llm_model', defaultModel);
-          console.log(`AssistantContext: Reset invalid model ${llmModel} to ${defaultModel} for provider ${llmProvider}`);
         }
       }
     }

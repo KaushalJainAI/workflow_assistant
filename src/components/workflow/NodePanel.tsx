@@ -47,13 +47,6 @@ export default function NodePanel({ isOpen, onClose, onAddNode }: NodePanelProps
     }
   }, [isOpen, showBuilder, refresh]);
 
-  // Debug logging: helpful to keep but cleaning up mock
-  useEffect(() => {
-    if (isOpen) {
-      console.log('NodePanel Open - Backend Nodes:', backendNodes);
-    }
-  }, [isOpen, backendNodes]);
-
   // Map backend nodes to local NodeType interface
   const mappedBackendNodes: NodeType[] = backendNodes.map(node => ({
       // Handle both camelCase (frontend expected) and snake_case (current backend default)
