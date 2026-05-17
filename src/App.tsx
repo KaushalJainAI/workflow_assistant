@@ -61,6 +61,7 @@ function GlobalCanvasAgentWrapper({ children }: { children: React.ReactNode }) {
 // Layout with sidebar
 const Layout = () => {
   const { toggleAssistant, isAssistantOpen } = useAssistant();
+  const { isAuthenticated } = useAuth();
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
@@ -71,25 +72,53 @@ const Layout = () => {
             <Outlet />
           </ErrorBoundary>
 
-          {/* Global Help Button - Bottom Right */}
-          <div className="fixed bottom-4 right-8 z-[110]">
-            <button
-              onClick={toggleAssistant}
-              className={`flex items-center gap-2 p-3 px-5 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 border backdrop-blur-md active:scale-95 ${
-                isAssistantOpen 
-                  ? 'bg-primary text-primary-foreground border-primary scale-110 shadow-primary/20' 
-                  : 'bg-card/40 text-muted-foreground border-border/50 hover:border-primary/50 hover:text-primary hover:shadow-primary/10 hover:bg-card/60'
-              }`}
-            >
-              <Sparkles className={`w-5 h-5 ${isAssistantOpen ? 'animate-pulse' : ''}`} />
-              <span className="text-sm font-bold tracking-tight uppercase">Help</span>
-            </button>
-          </div>
-          
-          {/* Model Selector - Bottom Right (Left of Help) */}
+          {/* Global Help Button — only for authenticated users (the assistant hits authed endpoints) */}
+          {isAuthenticated && (
+            <div className="fixed bottom-4 right-8 z-[110]">
+              <button
+                onClick={toggleAssistant}
+                className={`flex items-center gap-2 p-3 px-5 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 border backdrop-blur-md active:scale-95 ${
+                  isAssistantOpen
+                    ? 'bg-primary text-primary-foreground border-primary scale-110 shadow-primary/20'
+                    : 'bg-card/40 text-muted-foreground border-border/50 hover:border-primary/50 hover:text-primary hover:shadow-primary/10 hover:bg-card/60'
+                }`}
+              >
+                <Sparkles className={`w-5 h-5 ${isAssistantOpen ? 'animate-pulse' : ''}`} />
+                <span className="text-sm font-bold tracking-tight uppercase">Help</span>
+              </button>
+            </div>
+          )}
         </main>
-        
-        <GlobalAssistantPanel />
+
+        {isAuthenticated && <GlobalAssistantPanel />}
+      </div>
+    </div>
+  );
+};
+
+// Renders the polished StandaloneChat UI on the public landing path.
+// - Authenticated visitors are forwarded to /ai-chat (full Layout with canvas-agent etc.)
+// - Guests get the same StandaloneChat UI wrapped in a minimal public shell
+//   (sidebar visible; auth-only nav items show "Log in" toasts on click).
+const LandingRoute = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+  if (isAuthenticated) return <Navigate to="/ai-chat" replace />;
+  return (
+    <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
+      <Sidebar />
+      <div className="flex-1 flex h-full overflow-hidden relative">
+        <main className="flex-1 h-full overflow-hidden relative">
+          <ErrorBoundary>
+            <AIChat />
+          </ErrorBoundary>
+        </main>
       </div>
     </div>
   );
@@ -107,17 +136,19 @@ const AppContent = () => {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/auth/google/callback" element={<GoogleCallback />} />
-          
+
+          {/* Landing — guests get a dedicated minimal page; authed users go to /ai-chat */}
+          <Route path="/" element={<LandingRoute />} />
+
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
             <Route element={<GlobalCanvasAgentWrapper><Layout /></GlobalCanvasAgentWrapper>}>
-              <Route path="/" element={<Navigate to="/workflows" replace />} />
+              <Route path="/ai-chat" element={<AIChat />} />
               <Route path="/workflows" element={<WorkflowsDashboard />} />
               <Route path="/workflow/:id" element={<WorkflowEditor />} />
               <Route path="/workflows/new" element={<WorkflowEditor />} />
               <Route path="/templates" element={<Templates />} />
               <Route path="/templates/:id" element={<TemplateDetail />} />
-              <Route path="/ai-chat" element={<AIChat />} />
               <Route path="/documents" element={<Documents />} />
               <Route path="/connectors" element={<Connectors />} />
               <Route path="/mcp-servers" element={<MCPServers />} />

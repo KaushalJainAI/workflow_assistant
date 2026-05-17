@@ -38,7 +38,19 @@ const Sidebar = () => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
-    const { user } = useAuth();
+    const { user, isAuthenticated } = useAuth();
+    const isGuest = !isAuthenticated;
+
+    // Intercepts clicks on auth-only nav items for guests: show a "log in" toast
+    // and route them to /login instead of letting them hit a protected page that
+    // would just redirect anyway.
+    const guardGuest = (label: string) => (e: React.MouseEvent) => {
+        if (isGuest) {
+            e.preventDefault();
+            toast.info(`Log in to use ${label}`);
+            navigate('/login');
+        }
+    };
 
     // Generate initials from user name or email
     const getInitials = () => {
@@ -129,6 +141,7 @@ const Sidebar = () => {
                 {/* Imagine Link - New Position */}
                 <Link
                     to="/imagine"
+                    onClick={guardGuest('Imagine')}
                     className={cn(
                         "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
                         location.pathname === '/imagine'
@@ -153,6 +166,7 @@ const Sidebar = () => {
                 {/* Orchestrator Link - Relocated & Highlighted */}
                 <Link
                     to="/orchestrator"
+                    onClick={guardGuest('Orchestrator')}
                     className={cn(
                         "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
                         location.pathname === '/orchestrator'
@@ -179,6 +193,11 @@ const Sidebar = () => {
             <div className="p-3">
                 <button
                     onClick={async () => {
+                        if (isGuest) {
+                            toast.info('Log in to create workflows');
+                            navigate('/login');
+                            return;
+                        }
                         try {
                             setIsCreating(true);
                             const newWorkflow = await workflowsService.create({
@@ -222,6 +241,7 @@ const Sidebar = () => {
                     <Link
                         key={item.path}
                         to={item.path}
+                        onClick={guardGuest(item.label)}
                         className={cn(
                             "flex items-center rounded-lg transition-all duration-200 group relative py-2.5",
                             location.pathname.startsWith(item.path) 
@@ -252,6 +272,7 @@ const Sidebar = () => {
             <div className="px-2 pt-2 pb-1 border-t border-border/30">
                 <Link
                     to="/mcp-servers"
+                    onClick={guardGuest('MCP Servers')}
                     className={cn(
                         "flex items-center rounded-lg transition-all duration-200 group py-1.5",
                         location.pathname === '/mcp-servers'
@@ -271,9 +292,33 @@ const Sidebar = () => {
                 </Link>
             </div>
 
-            {/* User Section */}
-            <div className="p-2 border-t border-border/60">
-                <Link 
+            {/* Guest call-to-action — unauthenticated visitors */}
+            {!isAuthenticated && (
+                <div className="p-2 border-t border-border/60 space-y-2">
+                    <Link
+                        to="/login"
+                        className={cn(
+                            "flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-semibold transition-all",
+                            collapsed ? "w-10 h-10 mx-auto" : "w-full py-2.5 px-3 gap-2"
+                        )}
+                        title={collapsed ? "Log in" : undefined}
+                    >
+                        <Key className="w-4 h-4 shrink-0" />
+                        <span className={cn("text-sm whitespace-nowrap overflow-hidden", collapsed ? "w-0 opacity-0" : "w-auto opacity-100")}>
+                            Log in
+                        </span>
+                    </Link>
+                    {!collapsed && (
+                        <p className="text-[11px] text-muted-foreground px-2 leading-snug">
+                            Log in for workflows, uploads, KB, MCP, and the help agent.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* User Section (auth-only) */}
+            {isAuthenticated && <div className="p-2 border-t border-border/60">
+                <Link
                     to="/settings"
                     className={cn(
                         "flex items-center rounded-lg transition-all duration-200 group py-2 overflow-hidden",
@@ -295,7 +340,7 @@ const Sidebar = () => {
                         <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
                     </div>
                 </Link>
-            </div>
+            </div>}
         </div>
     );
 };

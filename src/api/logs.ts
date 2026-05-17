@@ -57,6 +57,15 @@ export interface OrchestratorThought {
   created_at: string;
 }
 
+export interface CursorPage<T> {
+  results: T[];
+  count?: number | null;
+  limit: number;
+  offset?: number;
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 // Insights types
 export interface ExecutionStatistics {
   total_executions: number;
@@ -142,8 +151,9 @@ export const logsService = {
     status?: string;
     limit?: number;
     offset?: number;
-  }): Promise<{ results: ExecutionLog[]; count: number; limit: number; offset: number }> {
-    const response = await apiClient.get<{ results: ExecutionLog[]; count: number; limit: number; offset: number }>(
+    cursor?: string | null;
+  }): Promise<CursorPage<ExecutionLog>> {
+    const response = await apiClient.get<CursorPage<ExecutionLog>>(
       '/logs/executions/',
       { params }
     );
@@ -164,12 +174,12 @@ export const logsService = {
    * List audit entries
    */
   async listAudit(params?: {
-    action?: string;
-    resource_type?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<{ entries: AuditEntry[]; total: number }> {
-    const response = await apiClient.get<{ entries: AuditEntry[]; total: number }>(
+    action_type?: string;
+    workflow_id?: number;
+    limit?: number;
+    cursor?: string | null;
+  }): Promise<CursorPage<AuditEntry>> {
+    const response = await apiClient.get<CursorPage<AuditEntry>>(
       '/logs/audit/',
       { params }
     );

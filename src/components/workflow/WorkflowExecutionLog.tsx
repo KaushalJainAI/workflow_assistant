@@ -10,7 +10,8 @@ import {
   Calendar,
   Activity
 } from 'lucide-react';
-import { logsService, type ExecutionLog, type ExecutionDetail, type OrchestratorThought } from '../../api/logs';
+import { logsService, type ExecutionDetail, type OrchestratorThought } from '../../api/logs';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
 import Select from '../ui/Select';
@@ -22,34 +23,54 @@ interface WorkflowExecutionLogProps {
 
 export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLogProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [executions, setExecutions] = useState<ExecutionLog[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedExecution, setSelectedExecution] = useState<ExecutionDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [activeActivities, setActiveActivities] = useState<OrchestratorThought[]>([]);
   const [activeNarrative, setActiveNarrative] = useState<OrchestratorThought | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchExecutions = useCallback(async (silent = false) => {
-    if (!workflowId) return;
-    try {
-      if (!silent) setLoading(true);
-      const params: any = { 
+  const {
+    data: executionPages,
+    isLoading,
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['executionLogs', workflowId, selectedStatus],
+    enabled: !!workflowId,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => {
+      const params: {
+        limit: number;
+        workflow_id: number;
+        status?: string;
+        cursor?: string | null;
+      } = {
         limit: 50,
-        workflow_id: workflowId
+        workflow_id: workflowId as number,
+        cursor: pageParam,
       };
       if (selectedStatus !== 'all') {
         params.status = selectedStatus;
       }
-      const data = await logsService.listExecutions(params);
-      setExecutions(data.results);
+      return logsService.listExecutions(params);
+    },
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
+  });
+  const executions = executionPages?.pages.flatMap(page => page.results) ?? [];
+
+  const fetchExecutions = useCallback(async (silent = false) => {
+    try {
+      await queryClient.resetQueries({ queryKey: ['executionLogs', workflowId, selectedStatus] });
+      await refetch();
     } catch (error) {
       console.error('Failed to fetch executions:', error);
       if (!silent) toast.error('Failed to load executions');
-    } finally {
-      if (!silent) setLoading(false);
     }
-  }, [workflowId, selectedStatus]);
+  }, [queryClient, refetch, workflowId, selectedStatus]);
 
   // Polling for active executions
   useEffect(() => {
@@ -208,7 +229,7 @@ export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLo
             onClick={() => fetchExecutions()}
             className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-input rounded-md hover:bg-muted transition-colors shrink-0"
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+            <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
             Refresh
           </button>
         </div>
@@ -228,7 +249,7 @@ export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLo
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {loading && executions.length === 0 ? (
+            {isLoading && executions.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                    <div className="flex items-center justify-center gap-2">
@@ -293,6 +314,19 @@ export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLo
           </tbody>
         </table>
       </div>
+
+      {hasNextPage && !searchQuery && (
+        <div className="border-t border-border bg-card px-4 py-3 flex justify-center shrink-0">
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-input rounded-md hover:bg-muted transition-colors disabled:opacity-60"
+          >
+            {isFetchingNextPage && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {isFetchingNextPage ? 'Loading...' : 'Load more'}
+          </button>
+        </div>
+      )}
 
       {/* Execution Details Modal (Integrated) */}
       <ExecutionDetailModal 

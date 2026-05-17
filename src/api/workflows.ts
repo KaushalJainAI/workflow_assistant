@@ -90,13 +90,33 @@ export interface WorkflowVersion {
   created_at: string;
 }
 
+export interface CursorPage<T> {
+  results: T[];
+  next_cursor: string | null;
+  has_more: boolean;
+  limit: number;
+}
+
 export const workflowsService = {
   /**
    * List all workflows
    */
   async list(status?: string): Promise<WorkflowListItem[]> {
     const params = status ? { status } : undefined;
-    const response = await apiClient.get<WorkflowListItem[]>('/orchestrator/workflows/', { params });
+    const response = await apiClient.get<WorkflowListItem[] | CursorPage<WorkflowListItem>>('/orchestrator/workflows/', { params });
+    return Array.isArray(response.data) ? response.data : response.data.results;
+  },
+
+  async listPage(params?: { status?: string; limit?: number; cursor?: string | null }): Promise<CursorPage<WorkflowListItem>> {
+    const response = await apiClient.get<WorkflowListItem[] | CursorPage<WorkflowListItem>>('/orchestrator/workflows/', { params });
+    if (Array.isArray(response.data)) {
+      return {
+        results: response.data,
+        next_cursor: null,
+        has_more: false,
+        limit: response.data.length,
+      };
+    }
     return response.data;
   },
 

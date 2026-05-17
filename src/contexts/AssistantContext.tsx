@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import { useQuery } from '@tanstack/react-query';
 import { credentialsService } from '../api';
 import { useAIModels } from '../hooks/useAIModels';
+import { tokenManager } from '../api/client';
 
 interface AssistantContextType {
   isAssistantOpen: boolean;
@@ -51,6 +52,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const { data: hasCredentials = null, refetch } = useQuery({
     queryKey: ['credentials', llmProvider],
+    enabled: tokenManager.isAuthenticated(),
     queryFn: async () => {
       try {
         if (llmProvider === 'ollama') {

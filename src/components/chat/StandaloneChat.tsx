@@ -18,7 +18,6 @@ import {
   Shield,
   ChevronDown,
   BrainCircuit,
-  Lock,
   ArrowUp,
   Settings2,
   Sparkles,
@@ -46,6 +45,7 @@ import { MediaPreview } from './MediaPreview';
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface PendingToolCall {
   tool: string;
@@ -55,6 +55,8 @@ interface PendingToolCall {
 
 export default function StandaloneChat() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const isGuest = !isAuthenticated;
   
   // Helper to strip XML/HTML tags from tool call argument values
   const stripXmlTags = (val: any): string => {
@@ -87,11 +89,14 @@ export default function StandaloneChat() {
       }
     },
     staleTime: 5 * 60 * 1000,
+    enabled: !isGuest,
   });
 
   // --- Model Selection State ---
-  const [llmProvider, setLlmProvider] = useState('openrouter');
-  const [llmModel, setLlmModel] = useState('google/gemini-2.0-flash-exp:free');
+  // Default to NVIDIA Nemotron 3 Super so the chat works out-of-the-box using
+  // the server-side NVIDIA_API_KEY (no per-user credential required).
+  const [llmProvider, setLlmProvider] = useState('nvidia');
+  const [llmModel, setLlmModel] = useState('nvidia/llama-3.3-nemotron-super-49b-v1');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -180,18 +185,33 @@ export default function StandaloneChat() {
   useEffect(() => {
     const checkAuthAndSettings = async () => {
       setIsCheckingCredentials(true);
-      try {
-        const { credentials } = await credentialsService.list();
-        const hasAnyValid = credentials.some(c => c.is_valid);
-        setHasCredentials(hasAnyValid);
+      // The server now ships with an NVIDIA env key, so chat works for everyone
+      // without a per-user credential. We keep hasCredentials=true unconditionally
+      // and only read the credentials list to remember the user's preferred model.
+      setHasCredentials(true);
 
-        const savedProvider = localStorage.getItem('standalone_chat_llm_provider');
-        const savedModel = localStorage.getItem('standalone_chat_llm_model');
-        if (savedProvider) setLlmProvider(savedProvider);
-        if (savedModel) setLlmModel(savedModel);
-      } catch (err) {
-        console.error("Failed to initialize chat:", err);
-        setHasCredentials(false);
+      if (isGuest) {
+        setLlmProvider('nvidia');
+        setLlmModel('nvidia/llama-3.3-nemotron-super-49b-v1');
+        setIsCheckingCredentials(false);
+        return;
+      }
+
+      try {
+        // Best-effort credentials read — failure is fine, we no longer gate on it.
+        const list = await credentialsService.list().catch(() => ({ credentials: [] as any[] }));
+        const validCount = list.credentials.filter((c: any) => c.is_valid).length;
+
+        if (validCount === 0) {
+          // User has no per-user credentials — keep the NVIDIA env-key default.
+          setLlmProvider('nvidia');
+          setLlmModel('nvidia/llama-3.3-nemotron-super-49b-v1');
+        } else {
+          const savedProvider = localStorage.getItem('standalone_chat_llm_provider');
+          const savedModel = localStorage.getItem('standalone_chat_llm_model');
+          if (savedProvider) setLlmProvider(savedProvider);
+          if (savedModel) setLlmModel(savedModel);
+        }
       } finally {
         setIsCheckingCredentials(false);
       }
@@ -252,6 +272,7 @@ export default function StandaloneChat() {
   }, [showHistory, loadHistory]);
 
   useEffect(() => {
+    if (isGuest) return; // Guests start with a fresh session each visit
     if (!conversationId) {
       // Small delay to let useQuery fetch initial data if empty
       setTimeout(() => {
@@ -624,7 +645,7 @@ export default function StandaloneChat() {
 
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput ?? input;
-    if (!textToSend.trim() || isLoading || !hasCredentials) return;
+    if (!textToSend.trim() || isLoading) return;
 
     const intentToSend = activeIntent;
     
@@ -659,32 +680,48 @@ export default function StandaloneChat() {
 
     try {
       let currentSessionId = conversationId;
-      if (!currentSessionId) {
-        const newSession = await chatService.createSession({
-          title: textToSend.slice(0, 30) + '...',
-          llm_provider: llmProvider,
-          llm_model: llmModel,
-          system_prompt: ""
-        });
-        currentSessionId = newSession.id;
-        setConversationId(newSession.id);
-        setCurrentSession(newSession);
-        queryClient.setQueryData<ChatSession[]>(['chatSessions'], (old = []) => [newSession, ...old]);
-        if (showHistory) loadHistory();
+
+      if (isGuest) {
+        if (!currentSessionId) {
+          const newSession = await chatService.guest.createSession(textToSend.slice(0, 30) + '...');
+          currentSessionId = newSession.id;
+          setConversationId(newSession.id);
+          setCurrentSession(newSession);
+        }
+        await chatService.guest.sendMessageStream(
+          currentSessionId,
+          textToSend,
+          (event) => handleStreamEvent(event, userMessage.id as number, intentToSend),
+          controller.signal,
+        );
+      } else {
+        if (!currentSessionId) {
+          const newSession = await chatService.createSession({
+            title: textToSend.slice(0, 30) + '...',
+            llm_provider: llmProvider,
+            llm_model: llmModel,
+            system_prompt: ""
+          });
+          currentSessionId = newSession.id;
+          setConversationId(newSession.id);
+          setCurrentSession(newSession);
+          queryClient.setQueryData<ChatSession[]>(['chatSessions'], (old = []) => [newSession, ...old]);
+          if (showHistory) loadHistory();
+        }
+
+        const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
+
+        await chatService.sendMessageStream(
+          currentSessionId,
+          textToSend,
+          intentToSend,
+          (event) => handleStreamEvent(event, userMessage.id as number, intentToSend),
+          reference,
+          controller.signal,
+          llmProvider,
+          llmModel
+        );
       }
-
-      const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
-
-      await chatService.sendMessageStream(
-        currentSessionId,
-        textToSend,
-        intentToSend,
-        (event) => handleStreamEvent(event, userMessage.id as number, intentToSend),
-        reference,
-        controller.signal,
-        llmProvider,
-        llmModel
-      );
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         return;
@@ -722,28 +759,9 @@ export default function StandaloneChat() {
     );
   }
 
-  if (hasCredentials === false) {
-    return (
-      <div className="flex h-full w-full items-center justify-center p-6 bg-background">
-        <div className="max-w-md w-full p-8 bg-card border border-border rounded-3xl shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-500 glass">
-          <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto border border-amber-500/20">
-            <Lock className="w-8 h-8 text-amber-500" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-black tracking-tight uppercase">Access Restricted</h2>
-            <p className="text-muted-foreground text-sm font-medium">Configure a valid LLM credential to unlock Quantum Intelligence.</p>
-          </div>
-          <button 
-            onClick={() => navigate('/credentials')}
-            className="w-full h-12 bg-primary text-primary-foreground font-black rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
-          >
-            Configure Credentials
-            <ArrowUp className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Note: the previous "Access Restricted / Configure Credentials" gate was
+  // removed — the server-wide NVIDIA env key now backs the chat for any user
+  // who hasn't set up a per-user credential.
 
   return (
     <div className="flex h-full w-full bg-background overflow-hidden relative">
@@ -751,6 +769,24 @@ export default function StandaloneChat() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(var(--primary-rgb),0.05),transparent_50%)] pointer-events-none" />
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-500/5 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
+
+      {/* Guest banner — encourage login without blocking chat */}
+      {isGuest && (
+        <div className="absolute top-0 left-0 right-0 z-40 bg-primary/10 border-b border-primary/20 backdrop-blur-md px-4 py-2 flex items-center justify-between gap-3 text-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="w-4 h-4 text-primary shrink-0" />
+            <span className="truncate">
+              <span className="font-semibold">Guest mode</span> — chatting with NVIDIA Nemotron 3 Super (120B/12B-active). Log in to save history, upload files, run workflows, and access the help agent.
+            </span>
+          </div>
+          <button
+            onClick={() => navigate('/login')}
+            className="shrink-0 px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+          >
+            Log in
+          </button>
+        </div>
+      )}
 
       {/* 1. History Sidebar */}
       <div

@@ -85,12 +85,15 @@ apiClient.interceptors.response.use(
     const requestUrl = originalRequest?.url || '';
     
     // Check if this is an auth endpoint (login, register, etc.) - don't redirect on 401 for these
-    const isAuthEndpoint = requestUrl.includes('/auth/login') || 
+    const isAuthEndpoint = requestUrl.includes('/auth/login') ||
                            requestUrl.includes('/auth/register') ||
                            requestUrl.includes('/auth/refresh');
-    
-    // Handle 401 - try to refresh token (but not for auth endpoints)
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+
+    // Guest endpoints are public — never redirect or attempt refresh on auth errors.
+    const isGuestEndpoint = requestUrl.includes('/chat/guest/');
+
+    // Handle 401 - try to refresh token (but not for auth/guest endpoints)
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint && !isGuestEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });

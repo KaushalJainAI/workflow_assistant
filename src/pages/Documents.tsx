@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { documentsService, kbService, type Document, type KnowledgeBase } from '../api';
 import { toast } from '../components/ui/Toast';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
@@ -79,18 +79,18 @@ export default function Documents() {
     }
   };
 
-  const { data: documentsData, isLoading, error: queryError } = useQuery({
-    queryKey: ['documents'],
-    queryFn: async () => {
-      const data = await documentsService.list();
-      return {
-        my_documents: data?.my_documents || [],
-        public_documents: data?.public_documents || []
-      };
-    },
+  const { data: documentsData, isLoading, error: queryError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ['documents', activeTab],
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => documentsService.list({
+      limit: 50,
+      cursor: pageParam,
+      scope: activeTab,
+    }),
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
     // Poll every 5 seconds if any doc is pending or processing
     refetchInterval: (query) => {
-      const myDocs = query.state.data?.my_documents || [];
+      const myDocs = query.state.data?.pages.flatMap(page => page.my_documents) || [];
       const hasPending = myDocs.some(d => d.status === 'pending' || d.status === 'processing');
       return hasPending ? 5000 : false;
     },
@@ -100,9 +100,9 @@ export default function Documents() {
   const myDocuments = [
     // Keep locally tracked uploading documents first
     ...localUploadingDocs,
-    ...(documentsData?.my_documents || [])
+    ...(documentsData?.pages.flatMap(page => page.my_documents) || [])
   ];
-  const publicDocuments = documentsData?.public_documents || [];
+  const publicDocuments = documentsData?.pages.flatMap(page => page.public_documents) || [];
   const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load documents') : null;
 
   const allDocuments = activeTab === 'personal' ? myDocuments : publicDocuments;
@@ -698,6 +698,18 @@ export default function Documents() {
                 Upload Your First File
               </button>
             )}
+          </div>
+        )}
+        {hasNextPage && !searchQuery && (
+          <div className="flex justify-center mt-8">
+            <button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-60"
+            >
+              {isFetchingNextPage && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isFetchingNextPage ? 'Loading...' : 'Load more'}
+            </button>
           </div>
         )}
       </div>

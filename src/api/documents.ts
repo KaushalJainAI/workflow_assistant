@@ -65,6 +65,18 @@ export interface RAGQueryResponse {
   };
 }
 
+export interface DocumentListPage {
+  my_documents: Document[];
+  public_documents: Document[];
+  my_next_cursor: string | null;
+  public_next_cursor: string | null;
+  my_has_more: boolean;
+  public_has_more: boolean;
+  next_cursor: string | null;
+  has_more: boolean;
+  limit: number;
+}
+
 export const kbService = {
   async list(): Promise<KnowledgeBase[]> {
     const r = await apiClient.get<KnowledgeBase[]>('/inference/kbs/');
@@ -96,8 +108,14 @@ export const kbService = {
 };
 
 export const documentsService = {
-  async list(): Promise<{ my_documents: Document[]; public_documents: Document[] }> {
-    const r = await apiClient.get<{ my_documents: Document[]; public_documents: Document[] }>('/inference/documents/');
+  async list(params?: {
+    limit?: number;
+    cursor?: string | null;
+    my_cursor?: string | null;
+    public_cursor?: string | null;
+    scope?: 'personal' | 'public' | 'all';
+  }): Promise<DocumentListPage> {
+    const r = await apiClient.get<DocumentListPage>('/inference/documents/', { params });
     return r.data;
   },
 

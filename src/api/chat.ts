@@ -155,5 +155,57 @@ export const chatService = {
   async runWorkflow(sessionId: string, workflowId: number): Promise<any> {
     const response = await apiClient.post(`/chat/sessions/${sessionId}/run-workflow/`, { workflow_id: workflowId });
     return response.data;
-  }
+  },
+
+  // --- Guest (unauthenticated) chat ---
+  guest: {
+    async createSession(title: string = 'New Chat'): Promise<ChatSession> {
+      const response = await apiClient.post<ChatSession>('/chat/guest/sessions/', { title });
+      return response.data;
+    },
+
+    async getSession(id: string): Promise<ChatSession> {
+      const response = await apiClient.get<ChatSession>(`/chat/guest/sessions/${id}/`);
+      return response.data;
+    },
+
+    async sendMessageStream(
+      sessionId: string,
+      content: string,
+      onEvent: (event: { type: string; [key: string]: any }) => void,
+      signal?: AbortSignal,
+    ): Promise<void> {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+      const response = await fetch(`${API_URL}/chat/guest/sessions/${sessionId}/message/stream/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+        signal,
+      });
+
+      if (!response.body) {
+        throw new Error(`Stream request failed: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try { onEvent(JSON.parse(line.slice(6))); } catch { /* skip */ }
+          }
+        }
+      }
+      if (buffer.startsWith('data: ')) {
+        try { onEvent(JSON.parse(buffer.slice(6))); } catch { /* skip */ }
+      }
+    },
+  },
 };

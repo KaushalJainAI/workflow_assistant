@@ -8,7 +8,7 @@ import {
   Loader2, 
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { workflowsService, orchestratorService } from '../api';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
@@ -22,13 +22,25 @@ export default function WorkflowsDashboard() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const queryClient = useQueryClient();
 
-  const { data: workflows = [], isLoading, error: queryError } = useQuery({
+  const {
+    data: workflowPages,
+    isLoading,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['workflows', statusFilter],
-    queryFn: async () => {
-      return await workflowsService.list(statusFilter || undefined);
-    },
+    queryFn: ({ pageParam }) => workflowsService.listPage({
+      status: statusFilter || undefined,
+      limit: 50,
+      cursor: pageParam,
+    }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
     staleTime: 5 * 60 * 1000,
   });
+  const workflows = workflowPages?.pages.flatMap(page => page.results) ?? [];
 
   const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load workflows') : null;
 
@@ -190,17 +202,31 @@ export default function WorkflowsDashboard() {
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 stagger-children">
-            {filteredWorkflows.map((workflow) => (
-              <WorkflowCard
-                key={workflow.id}
-                workflow={workflow}
-                onPlay={handlePlay}
-                onDuplicate={handleDuplicate}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 stagger-children">
+              {filteredWorkflows.map((workflow) => (
+                <WorkflowCard
+                  key={workflow.id}
+                  workflow={workflow}
+                  onPlay={handlePlay}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+            {hasNextPage && !searchQuery && (
+              <div className="flex justify-center mt-6">
+                <button
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
+                >
+                  {isFetchingNextPage && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isFetchingNextPage ? 'Loading...' : 'Load more'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
