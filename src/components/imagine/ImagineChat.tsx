@@ -4,6 +4,8 @@ import { useImagineAgent } from '../../hooks/useImagineAgent';
 import { IntentPreviewCard } from './IntentPreviewCard';
 import { GenerationBubble } from './GenerationBubble';
 import { Lightbox } from './Lightbox';
+import { MissingCredentialBanner } from './MissingCredentialBanner';
+import apiClient from '../../api/client';
 import { cn } from '../../lib/utils';
 
 const QUICK_PROMPTS = [
@@ -21,7 +23,27 @@ export function ImagineChat({
   const { items, isSending, isConnected, pendingIntent, sendMessage, resume } = useImagineAgent();
   const [draft, setDraft] = useState('');
   const [lightbox, setLightbox] = useState<null | { url: string; type: 'image' | 'video' | 'audio'; prompt: string }>(null);
+  const [credentialMissing, setCredentialMissing] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Probe capabilities once on mount so we can show the banner BEFORE the
+  // user sends a message and gets a vague "no openrouter credential" reply.
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get('/imagine/capabilities/')
+      .then(() => { if (!cancelled) setCredentialMissing(null); })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err?.response?.status === 400) {
+          setCredentialMissing(
+            err.response.data?.detail ||
+              'No OpenRouter credential configured for this account.'
+          );
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -54,6 +76,12 @@ export function ImagineChat({
           {isConnected ? 'live' : 'offline'}
         </span>
       </div>
+
+      {credentialMissing && (
+        <div className="px-2 pt-2">
+          <MissingCredentialBanner detail={credentialMissing} />
+        </div>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {items.length === 0 && (

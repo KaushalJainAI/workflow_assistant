@@ -17,6 +17,7 @@ import { cn } from '../lib/utils';
 import { StylePresetCard } from '../components/imagine/StylePresetCard';
 import { Lightbox } from '../components/imagine/Lightbox';
 import { ImagineChat } from '../components/imagine/ImagineChat';
+import { MissingCredentialBanner } from '../components/imagine/MissingCredentialBanner';
 import apiClient from '../api/client';
 import { useEffect } from 'react';
 
@@ -53,57 +54,92 @@ export default function Imagine() {
   const [results, setResults] = useState<Result[]>([]);
 
   // Settings
-  const [model, setModel] = useState('dalle-3');
+  const [model, setModel] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('none');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [seed, setSeed] = useState<number | string>('');
-  const [resolution, setResolution] = useState('1024x1024');
+  const [resolution, setResolution] = useState('1K');
   const [selectedResult, setSelectedResult] = useState<Result | null>(null);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
-  // Mode Specific Settings
-  const [duration, setDuration] = useState('5s');
+  // Mode Specific Settings — duration is integer seconds (OpenRouter expects int)
+  const [duration, setDuration] = useState<number>(5);
   const [motionIntensity, setMotionIntensity] = useState(5);
   const [fps, setFps] = useState(24);
   const [voice, setVoice] = useState('alloy');
   const [speed, setSpeed] = useState(1.0);
-  
+
   // Backend Capabilities State
   const [capabilities, setCapabilities] = useState<any>(null);
+  const [credentialMissing, setCredentialMissing] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
+      // Capabilities call returns 400 with `detail` if the user has no
+      // OpenRouter credential in the encrypted vault — surface that as a
+      // banner instead of silently breaking the page.
       try {
-        const [capsRes, histRes] = await Promise.all([
-          apiClient.get('/imagine/capabilities/'),
-          apiClient.get('/imagine/')
-        ]);
+        const capsRes = await apiClient.get('/imagine/capabilities/');
         setCapabilities(capsRes.data);
-        
-        // Transform backend results to frontend format
-        const transformedResults = histRes.data.results.map((r: any) => ({
+        setCredentialMissing(null);
+      } catch (err: any) {
+        if (err?.response?.status === 400) {
+          setCredentialMissing(
+            err.response.data?.detail ||
+              'No OpenRouter credential configured for this account.'
+          );
+          setCapabilities(err.response.data || { image: [], video: [], audio: [] });
+        } else {
+          console.error('Failed to fetch imagine capabilities:', err);
+        }
+      }
+
+      try {
+        const histRes = await apiClient.get('/imagine/');
+        const transformedResults = (histRes.data.results || []).map((r: any) => ({
           id: r.id.toString(),
           url: r.output_url,
           type: r.type,
           prompt: r.prompt,
           status: r.status,
           error: r.error_message,
-          timestamp: new Date(r.created_at)
+          timestamp: new Date(r.created_at),
         }));
         setResults(transformedResults);
       } catch (err) {
-        console.error('Failed to fetch imagine data:', err);
+        console.error('Failed to fetch imagine history:', err);
       }
     };
     fetchData();
   }, []);
 
-  // Set default model when mode or capabilities change
+  // When mode or capabilities change: pick a valid model, resolution, and
+  // duration from the capabilities response so we never send stale defaults
+  // (e.g. '1024x1024' or '5s') the new OpenRouter API rejects.
   useEffect(() => {
-    if (capabilities?.[mode] && capabilities[mode].length > 0) {
-      const currentModelExists = capabilities[mode].find((m: any) => m.id === model);
-      if (!currentModelExists) {
-        setModel(capabilities[mode][0].id);
+    const list = capabilities?.[mode];
+    if (!list || list.length === 0) return;
+
+    const activeModel =
+      list.find((m: any) => m.id === model) || list[0];
+    if (activeModel.id !== model) setModel(activeModel.id);
+
+    if (mode !== 'audio') {
+      const resOptions: string[] = activeModel.resolutions || [];
+      if (resOptions.length && !resOptions.includes(resolution)) {
+        setResolution(resOptions[0]);
+      }
+    }
+    if (mode === 'video') {
+      const dOptions: number[] = activeModel.durations || [];
+      if (dOptions.length && !dOptions.includes(duration)) {
+        setDuration(dOptions[0]);
+      }
+    }
+    if (mode === 'audio') {
+      const voices: string[] = activeModel.voices || [];
+      if (voices.length && !voices.includes(voice)) {
+        setVoice(voices[0]);
       }
     }
   }, [mode, capabilities]);
@@ -147,22 +183,28 @@ export default function Imagine() {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    
+    if (credentialMissing) {
+      toast.error('Add an OpenRouter credential first.');
+      return;
+    }
+    if (!model) {
+      toast.error('No model available for this mode.');
+      return;
+    }
+
     setIsLoading(true);
-    
+
     try {
       const response = await apiClient.post('/imagine/', {
         type: mode,
-        prompt: prompt,
-        negative_prompt: negativePrompt,
-        model: model,
-        resolution: resolution,
-        duration: duration,
+        prompt,
+        negative_prompt: negativePrompt || undefined,
+        model,
+        resolution,
+        duration: mode === 'video' ? duration : undefined,
         seed: seed || undefined,
-        motion_intensity: motionIntensity,
-        fps: fps,
-        voice: voice,
-        speed: speed
+        voice: mode === 'audio' ? voice : undefined,
+        speed: mode === 'audio' ? speed : undefined,
       });
 
       const newResult: Result = {
@@ -172,19 +214,26 @@ export default function Imagine() {
         prompt: response.data.prompt,
         status: response.data.status,
         error: response.data.error_message,
-        timestamp: new Date(response.data.created_at)
+        timestamp: new Date(response.data.created_at),
       };
 
       setResults(prev => [newResult, ...prev]);
       setPrompt('');
       if (newResult.status === 'completed') {
         toast.success('Generation complete');
+      } else if (newResult.status === 'failed') {
+        toast.error(newResult.error || 'Generation failed');
       } else {
-        toast.info('Generation started...');
+        toast.info('Generation started…');
       }
-    } catch (err) {
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'Failed to generate. Please try again.';
       console.error('Generation failed:', err);
-      toast.error('Failed to generate. Please try again.');
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -217,6 +266,7 @@ export default function Imagine() {
               </button>
             </div>
           </div>
+          {credentialMissing && <MissingCredentialBanner detail={credentialMissing} />}
           <div className="flex-1 min-h-0">
             <ImagineChat onLatestGeneration={setLatestAgentResult} />
           </div>
@@ -304,6 +354,11 @@ export default function Imagine() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
+        {credentialMissing && (
+          <div className="px-2 pt-2">
+            <MissingCredentialBanner detail={credentialMissing} />
+          </div>
+        )}
         {/* Top Navigation - Minimalist Tabs */}
         <div className="flex items-center justify-center pt-8 pb-4 border-b border-border/10">
           <div className="flex p-1 bg-muted/30 rounded-full border border-border/40">
@@ -383,11 +438,11 @@ export default function Imagine() {
                 </div>
               )}
 
-              {/* Length/Duration Toggle - For Video and Audio */}
-              {(mode === 'video' || mode === 'audio') && capabilities?.[mode] && (
+              {/* Length/Duration Toggle - Video only (audio TTS has no fixed durations) */}
+              {mode === 'video' && capabilities?.[mode] && (
                 <div className="flex items-center gap-2 px-4">
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">Length:</span>
-                  {(capabilities[mode].find((m: any) => m.id === model)?.durations || ['5s', '10s']).map((d: string) => (
+                  {(capabilities[mode].find((m: any) => m.id === model)?.durations || [5, 10]).map((d: number) => (
                     <button
                       key={d}
                       onClick={() => setDuration(d)}
@@ -396,7 +451,7 @@ export default function Imagine() {
                         duration === d ? "bg-primary/10 border-primary/40 text-primary" : "border-border/40 text-muted-foreground hover:bg-muted"
                       )}
                     >
-                      {d}
+                      {d}s
                     </button>
                   ))}
                 </div>
