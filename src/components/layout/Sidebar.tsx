@@ -24,12 +24,16 @@ import { toast } from "sonner";
 const Sidebar = () => {
     const location = useLocation();
     const navigate = useNavigate();
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+    // On mobile: collapsed = fully hidden drawer. On desktop: collapsed = icon rail.
     const [collapsed, setCollapsed] = useState(() => window.innerWidth < 768);
     const [isCreating, setIsCreating] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
-            if (window.innerWidth < 768) {
+            const mobile = window.innerWidth < 768;
+            setIsMobile(mobile);
+            if (mobile) {
                 setCollapsed(true);
             } else {
                 setCollapsed(false);
@@ -38,6 +42,21 @@ const Sidebar = () => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    // Auto-close drawer on mobile when route changes
+    useEffect(() => {
+        if (isMobile) setCollapsed(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.pathname]);
+
+    // Lock body scroll while mobile drawer is open
+    useEffect(() => {
+        if (isMobile && !collapsed) {
+            const prev = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            return () => { document.body.style.overflow = prev; };
+        }
+    }, [isMobile, collapsed]);
     const { user, isAuthenticated } = useAuth();
     const isGuest = !isAuthenticated;
 
@@ -79,14 +98,42 @@ const Sidebar = () => {
 
 
     return (
-        <div 
+        <>
+        {/* Mobile: floating hamburger to open drawer */}
+        {isMobile && collapsed && (
+            <button
+                onClick={() => setCollapsed(false)}
+                className="md:hidden fixed top-3 left-3 z-[60] p-2.5 rounded-xl bg-card/90 border border-border/60 backdrop-blur-md shadow-lg active:scale-95 transition-transform"
+                aria-label="Open menu"
+            >
+                <Menu className="w-5 h-5" />
+            </button>
+        )}
+
+        {/* Mobile: backdrop when drawer is open */}
+        {isMobile && !collapsed && (
+            <div
+                className="md:hidden fixed inset-0 z-[55] bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+                onClick={() => setCollapsed(true)}
+            />
+        )}
+
+        <div
             className={cn(
-                "h-screen backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out z-50 overflow-hidden flex-shrink-0",
-                collapsed 
-                  ? "w-16 relative" 
-                  : "w-64 absolute md:relative shadow-2xl md:shadow-none bg-background/95 md:bg-transparent left-0 top-0"
+                "h-screen backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out overflow-hidden",
+                // Mobile: fixed drawer, slides in from left, fully hidden when collapsed
+                isMobile
+                    ? cn(
+                        "fixed left-0 top-0 z-[60] w-72 shadow-2xl",
+                        collapsed ? "-translate-x-full" : "translate-x-0"
+                      )
+                    // Desktop: in-flow, collapses to icon rail
+                    : cn(
+                        "relative flex-shrink-0 z-50",
+                        collapsed ? "w-16" : "w-64"
+                      )
             )}
-            style={{ 
+            style={{
                 backgroundColor: 'hsl(var(--sidebar-bg))',
                 borderColor: 'hsl(var(--sidebar-border))'
             }}
@@ -342,6 +389,7 @@ const Sidebar = () => {
                 </Link>
             </div>}
         </div>
+        </>
     );
 };
 

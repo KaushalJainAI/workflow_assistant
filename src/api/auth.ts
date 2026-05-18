@@ -1,6 +1,6 @@
 /**
  * Authentication Service
- * 
+ *
  * Handles login, register, logout, and user profile.
  */
 
@@ -118,23 +118,39 @@ function mapProfileResponse(data: BackendProfileResponse): User {
   };
 }
 
+/** Helper to extract a user-facing error message from an Axios error */
+function extractApiError(error: unknown): { status: number | null; detail: string } {
+  const axiosErr = error as {
+    response?: { status?: number; data?: { detail?: string; non_field_errors?: string[] } };
+    message?: string;
+  };
+  const status = axiosErr?.response?.status ?? null;
+  const detail =
+    axiosErr?.response?.data?.detail ||
+    axiosErr?.response?.data?.non_field_errors?.[0] ||
+    axiosErr?.message ||
+    '';
+  return { status, detail };
+}
+
 export const authService = {
   /**
-   * Login with Google
+   * Login with Google OAuth2 code exchange
    */
   async googleLogin(code: string): Promise<AuthResponse> {
-    const redirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback';
+    const redirectUri =
+      import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback';
     try {
-      const response = await apiClient.post<AuthResponse>('/auth/google/', { 
+      const response = await apiClient.post<AuthResponse>('/auth/google/', {
         code,
-        redirect_uri: redirectUri
+        redirect_uri: redirectUri,
       });
       const { access, refresh } = response.data;
       tokenManager.setTokens(access, refresh);
       return response.data;
     } catch (error) {
-       console.error("Google login error", error);
-       throw error;
+      console.error('Google login error', error);
+      throw new Error('Google sign-in failed. Please try again.');
     }
   },
 
@@ -150,24 +166,29 @@ export const authService = {
       const { access, refresh } = response.data;
       tokenManager.setTokens(access, refresh);
       return response.data;
-    } catch (error) {
-      // Check if it's an axios error with a 401 status
-      if (error instanceof Error && error.message) {
-        // The apiClient interceptor converts errors - check the underlying cause
-        const axiosError = (error as { response?: { status: number } });
-        if (axiosError.response?.status === 401) {
-          throw new Error('Invalid email or password. Please try again.');
+    } catch (error: unknown) {
+      const { status, detail } = extractApiError(error);
+
+      // 401 = bad credentials (AuthenticationFailed from our serializer)
+      // 400 = validation error (missing fields, etc.)
+      if (status === 401 || status === 400) {
+        // Use the backend's message if it's user-safe, otherwise fall back to generic
+        if (
+          detail &&
+          !detail.toLowerCase().includes('internal') &&
+          !detail.toLowerCase().includes('server error')
+        ) {
+          throw new Error(detail);
         }
-      }
-      // For 401, the message from backend might be "No active account found with the given credentials"
-      // or similar - let's make it more user-friendly
-      if (error instanceof Error && 
-          (error.message.toLowerCase().includes('credentials') || 
-           error.message.toLowerCase().includes('unauthorized') ||
-           error.message.toLowerCase().includes('no active account'))) {
         throw new Error('Invalid email or password. Please try again.');
       }
-      throw error;
+
+      if (status === 429) {
+        throw new Error('Too many login attempts. Please wait a moment and try again.');
+      }
+
+      // Network or unknown error — don't expose internals
+      throw new Error('Unable to connect. Please check your internet connection and try again.');
     }
   },
 
@@ -187,27 +208,29 @@ export const authService = {
       const { access, refresh } = response.data;
       tokenManager.setTokens(access, refresh);
       return response.data;
-    } catch (error) {
-      // Provide user-friendly error messages for common registration issues
-      if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        if (message.includes('username') && message.includes('exists')) {
-          throw new Error('An account with this email already exists.');
-        }
-        if (message.includes('email') && (message.includes('exists') || message.includes('already'))) {
-          throw new Error('An account with this email already exists.');
-        }
-        if (message.includes('password') && message.includes('common')) {
-          throw new Error('This password is too common. Please choose a stronger password.');
-        }
-        if (message.includes('password') && message.includes('short')) {
-          throw new Error('Password is too short. Please use at least 8 characters.');
-        }
-        if (message.includes('password') && message.includes('numeric')) {
-          throw new Error('Password cannot be entirely numeric.');
-        }
+    } catch (error: unknown) {
+      const { detail } = extractApiError(error);
+      const msg = detail.toLowerCase();
+
+      if (msg.includes('username') && msg.includes('exist')) {
+        throw new Error('An account with this email already exists.');
       }
-      throw error;
+      if (msg.includes('email') && (msg.includes('exist') || msg.includes('already'))) {
+        throw new Error('An account with this email already exists.');
+      }
+      if (msg.includes('password') && msg.includes('common')) {
+        throw new Error('This password is too common. Please choose a stronger password.');
+      }
+      if (msg.includes('password') && msg.includes('short')) {
+        throw new Error('Password is too short. Please use at least 8 characters.');
+      }
+      if (msg.includes('password') && msg.includes('numeric')) {
+        throw new Error('Password cannot be entirely numeric.');
+      }
+
+      // Rethrow as-is if we have a clean detail from the backend
+      if (detail) throw new Error(detail);
+      throw new Error('Registration failed. Please try again.');
     }
   },
 
@@ -315,9 +338,9 @@ export const authService = {
    */
   async getApiKey(): Promise<{ key: string; created_at: string }> {
     const response = await apiClient.get('/auth/api-keys/');
-    // Assuming the backend returns a list, we take the first one or a specific structure
-    // If backend returns { results: [...] } or just [...]
-    const data = response.data as { key: string; created_at: string }[] | { results?: { key: string; created_at: string }[] };
+    const data = response.data as
+      | { key: string; created_at: string }[]
+      | { results?: { key: string; created_at: string }[] };
     if (Array.isArray(data) && data.length > 0) {
       return data[0];
     }
@@ -341,8 +364,11 @@ export const authService = {
   async refreshToken(): Promise<string> {
     const refresh = tokenManager.getRefreshToken();
     if (!refresh) throw new Error('No refresh token');
-    
-    const response = await apiClient.post<{ access: string, refresh?: string }>('/auth/token/refresh/', { refresh });
+
+    const response = await apiClient.post<{ access: string; refresh?: string }>(
+      '/auth/token/refresh/',
+      { refresh }
+    );
     const { access, refresh: newRefresh } = response.data;
     tokenManager.setTokens(access, newRefresh || refresh);
     return access;

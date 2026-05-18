@@ -74,7 +74,7 @@ const Layout = () => {
 
           {/* Global Help Button — only for authenticated users (the assistant hits authed endpoints) */}
           {isAuthenticated && (
-            <div className="fixed bottom-4 right-8 z-[110]">
+            <div className="hidden md:block fixed bottom-4 right-8 z-[110]">
               <button
                 onClick={toggleAssistant}
                 className={`flex items-center gap-2 p-3 px-5 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 border backdrop-blur-md active:scale-95 ${

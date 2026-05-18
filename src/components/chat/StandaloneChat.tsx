@@ -772,11 +772,13 @@ export default function StandaloneChat() {
 
       {/* Guest banner — encourage login without blocking chat */}
       {isGuest && (
-        <div className="absolute top-0 left-0 right-0 z-40 bg-primary/10 border-b border-primary/20 backdrop-blur-md px-4 py-2 flex items-center justify-between gap-3 text-sm">
+        <div className="absolute top-0 left-0 right-0 z-40 bg-primary/10 border-b border-primary/20 backdrop-blur-md pl-14 pr-3 md:px-4 py-2 flex items-center justify-between gap-2 md:gap-3 text-sm">
           <div className="flex items-center gap-2 min-w-0">
             <Sparkles className="w-4 h-4 text-primary shrink-0" />
             <span className="truncate">
-              <span className="font-semibold">Guest mode</span> — chatting with NVIDIA Nemotron 3 Super (120B/12B-active). Log in to save history, upload files, run workflows, and access the help agent.
+              <span className="font-semibold">Guest mode</span>
+              <span className="hidden md:inline"> — chatting with NVIDIA Nemotron 3 Super (120B/12B-active). Log in to save history, upload files, run workflows, and access the help agent.</span>
+              <span className="md:hidden text-muted-foreground"> — log in for more</span>
             </span>
           </div>
           <button
@@ -788,14 +790,24 @@ export default function StandaloneChat() {
         </div>
       )}
 
-      {/* 1. History Sidebar */}
+      {/* 1. History Sidebar — overlay drawer on mobile, in-flow on desktop */}
+      {showHistory && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setShowHistory(false)}
+        />
+      )}
       <div
         className={cn(
-          "h-full bg-card/80 backdrop-blur-xl border-r border-border/60 transition-all duration-300 ease-in-out flex flex-col z-30 shadow-2xl relative overflow-hidden flex-shrink-0",
-          showHistory ? "w-[300px]" : "w-0 opacity-0 border-none"
+          "h-full bg-card/80 backdrop-blur-xl border-r border-border/60 transition-all duration-300 ease-in-out flex flex-col shadow-2xl overflow-hidden",
+          // Mobile: fixed overlay
+          "fixed md:relative left-0 top-0 z-40 md:z-30 md:flex-shrink-0",
+          showHistory
+            ? "w-[85vw] max-w-[320px] md:w-[300px] translate-x-0"
+            : "w-0 -translate-x-full md:translate-x-0 md:w-0 md:opacity-0 md:border-none"
         )}
       >
-        <div className="w-[300px] flex flex-col h-full">
+        <div className="w-[85vw] max-w-[320px] md:w-[300px] flex flex-col h-full">
           <div className="h-16 px-6 flex items-center justify-between border-b border-border/40 shrink-0">
             <div className="flex items-center gap-2">
               <History className="w-4 h-4 text-primary/70" />
@@ -875,25 +887,29 @@ export default function StandaloneChat() {
       {/* 2. Main Chat Area */}
       <div className="flex-1 flex flex-col h-full relative min-w-0 z-10 transition-all duration-300">
         
-        {/* Transparent Header */}
-        <header className="h-16 flex items-center px-4 md:px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50">
-          <div className="flex items-center gap-3">
+        {/* Transparent Header — leaves space on mobile for the global hamburger and guest banner */}
+        <header className={cn(
+          "h-16 flex items-center px-4 md:px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50",
+          isGuest && "pt-9 md:pt-0 h-[88px] md:h-16"
+        )}>
+          <div className="flex items-center gap-3 pl-12 md:pl-0 min-w-0">
             {!showHistory && (
-              <button 
-                onClick={() => setShowHistory(true)} 
-                className="p-3 bg-card/40 border border-border/60 hover:bg-card/60 rounded-2xl transition-all text-muted-foreground group"
+              <button
+                onClick={() => setShowHistory(true)}
+                className="p-2.5 md:p-3 bg-card/40 border border-border/60 hover:bg-card/60 rounded-2xl transition-all text-muted-foreground group shrink-0"
+                aria-label="Conversation history"
               >
                 <History className="w-5 h-5 group-hover:text-primary transition-colors" />
               </button>
             )}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-card/40 border border-border/40 rounded-xl">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-card/40 border border-border/40 rounded-xl">
                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground/60">Quantum Core Online</span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-             <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl text-[10px] font-bold text-emerald-600 uppercase tracking-widest shadow-sm">
+             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl text-[10px] font-bold text-emerald-600 uppercase tracking-widest shadow-sm">
                 <Shield className="w-3.5 h-3.5" />
                 Encrypted Session
              </div>
