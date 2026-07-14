@@ -765,8 +765,8 @@ export const nodeConfigs: Record<string, NodeConfig> = {
 
   ollama: {
     nodeType: 'ollama',
-    displayName: 'Ollama (Local)',
-    description: 'Run local LLMs via Ollama',
+    displayName: 'Ollama (Self-hosted)',
+    description: 'Run LLMs via an Ollama server reachable from the backend. Set Base URL to your Ollama host (localhost only works if Ollama runs on the same server).',
     icon: '🦙',
     color: '#0d1117',
     outputs: [{ id: 'output-0', label: 'Output' }],
@@ -775,6 +775,7 @@ export const nodeConfigs: Record<string, NodeConfig> = {
         id: 'base_url',
         label: 'Base URL',
         type: 'text',
+        placeholder: 'http://your-ollama-host:11434',
         defaultValue: 'http://localhost:11434',
         required: true,
       },

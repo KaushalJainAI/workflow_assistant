@@ -770,9 +770,11 @@ export default function StandaloneChat() {
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-500/5 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
 
-      {/* Guest banner — encourage login without blocking chat */}
+      {/* Guest banner — encourage login without blocking chat. On mobile it's a
+          56px band that visually contains the floating hamburger (fixed top-3
+          left-3, 44px tall), so they read as one top bar. */}
       {isGuest && (
-        <div className="absolute top-0 left-0 right-0 z-40 bg-primary/10 border-b border-primary/20 backdrop-blur-md pl-14 pr-3 md:px-4 py-2 flex items-center justify-between gap-2 md:gap-3 text-sm">
+        <div className="absolute top-0 left-0 right-0 z-40 bg-primary/10 border-b border-primary/20 backdrop-blur-md pl-16 pr-3 md:px-4 py-2 min-h-14 md:min-h-0 flex items-center justify-between gap-2 md:gap-3 text-sm">
           <div className="flex items-center gap-2 min-w-0">
             <Sparkles className="w-4 h-4 text-primary shrink-0" />
             <span className="truncate">
@@ -889,10 +891,17 @@ export default function StandaloneChat() {
         
         {/* Transparent Header — leaves space on mobile for the global hamburger and guest banner */}
         <header className={cn(
-          "h-16 flex items-center px-4 md:px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50",
-          isGuest && "pt-9 md:pt-0 h-[88px] md:h-16"
+          "h-16 shrink-0 flex items-center px-4 md:px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50",
+          // Guest: the banner band (56px on mobile, ~38px on desktop) overlays
+          // the top — push the header below it instead of stretching it.
+          isGuest && "mt-14 md:mt-10"
         )}>
-          <div className="flex items-center gap-3 pl-12 md:pl-0 min-w-0">
+          <div className={cn(
+            "flex items-center gap-3 min-w-0",
+            // The floating hamburger overlays the header only for authed users;
+            // in guest mode it sits inside the banner band above.
+            !isGuest && "pl-12 md:pl-0"
+          )}>
             {!showHistory && (
               <button
                 onClick={() => setShowHistory(true)}
@@ -919,8 +928,10 @@ export default function StandaloneChat() {
         {/* Dynamic Transition Area */}
         <div 
           className={cn(
-            "flex-1 overflow-y-auto px-4 md:px-6 pt-8 pb-24 transition-all duration-1000 ease-in-out relative",
-            isInitialState ? "flex items-center justify-center" : "py-6 md:py-10"
+            "flex-1 overflow-y-auto px-4 md:px-6 transition-all duration-1000 ease-in-out relative",
+            // Initial state: truly center the hero (no asymmetric padding that
+            // shoves it upward and leaves a dead zone above the composer).
+            isInitialState ? "flex items-center justify-center py-4" : "pt-8 pb-24"
           )}
           onMouseUp={() => {
             const selection = window.getSelection();
@@ -990,17 +1001,17 @@ export default function StandaloneChat() {
             isInitialState ? "flex flex-col items-center" : "space-y-12"
           )}>
             {isInitialState ? (
-              <div className="text-center space-y-8 mb-20 animate-in fade-in slide-in-from-bottom-8 duration-1000 scale-105">
+              <div className="text-center space-y-6 md:space-y-8 mb-4 md:mb-16 animate-in fade-in slide-in-from-bottom-8 duration-1000">
                 <div className="relative group">
                   <div className="absolute inset-0 bg-primary/20 rounded-[3rem] blur-2xl animate-pulse group-hover:bg-primary/30 transition-all" />
-                  <div className="relative w-28 h-28 bg-card border border-primary/20 rounded-[3rem] flex items-center justify-center mx-auto shadow-2xl glass transition-transform group-hover:scale-110 duration-500 overflow-hidden">
+                  <div className="relative w-20 h-20 md:w-28 md:h-28 bg-card border border-primary/20 rounded-[2rem] md:rounded-[3rem] flex items-center justify-center mx-auto shadow-2xl glass transition-transform group-hover:scale-110 duration-500 overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none" />
-                    <BrainCircuit className="w-12 h-12 text-primary relative z-10" />
+                    <BrainCircuit className="w-9 h-9 md:w-12 md:h-12 text-primary relative z-10" />
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <h1 className="text-3xl md:text-5xl font-black tracking-tight text-foreground/90 uppercase drop-shadow-sm">AIAAS Assistant</h1>
-                  <p className="text-muted-foreground font-medium text-lg md:text-xl max-w-lg mx-auto leading-relaxed">
+                  <h1 className="text-2xl md:text-5xl font-black tracking-tight text-foreground/90 uppercase drop-shadow-sm">AIAAS Assistant</h1>
+                  <p className="text-muted-foreground font-medium text-base md:text-xl max-w-lg mx-auto leading-relaxed px-2">
                     Deploying Quantum Intelligence for your most complex inquiries and creative tasks.
                   </p>
                 </div>
@@ -1971,8 +1982,12 @@ export default function StandaloneChat() {
 
         {/* Dynamic Navigation/Input Area */}
         <footer className={cn(
-          "shrink-0 transition-all duration-1000 ease-in-out",
-          isInitialState ? "pb-16" : "pb-6 px-4 pt-2"
+          // pb uses the safe-area inset so the composer toolbar clears the
+          // phone gesture bar (needs viewport-fit=cover in index.html).
+          "shrink-0 transition-all duration-1000 ease-in-out px-4",
+          isInitialState
+            ? "pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-16"
+            : "pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-6 pt-2"
         )}>
           <div className="max-w-5xl mx-auto space-y-4">
             
@@ -2077,7 +2092,7 @@ export default function StandaloneChat() {
                         }
                       }}
                       placeholder={activeIntent !== 'normal' ? `Type your ${activeIntent} query...` : "Ask anything..."}
-                      className="w-full min-h-[56px] max-h-[200px] px-2 py-2 bg-transparent border-none focus:ring-0 focus:outline-none resize-none text-[17px] font-medium placeholder:text-muted-foreground/25 scrollbar-none leading-[1.7] tracking-[-0.01em]"
+                      className="w-full min-h-[56px] max-h-[200px] px-2 py-2 bg-transparent border-none focus:ring-0 focus:outline-none resize-none text-[17px] font-medium placeholder:text-muted-foreground/50 scrollbar-none leading-[1.7] tracking-[-0.01em]"
                       rows={2}
                     />
                   </div>

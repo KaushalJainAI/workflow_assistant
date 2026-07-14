@@ -64,7 +64,7 @@ const Layout = () => {
   const { isAuthenticated } = useAuth();
 
   return (
-    <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
+    <div className="flex h-viewport w-full bg-background text-foreground overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex h-full overflow-hidden relative">
         <main className="flex-1 h-full overflow-hidden relative">
@@ -111,7 +111,7 @@ const LandingRoute = () => {
   }
   if (isAuthenticated) return <Navigate to="/ai-chat" replace />;
   return (
-    <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
+    <div className="flex h-viewport w-full bg-background text-foreground overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex h-full overflow-hidden relative">
         <main className="flex-1 h-full overflow-hidden relative">

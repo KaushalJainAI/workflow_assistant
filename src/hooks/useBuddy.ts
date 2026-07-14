@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { tokenManager } from '../api/client';
 
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+const WS_BASE = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export interface BuddyAction {
   type: string;

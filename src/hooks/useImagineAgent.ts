@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { tokenManager } from '../api/client';
 import { imagineAgent, type ImagineChatResponse, type ImagineGeneration, type ImagineIntent, type ImagineMessage } from '../api/imagineAgent';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export interface ChatItem {
   key: string;

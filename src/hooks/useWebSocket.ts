@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { tokenManager } from '../api/client';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export type WebSocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 

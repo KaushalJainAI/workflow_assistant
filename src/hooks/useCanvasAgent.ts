@@ -5,7 +5,7 @@ import apiClient from '../api/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 interface CanvasAction {
   action_type: string;
@@ -99,7 +99,9 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
         case 'add_node':
           if (setNodes) {
             const newNode: Node = {
-              id: `node-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+              // Honor an agent-provided id so connect_nodes in the same batch can
+              // reference freshly-added nodes; fall back to a generated id.
+              id: payload.id || `node-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
               type: 'generic',
               position: payload.position,
               data: {

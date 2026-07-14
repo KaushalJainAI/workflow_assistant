@@ -10,9 +10,10 @@ import {
   Brain,
   Layout,
   Loader2,
-  Zap,
-  Plug,
   Code2,
+  Plug,
+  Wrench,
+  User,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -86,13 +87,20 @@ const Sidebar = () => {
         return '??';
     };
 
+    // Core workspace navigation — the primary surfaces.
     const navItems = [
         { icon: GitGraph, label: "Workflows", path: "/workflows" },
-        { icon: Plug, label: "Connectors", path: "/connectors" },
-        { icon: Zap, label: "Skills", path: "/skills" },
         { icon: Layout, label: "Templates", path: "/templates" },
-        { icon: Key, label: "Credentials", path: "/credentials" },
         { icon: FileText, label: "Documents", path: "/documents" },
+        { icon: Key, label: "Credentials", path: "/credentials" },
+    ];
+
+    // Setup-heavy / power-user surfaces. De-emphasised, but must stay reachable
+    // from the UI (previously these pages had no nav entry at all).
+    const devItems = [
+        { icon: Plug, label: "Connectors", path: "/connectors" },
+        { icon: Wrench, label: "Skills", path: "/skills" },
+        { icon: Code2, label: "MCP Servers", path: "/mcp-servers" },
     ];
 
 
@@ -120,7 +128,7 @@ const Sidebar = () => {
 
         <div
             className={cn(
-                "h-screen backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out overflow-hidden",
+                "h-viewport backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out overflow-hidden",
                 // Mobile: fixed drawer, slides in from left, fully hidden when collapsed
                 isMobile
                     ? cn(
@@ -316,27 +324,30 @@ const Sidebar = () => {
             </nav>
 
             {/* Developer section — de-emphasised, for power users */}
-            <div className="px-2 pt-2 pb-1 border-t border-border/30">
-                <Link
-                    to="/mcp-servers"
-                    onClick={guardGuest('MCP Servers')}
-                    className={cn(
-                        "flex items-center rounded-lg transition-all duration-200 group py-1.5",
-                        location.pathname === '/mcp-servers'
-                            ? "bg-muted text-muted-foreground"
-                            : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40",
-                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-2"
-                    )}
-                    title={collapsed ? "Developer: MCP Servers" : undefined}
-                >
-                    <Code2 className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className={cn(
-                        "text-[11px] font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
-                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
-                    )}>
-                        MCP Servers
-                    </span>
-                </Link>
+            <div className="px-2 pt-2 pb-1 border-t border-border/30 space-y-0.5">
+                {devItems.map((item) => (
+                    <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={guardGuest(item.label)}
+                        className={cn(
+                            "flex items-center rounded-lg transition-all duration-200 group py-1.5",
+                            location.pathname === item.path
+                                ? "bg-muted text-muted-foreground"
+                                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40",
+                            collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-2"
+                        )}
+                        title={collapsed ? `Developer: ${item.label}` : undefined}
+                    >
+                        <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className={cn(
+                            "text-[11px] font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
+                            collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                        )}>
+                            {item.label}
+                        </span>
+                    </Link>
+                ))}
             </div>
 
             {/* Guest call-to-action — unauthenticated visitors */}
@@ -364,7 +375,26 @@ const Sidebar = () => {
             )}
 
             {/* User Section (auth-only) */}
-            {isAuthenticated && <div className="p-2 border-t border-border/60">
+            {isAuthenticated && <div className="p-2 border-t border-border/60 space-y-1">
+                <Link
+                    to="/profile"
+                    className={cn(
+                        "flex items-center rounded-lg transition-all duration-200 group py-1.5",
+                        location.pathname === '/profile'
+                            ? "bg-muted text-muted-foreground"
+                            : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40",
+                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-2"
+                    )}
+                    title={collapsed ? "Profile" : undefined}
+                >
+                    <User className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className={cn(
+                        "text-[11px] font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
+                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+                    )}>
+                        Profile
+                    </span>
+                </Link>
                 <Link
                     to="/settings"
                     className={cn(

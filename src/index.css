@@ -100,6 +100,15 @@
 }
 
 @layer utilities {
+  /* ── App-shell height ──
+     100vh on mobile browsers includes the area behind the collapsing URL bar /
+     gesture bar, clipping the bottom of the layout (chat composer). 100dvh
+     tracks the *visible* viewport; keep 100vh first as a fallback. */
+  .h-viewport {
+    height: 100vh;
+    height: 100dvh;
+  }
+
   /* ── Entrance Animations ── */
   .animate-fade-in {
     animation: fade-in 0.5s ease-out both;
