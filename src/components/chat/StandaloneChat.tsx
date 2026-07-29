@@ -11,7 +11,6 @@ import {
   Search,
   Image as ImageIcon,
   Video,
-  Play,
   File as FileIcon,
   Mic,
   MessageSquare,
@@ -30,8 +29,6 @@ import {
   ArrowUpFromLine,
   Pencil,
   Code,
-  Folder,
-  Boxes,
   Square,
   Mail,
   FolderSearch,
@@ -45,6 +42,8 @@ import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 import { TextSelectionMenu } from './TextSelectionMenu';
 import { MediaPreview } from './MediaPreview';
+import HtmlArtifact from './HtmlArtifact';
+import type { HtmlArtifact as HtmlArtifactData } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -55,6 +54,14 @@ interface PendingToolCall {
   tool: string;
   args: any;
   call_id: string;
+}
+
+/** Rough size hint for a reasoning trace, so the toggle says what it will cost to open. */
+function formatWordCount(text: string): string {
+  const words = (text || '').trim().split(/\s+/).filter(Boolean).length;
+  if (words === 0) return '';
+  if (words < 1000) return `${words} words`;
+  return `${(words / 1000).toFixed(1)}k words`;
 }
 
 export default function StandaloneChat() {
@@ -105,7 +112,7 @@ export default function StandaloneChat() {
 
   // --- Agentic Features State ---
   const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(true);
-  const [activeIntent, setActiveIntent] = useState<'normal' | 'search' | 'image' | 'video' | 'research' | 'coding' | 'file_manipulation' | 'workflow'>('normal');
+  const [activeIntent, setActiveIntent] = useState<'normal' | 'search' | 'image' | 'video' | 'research'>('normal');
   const [deletingMsgId, setDeletingMsgId] = useState<number | null>(null);
   const [expandedSummaryMsgId, setExpandedSummaryMsgId] = useState<number | null>(null);
   const [expandedSourcesMsgId, setExpandedSourcesMsgId] = useState<number | null>(null);
@@ -151,6 +158,11 @@ export default function StandaloneChat() {
   const [liveThinking, setLiveThinking] = useState('');
   const [liveContent, setLiveContent] = useState('');
   const [liveCodeExecutions, setLiveCodeExecutions] = useState<any[]>([]);
+  const [liveArtifacts, setLiveArtifacts] = useState<HtmlArtifactData[]>([]);
+  const [blockedAttachments, setBlockedAttachments] = useState<{ message: string; items: any[] } | null>(null);
+  const [showSessionSettings, setShowSessionSettings] = useState(false);
+  const [systemPromptDraft, setSystemPromptDraft] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [pendingToolCall, setPendingToolCall] = useState<PendingToolCall | null>(null);
   const [isReasoningExpanded, setIsReasoningExpanded] = useState(false);
   const [isLiveCodeExpanded, setIsLiveCodeExpanded] = useState(true);
@@ -385,20 +397,6 @@ export default function StandaloneChat() {
     }
   };
 
-  const handleRunWorkflow = async (workflowId: number) => {
-    if (!conversationId) return;
-    setIsLoading(true);
-    try {
-      const response = await chatService.runWorkflow(conversationId, workflowId);
-      setMessages(prev => [...prev, response.ai_response as unknown as ChatMessage]);
-      toast.success(`Workflow started: ${response.workflow_name}`);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to start workflow");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleRewriteMessage = async (messageId: number) => {
     if (!conversationId) return;
     try {
@@ -548,6 +546,28 @@ export default function StandaloneChat() {
     }
   };
 
+  const handleSaveSessionSettings = async (patch: Partial<ChatSession>) => {
+    if (!conversationId || !currentSession) return;
+    setIsSavingSettings(true);
+    try {
+      const updated = await chatService.updateSession(conversationId, patch);
+      // Merge rather than replace: the PATCH response does not carry `messages`,
+      // and swapping the whole object in would blank the transcript.
+      setCurrentSession(prev => (prev ? { ...prev, ...updated } : updated));
+      if ('memory_enabled' in patch) {
+        toast.success(patch.memory_enabled ? 'Memory on' : 'Memory off for this chat');
+      } else {
+        toast.success('Settings saved');
+        setShowSessionSettings(false);
+      }
+    } catch (err: any) {
+      console.error('Failed to save chat settings', err);
+      toast.error(err?.response?.data?.detail || 'Could not save chat settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const handleStreamEvent = (event: any, optimisticId?: number, intentToSend?: string) => {
     switch (event.type) {
       case 'status':
@@ -598,12 +618,18 @@ export default function StandaloneChat() {
       case 'images_update':
         setLiveImages(event.images || []);
         break;
-      case 'code_execution':
-        setLiveCodeExecutions(prev => [...prev, {
-          code: event.code,
-          output: event.output,
-          result: event.result
+      case 'html_artifact':
+        setLiveArtifacts(prev => [...prev, {
+          title: event.title,
+          html: event.html,
+          width: event.width,
+          height: event.height,
         }]);
+        break;
+      case 'attachments_blocked':
+        // Persistent, not a transient toast: the user needs to still see this
+        // while they go and change the model, which is the action it asks for.
+        setBlockedAttachments({ message: event.message, items: event.items || [] });
         break;
       case 'ask_permission':
         setPendingToolCall({
@@ -636,6 +662,7 @@ export default function StandaloneChat() {
         setLiveContent('');
         setLiveThinking('');
         setLiveCodeExecutions([]);
+        setLiveArtifacts([]);
         setActiveReference(null);
         
         // Sync intent to session state if it was locked this turn
@@ -909,12 +936,140 @@ export default function StandaloneChat() {
           </div>
 
           <div className="flex items-center gap-3">
+             {/* Memory state is shown in the header, not buried in the panel:
+                 with it off the assistant behaves very differently, and a user
+                 who forgot they switched it off reads that as the model being
+                 broken. */}
+             {currentSession && !currentSession.memory_enabled && (
+               <button
+                 onClick={() => setShowSessionSettings(true)}
+                 title="Memory is off for this chat — click to change"
+                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-500/40
+                            bg-amber-500/10 text-[11px] font-semibold text-amber-500
+                            transition-all duration-200 hover:bg-amber-500/20
+                            animate-in fade-in slide-in-from-right-2"
+               >
+                 <BrainCircuit className="w-3.5 h-3.5" />
+                 Memory off
+               </button>
+             )}
              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                 <Shield className="w-3.5 h-3.5" />
                 Encrypted
              </div>
+             {currentSession && (
+               <button
+                 onClick={() => {
+                   setSystemPromptDraft(currentSession.system_prompt || '');
+                   setShowSessionSettings(true);
+                 }}
+                 title="Chat settings"
+                 className="p-1.5 rounded-lg text-muted-foreground transition-all duration-200
+                            hover:bg-muted hover:text-foreground active:scale-95"
+               >
+                 <Settings2 className="w-4 h-4" />
+               </button>
+             )}
           </div>
         </header>
+
+        {/* Per-chat settings: system prompt + memory. */}
+        {showSessionSettings && currentSession && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm
+                       animate-in fade-in duration-200"
+            onClick={() => setShowSessionSettings(false)}
+          >
+            <div
+              className="w-full max-w-lg mx-4 rounded-2xl border border-border bg-card shadow-2xl
+                         animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+                <h2 className="text-sm font-bold text-foreground">Chat settings</h2>
+                <button
+                  onClick={() => setShowSessionSettings(false)}
+                  className="p-1 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-5 px-5 py-5">
+                <div>
+                  <label htmlFor="system-prompt" className="block text-xs font-bold text-foreground">
+                    System prompt
+                  </label>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    Standing instructions for this conversation. Applies to every message,
+                    including ones already sent.
+                  </p>
+                  <textarea
+                    id="system-prompt"
+                    value={systemPromptDraft}
+                    onChange={e => setSystemPromptDraft(e.target.value)}
+                    rows={5}
+                    placeholder="e.g. Answer concisely. Prefer tables over prose. Always cite sources."
+                    className="mt-2 w-full resize-y rounded-xl border border-border bg-background px-3 py-2
+                               text-xs leading-relaxed text-foreground outline-none
+                               transition-all duration-200 placeholder:text-muted-foreground/50
+                               focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+
+                <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-3.5">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-foreground">Memory</div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      {currentSession.memory_enabled
+                        ? 'The assistant sees recent turns and can search the rest of this conversation.'
+                        : 'The assistant answers from your current message alone. Nothing is deleted — turning this back on restores the full history.'}
+                    </p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={currentSession.memory_enabled}
+                    aria-label="Toggle memory"
+                    disabled={isSavingSettings}
+                    onClick={() => handleSaveSessionSettings({ memory_enabled: !currentSession.memory_enabled })}
+                    className={cn(
+                      "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors duration-300 ease-out",
+                      "disabled:opacity-50",
+                      currentSession.memory_enabled ? "bg-primary" : "bg-muted-foreground/30"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-300 ease-out",
+                        currentSession.memory_enabled ? "translate-x-[22px]" : "translate-x-0.5"
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-border px-5 py-3.5">
+                <button
+                  onClick={() => setShowSessionSettings(false)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-muted-foreground
+                             transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={isSavingSettings}
+                  onClick={() => handleSaveSessionSettings({ system_prompt: systemPromptDraft })}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold
+                             text-primary-foreground transition-all duration-200
+                             hover:brightness-110 active:scale-95 disabled:opacity-50"
+                >
+                  {isSavingSettings && <Loader2 className="w-3 h-3 animate-spin" />}
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Transition Area */}
         <div 
@@ -1269,6 +1424,12 @@ export default function StandaloneChat() {
                               >
                                 <BrainCircuit className={cn("w-4 h-4", expandedThinkingMsgId === message.id ? "text-primary" : "text-muted-foreground/70")} />
                                 <span className="text-[12px] font-bold tracking-tight">Reasoning</span>
+                                {/* Length hint: without it there is no way to
+                                    tell a one-line thought from six paragraphs
+                                    before committing to opening it. */}
+                                <span className="text-[10px] font-medium tabular-nums opacity-50">
+                                  {formatWordCount(message.metadata.thinking)}
+                                </span>
                                 <div className="flex-1" />
                                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedThinkingMsgId === message.id && "rotate-180")} />
                               </button>
@@ -1326,11 +1487,23 @@ export default function StandaloneChat() {
 
                       {/* Expanded Thinking Content */}
                       {message.role === 'assistant' && expandedThinkingMsgId === message.id && message.metadata?.thinking && (
-                        <div className="mt-2 p-4 bg-muted/20 border border-border/30 rounded-2xl animate-in slide-in-from-top-2 duration-300">
-                          <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed text-muted-foreground italic select-text">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {message.metadata.thinking}
-                            </ReactMarkdown>
+                        <div className="mt-2 overflow-hidden rounded-2xl border border-primary/20 bg-muted/20
+                                        animate-in fade-in slide-in-from-top-2 duration-300 ease-out">
+                          <div className="flex items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-2">
+                            <Sparkles className="h-3 w-3 text-primary/60" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                              How the assistant got here
+                            </span>
+                          </div>
+                          {/* Capped and scrollable: an unbounded trace can run
+                              longer than the answer it explains, pushing the
+                              actual reply off screen. */}
+                          <div className="max-h-[420px] overflow-y-auto p-4">
+                            <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed text-muted-foreground italic select-text">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {message.metadata.thinking}
+                              </ReactMarkdown>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -1519,29 +1692,11 @@ export default function StandaloneChat() {
                       )}
 
 
-                      {/* Workflow Suggestion Card */}
-                      {message.metadata?.intent === 'workflow' && message.metadata?.workflow_id && (
-                        <div className="mt-6 p-5 bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-2xl shadow-sm max-w-md animate-in fade-in zoom-in-95 duration-500">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
-                              <Wand2 className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <h3 className="font-bold text-foreground leading-tight">{message.metadata.workflow_name}</h3>
-                              <p className="text-xs text-muted-foreground  font-bold mt-0.5">Workflow suggestion</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-3 mt-5">
-                            <button 
-                              onClick={() => handleRunWorkflow(message.metadata.workflow_id)}
-                              className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground py-2.5 rounded-xl text-sm font-bold shadow-md hover:scale-105 transition-all"
-                            >
-                              <Play className="w-4 h-4 fill-current" />
-                              Approve & Run
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      {/* Rendered HTML artifacts, replayed from stored history. */}
+                      {Array.isArray(message.metadata?.html_artifacts) &&
+                        message.metadata.html_artifacts.map((art: HtmlArtifactData, i: number) => (
+                          <HtmlArtifact key={`${message.id}-art-${i}`} artifact={art} />
+                        ))}
 
                       
                       {message.role !== 'system' && (
@@ -1693,6 +1848,11 @@ export default function StandaloneChat() {
                         </ReactMarkdown>
                       </div>
                     )}
+
+                    {/* Artifacts as they arrive, before the turn is persisted. */}
+                    {liveArtifacts.map((art, i) => (
+                      <HtmlArtifact key={`live-art-${i}`} artifact={art} />
+                    ))}
 
                     {/* Live Activity Timeline */}
                     {liveActivity.length > 0 && (
@@ -2041,9 +2201,18 @@ export default function StandaloneChat() {
                             <button
                               key={i}
                               onClick={() => handleSend(q)}
-                              className="group flex flex-1 min-w-[200px] items-center gap-2.5 px-4 py-2.5 bg-background border border-border/50 hover:bg-primary/5 hover:border-primary/20 rounded-xl transition-all text-muted-foreground hover:text-foreground shadow-sm text-left"
+                              // Staggered entrance: three chips appearing at once
+                              // read as a block of UI to skip past, where a quick
+                              // cascade reads as suggestions worth a glance.
+                              style={{ animationDelay: `${i * 70}ms`, animationFillMode: 'backwards' }}
+                              className="group flex flex-1 min-w-[200px] items-center gap-2.5 px-4 py-2.5 bg-background
+                                         border border-border/50 rounded-xl shadow-sm text-left
+                                         text-muted-foreground hover:text-foreground
+                                         hover:bg-primary/5 hover:border-primary/20 hover:shadow-md
+                                         transition-all duration-200 ease-out active:scale-[0.98]
+                                         animate-in fade-in slide-in-from-bottom-2"
                             >
-                              <Zap className="w-3.5 h-3.5 shrink-0 opacity-30 group-hover:opacity-100 group-hover:text-primary transition-all" />
+                              <Zap className="w-3.5 h-3.5 shrink-0 opacity-30 transition-all duration-200 group-hover:opacity-100 group-hover:text-primary group-hover:scale-110" />
                               <span className="text-[13px] font-medium leading-snug">{q}</span>
                             </button>
                           ))}
@@ -2053,6 +2222,26 @@ export default function StandaloneChat() {
                   </div>
                 );
               })()}
+
+              {/* An upload the model could not read. Deliberately persistent
+                  rather than a toast: the fix is to change model, and the user
+                  needs the message to still be on screen while they do it. */}
+              {blockedAttachments && (
+                <div className="mb-2 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10
+                                px-3.5 py-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <FileIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                  <p className="flex-1 text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+                    {blockedAttachments.message}
+                  </p>
+                  <button
+                    onClick={() => setBlockedAttachments(null)}
+                    aria-label="Dismiss"
+                    className="shrink-0 rounded p-0.5 text-amber-600/60 transition-colors hover:bg-amber-500/20 hover:text-amber-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
 
               {/* Input Capsule — bigger, with pills inside */}
               <div className="relative z-10">
@@ -2120,21 +2309,22 @@ export default function StandaloneChat() {
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pr-1">
                         {[
+                          // Coding / Files / Workflow removed along with the
+                          // server-side tools that backed them. A pill that sets
+                          // an intent the backend no longer honours is worse than
+                          // no pill: it silently does nothing.
                           { key: 'search' as const, icon: <Search className="w-3.5 h-3.5" />, label: 'Search', color: 'blue' },
                           { key: 'research' as const, icon: <Globe2 className="w-3.5 h-3.5" />, label: 'Research', color: 'purple' },
-                          { key: 'coding' as const, icon: <Code className="w-3.5 h-3.5" />, label: 'Coding', color: 'blue' },
-                          { key: 'file_manipulation' as const, icon: <Folder className="w-3.5 h-3.5" />, label: 'Files', color: 'emerald' },
-                          { key: 'workflow' as const, icon: <Boxes className="w-3.5 h-3.5" />, label: 'Workflow', color: 'purple' },
                         ].map(tool => (
                           <button
                             key={tool.key}
                             onClick={() => toggleIntent(tool.key)}
                             className={cn(
-                              "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[10px] font-bold  transition-all border shrink-0",
+                              "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[10px] font-bold shrink-0 border",
+                              "transition-all duration-200 ease-out active:scale-95",
                               activeIntent === tool.key
                                 ? tool.color === 'blue' ? 'bg-blue-500/15 border-blue-500/40 text-blue-500'
-                                : tool.color === 'purple' ? 'bg-purple-500/15 border-purple-500/40 text-purple-500'
-                                : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500'
+                                : 'bg-purple-500/15 border-purple-500/40 text-purple-500'
                               : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40",
                               isLocked && tool.key === lockedIntent && activeIntent !== lockedIntent && "border-dashed border-muted-foreground/30 opacity-60"
                             )}

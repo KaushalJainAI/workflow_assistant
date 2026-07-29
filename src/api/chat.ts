@@ -7,9 +7,23 @@ export interface ChatSession {
   llm_model: string;
   intent: string;
   system_prompt: string;
+  /**
+   * Gates *recall*, not retention. With this off the assistant answers from the
+   * current message alone and loses the history-search tool — but nothing is
+   * deleted, so switching it back on restores the full conversation.
+   */
+  memory_enabled: boolean;
   created_at: string;
   updated_at: string;
   messages: ChatMessage[];
+}
+
+/** A model-authored HTML snippet, already clamped server-side. */
+export interface HtmlArtifact {
+  title: string;
+  html: string;
+  width: number;
+  height: number;
 }
 
 export interface ChatMessage {
@@ -149,11 +163,6 @@ export const chatService = {
         'Content-Type': 'multipart/form-data',
       },
     });
-    return response.data;
-  },
-
-  async runWorkflow(sessionId: string, workflowId: number): Promise<any> {
-    const response = await apiClient.post(`/chat/sessions/${sessionId}/run-workflow/`, { workflow_id: workflowId });
     return response.data;
   },
 
