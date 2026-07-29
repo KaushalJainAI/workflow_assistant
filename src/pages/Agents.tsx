@@ -5,6 +5,7 @@
  * hire "Finance Agent" and it decides which steps to run. Workflows stay as the
  * deterministic layer underneath.
  */
+import { Link } from 'react-router-dom';
 import { Bot, Plus, Wrench, ShieldCheck, Zap } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
@@ -69,10 +70,11 @@ export default function Agents() {
         title="Agents"
         subtitle={`${AGENTS.length} agents · ${AGENTS.reduce((n, a) => n + a.runs, 0)} runs this month`}
         actions={
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90">
+          <Link to="/agents/new"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90">
             <Plus className="w-4 h-4" />
             New agent
-          </button>
+          </Link>
         }
       />
 

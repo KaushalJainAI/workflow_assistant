@@ -24,6 +24,7 @@ import TemplateDetail from './pages/templates/TemplateDetail';
 import Inbox from './pages/Inbox';
 import Runs from './pages/Runs';
 import Agents from './pages/Agents';
+import AgentBuilder from './pages/AgentBuilder';
 import Extract from './pages/Extract';
 import Evals from './pages/Evals';
 import Datasets from './pages/Datasets';
@@ -172,6 +173,7 @@ const AppContent = () => {
               <Route path="/runs" element={<Runs />} />
               {/* Build */}
               <Route path="/agents" element={<Agents />} />
+              <Route path="/agents/new" element={<AgentBuilder />} />
               <Route path="/extract" element={<Extract />} />
               {/* Improve — UI ahead of the API; see PreviewNotice on each page. */}
               <Route path="/evals" element={<Evals />} />
