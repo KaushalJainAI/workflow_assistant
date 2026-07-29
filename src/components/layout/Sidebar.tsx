@@ -7,17 +7,26 @@ import {
   Plus,
   FileText,
   Sparkles,
-  Brain,
   Layout,
   Loader2,
   Code2,
   Plug,
   Wrench,
   User,
+  Inbox,
+  Activity,
+  Bot,
+  ScanText,
+  Clapperboard,
+  LineChart,
+  Database,
+  SlidersHorizontal,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../contexts/AuthContext";
-import { workflowsService } from "../../api";
+import { workflowsService, orchestratorService, logsService } from "../../api";
 import { toast } from "sonner";
 
 
@@ -61,6 +70,25 @@ const Sidebar = () => {
     const { user, isAuthenticated } = useAuth();
     const isGuest = !isAuthenticated;
 
+    // Badge counts: what is waiting on you (blue count) and what the agent is
+    // doing unattended (violet dot). Polled, because the nav outlives any one
+    // execution WebSocket.
+    const { data: pendingCount = 0 } = useQuery({
+        queryKey: ['nav', 'hitl-pending'],
+        enabled: isAuthenticated,
+        refetchInterval: 30_000,
+        queryFn: async () => (await orchestratorService.getPendingHITL()).requests.length,
+    });
+    const { data: runningCount = 0 } = useQuery({
+        queryKey: ['nav', 'running'],
+        enabled: isAuthenticated,
+        refetchInterval: 30_000,
+        queryFn: async () => {
+            const page = await logsService.listExecutions({ status: 'running', limit: 1 });
+            return page.results.length;
+        },
+    });
+
     // Intercepts clicks on auth-only nav items for guests: show a "log in" toast
     // and route them to /login instead of letting them hit a protected page that
     // would just redirect anyway.
@@ -87,20 +115,54 @@ const Sidebar = () => {
         return '??';
     };
 
-    // Core workspace navigation — the primary surfaces.
-    const navItems = [
-        { icon: GitGraph, label: "Workflows", path: "/workflows" },
-        { icon: Layout, label: "Templates", path: "/templates" },
-        { icon: FileText, label: "Documents", path: "/documents" },
-        { icon: Key, label: "Credentials", path: "/credentials" },
-    ];
-
-    // Setup-heavy / power-user surfaces. De-emphasised, but must stay reachable
-    // from the UI (previously these pages had no nav entry at all).
-    const devItems = [
-        { icon: Plug, label: "Connectors", path: "/connectors" },
-        { icon: Wrench, label: "Skills", path: "/skills" },
-        { icon: Code2, label: "MCP Servers", path: "/mcp-servers" },
+    /* The four groups mirror docs/prototype/index.html: what you do today (Work),
+       what you build (Build), how you make it better (Improve), and what it runs
+       on (Data). `pending` shows a count badge, `agent` a violet activity dot. */
+    type NavItem = {
+        icon: LucideIcon;
+        label: string;
+        path: string;
+        guestOk?: boolean;   // reachable without logging in
+        agent?: boolean;     // show the violet "running unattended" dot
+        pending?: boolean;   // show the blue "waiting on you" count
+    };
+    const navGroups: { title: string; items: NavItem[] }[] = [
+        {
+            title: "Work",
+            items: [
+                { icon: Sparkles, label: "Ask", path: "/ai-chat", guestOk: true },
+                { icon: Activity, label: "Runs", path: "/runs", agent: true },
+                { icon: Inbox, label: "Inbox", path: "/inbox", pending: true },
+            ],
+        },
+        {
+            title: "Build",
+            items: [
+                { icon: Bot, label: "Agents", path: "/agents" },
+                { icon: GitGraph, label: "Workflows", path: "/workflows" },
+                { icon: ScanText, label: "Extract", path: "/extract" },
+                { icon: Wrench, label: "Skills", path: "/skills" },
+                { icon: Clapperboard, label: "Studio", path: "/imagine" },
+                { icon: Layout, label: "Templates", path: "/templates" },
+            ],
+        },
+        {
+            title: "Improve",
+            items: [
+                { icon: LineChart, label: "Evals", path: "/evals" },
+                { icon: Database, label: "Datasets", path: "/datasets" },
+                { icon: SlidersHorizontal, label: "Tuning", path: "/tuning" },
+            ],
+        },
+        {
+            title: "Data",
+            items: [
+                { icon: Code2, label: "Tools", path: "/mcp-servers" },
+                { icon: FileText, label: "Documents", path: "/documents" },
+                { icon: Plug, label: "Data sources", path: "/connectors" },
+                { icon: Key, label: "Credentials", path: "/credentials" },
+            ],
+        },
     ];
 
 
@@ -167,84 +229,6 @@ const Sidebar = () => {
                 </button>
             </div>
 
-            {/* AI Prominent Section */}
-            <div className="p-2 border-b border-border/40 space-y-1">
-                {/* AI Chat Link */}
-                <Link
-                    to="/ai-chat"
-                    className={cn(
-                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
-                        location.pathname === '/ai-chat'
-                            ? "bg-primary/10 text-primary font-bold shadow-sm" 
-                            : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
-                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
-                    )}
-                    title={collapsed ? "AI Chat" : undefined}
-                >
-                    <Sparkles className={cn(
-                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-primary",
-                        location.pathname !== '/ai-chat' && "group-hover:scale-110"
-                    )} />
-                    <span className={cn(
-                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
-                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
-                    )}>
-                        AI Chat
-                    </span>
-                </Link>
-
-                {/* Imagine Link - New Position */}
-                <Link
-                    to="/imagine"
-                    onClick={guardGuest('Imagine')}
-                    className={cn(
-                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
-                        location.pathname === '/imagine'
-                            ? "bg-primary/10 text-primary font-bold shadow-sm" 
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
-                    )}
-                    title={collapsed ? "Imagine" : undefined}
-                >
-                    <Sparkles className={cn(
-                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-primary",
-                        location.pathname !== '/imagine' && "group-hover:scale-110"
-                    )} />
-                    <span className={cn(
-                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
-                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
-                    )}>
-                        Imagine
-                    </span>
-                </Link>
-
-                {/* Orchestrator Link - Relocated & Highlighted */}
-                <Link
-                    to="/orchestrator"
-                    onClick={guardGuest('Orchestrator')}
-                    className={cn(
-                        "w-full flex items-center rounded-lg transition-all duration-200 group py-2.5",
-                        location.pathname === '/orchestrator'
-                            ? "bg-primary/10 text-primary font-bold shadow-sm" 
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                        collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
-                    )}
-                    title={collapsed ? "Orchestrator" : undefined}
-                >
-                    <Brain className={cn(
-                        "w-5 h-5 flex-shrink-0 transition-transform duration-200 text-primary",
-                        location.pathname !== '/orchestrator' && "group-hover:scale-110"
-                    )} />
-                    <span className={cn(
-                        "text-sm font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
-                        collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
-                    )}>
-                        Orchestrator
-                    </span>
-                </Link>
-
-            </div>
-
             <div className="p-3">
                 <button
                     onClick={async () => {
@@ -291,64 +275,63 @@ const Sidebar = () => {
                 </button>
             </div>
 
-            <nav className="flex-1 p-2 space-y-0.5">
-                {navItems.map((item) => (
-                    <Link
-                        key={item.path}
-                        to={item.path}
-                        onClick={guardGuest(item.label)}
-                        className={cn(
-                            "flex items-center rounded-lg transition-all duration-200 group relative py-2.5",
-                            location.pathname.startsWith(item.path) 
-                                ? "bg-primary/10 text-primary font-bold shadow-sm" 
-                                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                            collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
-                        )}
-                        title={collapsed ? item.label : undefined}
-                    >
-                        {location.pathname.startsWith(item.path) && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
-                        )}
-                        <item.icon className={cn(
-                            "w-5 h-5 transition-transform duration-200 shrink-0",
-                            !location.pathname.startsWith(item.path) && "group-hover:scale-110"
-                        )} />
-                        <span className={cn(
-                            "text-sm transition-all duration-300 whitespace-nowrap overflow-hidden",
-                            collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
+            <nav className="flex-1 overflow-y-auto p-2 space-y-3">
+                {navGroups.map((group) => (
+                    <div key={group.title}>
+                        <h4 className={cn(
+                            "px-3 pb-1 text-[11px] font-semibold text-muted-foreground transition-all duration-300",
+                            collapsed ? "h-0 opacity-0 overflow-hidden" : "opacity-100"
                         )}>
-                            {item.label}
-                        </span>
-                    </Link>
+                            {group.title}
+                        </h4>
+                        <div className="space-y-0.5">
+                            {group.items.map((item) => {
+                                const active = location.pathname.startsWith(item.path);
+                                return (
+                                    <Link
+                                        key={item.path}
+                                        to={item.path}
+                                        onClick={item.guestOk ? undefined : guardGuest(item.label)}
+                                        className={cn(
+                                            "flex items-center rounded transition-colors group relative py-2",
+                                            active
+                                                ? "bg-accent text-foreground font-semibold"
+                                                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                                            collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-3"
+                                        )}
+                                        title={collapsed ? item.label : undefined}
+                                    >
+                                        {/* Fluent uses a left accent stripe, not a filled pill. */}
+                                        {active && (
+                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-primary rounded-r" />
+                                        )}
+                                        <item.icon className={cn(
+                                            "w-[18px] h-[18px] shrink-0",
+                                            active && "text-primary"
+                                        )} />
+                                        <span className={cn(
+                                            "text-sm whitespace-nowrap overflow-hidden transition-all duration-300",
+                                            collapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                                        )}>
+                                            {item.label}
+                                        </span>
+                                        {/* Violet dot = the agent is working unattended.
+                                            Blue count = things waiting on you. */}
+                                        {!collapsed && item.agent && runningCount > 0 && (
+                                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-agent animate-agent-pulse" />
+                                        )}
+                                        {!collapsed && item.pending && pendingCount > 0 && (
+                                            <span className="ml-auto text-[11px] font-semibold px-1.5 rounded bg-primary text-primary-foreground">
+                                                {pendingCount}
+                                            </span>
+                                        )}
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </div>
                 ))}
             </nav>
-
-            {/* Developer section — de-emphasised, for power users */}
-            <div className="px-2 pt-2 pb-1 border-t border-border/30 space-y-0.5">
-                {devItems.map((item) => (
-                    <Link
-                        key={item.path}
-                        to={item.path}
-                        onClick={guardGuest(item.label)}
-                        className={cn(
-                            "flex items-center rounded-lg transition-all duration-200 group py-1.5",
-                            location.pathname === item.path
-                                ? "bg-muted text-muted-foreground"
-                                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40",
-                            collapsed ? "px-0 justify-center gap-0" : "px-3 justify-start gap-2"
-                        )}
-                        title={collapsed ? `Developer: ${item.label}` : undefined}
-                    >
-                        <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className={cn(
-                            "text-[11px] font-medium transition-all duration-300 whitespace-nowrap overflow-hidden",
-                            collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-0"
-                        )}>
-                            {item.label}
-                        </span>
-                    </Link>
-                ))}
-            </div>
 
             {/* Guest call-to-action — unauthenticated visitors */}
             {!isAuthenticated && (

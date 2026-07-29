@@ -21,6 +21,13 @@ import Templates from './pages/Templates';
 import Skills from './pages/Skills';
 import Imagine from './pages/Imagine';
 import TemplateDetail from './pages/templates/TemplateDetail';
+import Inbox from './pages/Inbox';
+import Runs from './pages/Runs';
+import Agents from './pages/Agents';
+import Extract from './pages/Extract';
+import Evals from './pages/Evals';
+import Datasets from './pages/Datasets';
+import Tuning from './pages/Tuning';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AssistantProvider, useAssistant } from './contexts/AssistantContext';
@@ -160,7 +167,18 @@ const AppContent = () => {
               <Route path="/skills" element={<Skills />} />
               <Route path="/imagine" element={<Imagine />} />
               <Route path="/profile" element={<Profile />} />
-              <Route path="/executions" element={<Navigate to="/workflows" replace />} />
+              {/* Work */}
+              <Route path="/inbox" element={<Inbox />} />
+              <Route path="/runs" element={<Runs />} />
+              {/* Build */}
+              <Route path="/agents" element={<Agents />} />
+              <Route path="/extract" element={<Extract />} />
+              {/* Improve — UI ahead of the API; see PreviewNotice on each page. */}
+              <Route path="/evals" element={<Evals />} />
+              <Route path="/datasets" element={<Datasets />} />
+              <Route path="/tuning" element={<Tuning />} />
+              {/* Runs replaced the old dead-end redirect. */}
+              <Route path="/executions" element={<Navigate to="/runs" replace />} />
             </Route>
           </Route>
         </Routes>
