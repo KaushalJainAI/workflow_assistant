@@ -153,7 +153,7 @@ export default function WorkflowSettingsPanel({
             <div className="p-2 bg-background border border-border rounded-lg shadow-sm">
               <Settings className="w-5 h-5 text-primary" />
             </div>
-            <h2 className="text-lg font-semibold tracking-tight">Workflow Settings</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Workflow settings</h2>
           </div>
           <button 
             onClick={onClose} 
@@ -167,7 +167,7 @@ export default function WorkflowSettingsPanel({
         <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
           {/* General Section */}
           <div className="space-y-4">
-            <h3 className="font-semibold flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-widest">
+            <h3 className="font-semibold flex items-center gap-2 text-xs text-muted-foreground ">
               General
             </h3>
             <div className="space-y-2">
@@ -203,8 +203,8 @@ export default function WorkflowSettingsPanel({
           <div className="space-y-4 relative">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-widest">
-                  Active Skills
+                <h3 className="font-semibold text-xs text-muted-foreground ">
+                  Active skills
                 </h3>
                 <div className="group relative">
                   <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
@@ -275,7 +275,7 @@ export default function WorkflowSettingsPanel({
                     {/* My Skills Group */}
                     <div className="space-y-1 mb-4">
                       <div className="flex items-center gap-2 px-3 py-1">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">My Skills</span>
+                        <span className="text-[10px] font-bold text-muted-foreground ">My skills</span>
                         <div className="h-px flex-1 bg-border/50" />
                       </div>
                       {searchResults.mine.length > 0 ? (
@@ -307,7 +307,7 @@ export default function WorkflowSettingsPanel({
                     {/* Public Library Group */}
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 px-3 py-1">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Public Library</span>
+                        <span className="text-[10px] font-bold text-muted-foreground ">Public library</span>
                         <div className="h-px flex-1 bg-border/50" />
                       </div>
                       {searchResults.public.length > 0 ? (
@@ -352,8 +352,8 @@ export default function WorkflowSettingsPanel({
           {/* Supervision Level Section */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-widest">
-                Execution Supervision
+              <h3 className="font-semibold text-xs text-muted-foreground ">
+                Execution supervision
               </h3>
               <div className="group relative">
                 <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />

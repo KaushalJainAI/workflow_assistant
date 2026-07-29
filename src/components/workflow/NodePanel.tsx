@@ -190,7 +190,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode }: NodePanelProps
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold">Add Node</h3>
+          <h3 className="font-semibold">Add node</h3>
           <button 
             onClick={onClose}
             className="p-1 hover:bg-muted rounded"
@@ -240,7 +240,7 @@ export default function NodePanel({ isOpen, onClose, onAddNode }: NodePanelProps
       <div className="flex-1 min-h-0 overflow-y-auto p-2">
         {Object.entries(groupedNodes).map(([category, nodes]) => (
           <div key={category} className="mb-4">
-            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 mb-2">
+            <h4 className="text-xs font-medium text-muted-foreground  px-2 mb-2">
               {category}
             </h4>
             <div className="space-y-1">

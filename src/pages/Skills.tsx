@@ -182,7 +182,7 @@ export default function Skills() {
                         className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all hover:bg-primary/90 active:scale-95"
                     >
                         <Plus className="w-4 h-4" />
-                        Create Skill
+                        Create skill
                     </button>
                 </div>
 
@@ -251,7 +251,7 @@ export default function Skills() {
                                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
                             >
                                 <Plus className="w-4 h-4" />
-                                Create Your First Skill
+                                Create your first skill
                             </button>
                         )}
                     </div>
@@ -306,7 +306,7 @@ export default function Skills() {
                                     {skill.description}
                                 </p>
                                 
-                                <div className="pt-4 border-t border-border/60 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                                <div className="pt-4 border-t border-border/60 flex items-center justify-between text-[11px] font-bold ">
                                     <span className="text-primary/70">{skill.category}</span>
                                     <span className="text-muted-foreground">By {skill.author}</span>
                                 </div>
@@ -350,10 +350,10 @@ export default function Skills() {
                                         <select
                                             value={editCategory}
                                             onChange={(e) => setEditCategory(e.target.value)}
-                                            className="bg-muted text-[10px] font-bold uppercase px-2 py-1 rounded-md border-none focus:ring-1 focus:ring-primary/20 cursor-pointer"
+                                            className="bg-muted text-[11px] font-semibold px-2 py-1 rounded-md border-none focus:ring-1 focus:ring-primary/20 cursor-pointer"
                                         >
                                             <option value="General">General</option>
-                                            <option value="Data Science">Data Science</option>
+                                            <option value="Data Science">Data science</option>
                                             <option value="Automation">Automation</option>
                                             <option value="Development">Development</option>
                                             <option value="Marketing">Marketing</option>
@@ -403,7 +403,7 @@ export default function Skills() {
                                     className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/20 active:scale-95 flex items-center gap-2"
                                 >
                                     <Check className="w-4 h-4" />
-                                    Save Skill
+                                    Save skill
                                 </button>
                                 <button 
                                     onClick={() => setIsEditing(false)}

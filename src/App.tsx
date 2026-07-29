@@ -84,7 +84,7 @@ const Layout = () => {
                 }`}
               >
                 <Sparkles className={`w-5 h-5 ${isAssistantOpen ? 'animate-pulse' : ''}`} />
-                <span className="text-sm font-bold tracking-tight uppercase">Help</span>
+                <span className="text-sm font-bold tracking-tight">Help</span>
               </button>
             </div>
           )}

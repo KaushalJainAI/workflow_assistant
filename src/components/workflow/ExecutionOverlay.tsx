@@ -104,7 +104,7 @@ export function DataPreviewTooltip({ data, position }: DataPreviewTooltipProps) 
       className="fixed z-50 max-w-xs bg-popover border rounded-lg shadow-xl p-3 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.x + 10, top: position.y + 10 }}
     >
-      <div className="text-xs font-semibold mb-2 text-muted-foreground">Output Data</div>
+      <div className="text-xs font-semibold mb-2 text-muted-foreground">Output data</div>
       <pre className="text-xs font-mono bg-muted p-2 rounded overflow-hidden">
         {preview}
         {isTruncated && '...'}

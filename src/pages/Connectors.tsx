@@ -411,7 +411,7 @@ function ConnectorCard({
       <div className="flex items-center justify-between mt-auto pt-3 border-t border-border/40">
         <span
           className={cn(
-            'inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border',
+            'inline-flex items-center gap-1.5 text-[10px] font-bold  px-2 py-1 rounded-full border',
             statusConfig.badge,
           )}
         >

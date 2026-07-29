@@ -238,7 +238,7 @@ export default function CredentialModal({
           {!initialData && !selectedType && (
              <div className="space-y-4">
                <div>
-                 <label className="block text-sm font-medium mb-3 text-muted-foreground">Select Credential Type</label>
+                 <label className="block text-sm font-medium mb-3 text-muted-foreground">Select credential type</label>
                  
                  <div className="relative mb-4">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

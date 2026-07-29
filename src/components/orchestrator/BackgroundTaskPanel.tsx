@@ -57,16 +57,16 @@ const BackgroundTaskPanel: React.FC<BackgroundTaskPanelProps> = ({
       <div className="p-4 flex items-center justify-between border-b border-border/60">
         <div className="flex items-center gap-2">
           <History className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold">Active Tasks</h3>
+          <h3 className="font-semibold">Active tasks</h3>
           <span className={cn(
-            "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+            "px-2 py-0.5 rounded-full text-[10px] font-bold ",
             tasks.length > 0 ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
           )}>
             {tasks.length}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-tight">
+          <span className="text-[10px] text-muted-foreground tracking-tight">
             Last update: {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
           <button 
@@ -108,7 +108,7 @@ const BackgroundTaskPanel: React.FC<BackgroundTaskPanelProps> = ({
                 
                 <div className="ml-4 flex items-center gap-2">
                   <div className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight",
+                    "px-2 py-0.5 rounded-full text-[10px] font-bold tracking-tight",
                     task.status === 'running' ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
                   )}>
                     {task.status}

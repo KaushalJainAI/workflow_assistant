@@ -116,7 +116,7 @@ export default function NodeBuilderModal({ isOpen, onClose, onSave }: NodeBuilde
               {icon}
             </div>
             <div>
-              <h2 className="text-xl font-bold">Node Builder</h2>
+              <h2 className="text-xl font-bold">Node builder</h2>
               <p className="text-sm text-muted-foreground">Define a new node type from scratch</p>
             </div>
           </div>
@@ -271,7 +271,7 @@ export default function NodeBuilderModal({ isOpen, onClose, onSave }: NodeBuilde
           {activeTab === 'schema' && (
             <div className="max-w-3xl mx-auto space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Input Fields</h3>
+                <h3 className="text-lg font-semibold">Input fields</h3>
                 <button
                   onClick={handleAddField}
                   className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
@@ -359,7 +359,7 @@ export default function NodeBuilderModal({ isOpen, onClose, onSave }: NodeBuilde
           {/* Code Tab */}
           {activeTab === 'code' && (
             <div className="h-full flex flex-col">
-              <h3 className="text-lg font-semibold mb-2">Backend Logic</h3>
+              <h3 className="text-lg font-semibold mb-2">Backend logic</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Define the Python class that handles execution. This will be sent to the backend.
               </p>

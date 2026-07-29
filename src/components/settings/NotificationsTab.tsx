@@ -80,7 +80,7 @@ export default function NotificationsTab() {
         <div className="text-center py-12 border border-dashed border-border/60 rounded-xl bg-card/30">
           <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-50" />
           <p className="text-muted-foreground font-medium">No notifications yet</p>
-          <p className="text-xs text-muted-foreground/70 mt-1">You're all caught up!</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">Nothing new</p>
         </div>
       ) : (
         <div className="space-y-3">

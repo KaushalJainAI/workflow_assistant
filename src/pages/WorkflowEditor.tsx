@@ -1209,7 +1209,7 @@ export default function WorkflowEditor() {
               style={{ width: '320px' }}
             />
 
-            <div className="mt-0.5 flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <div className="mt-0.5 flex items-center gap-2 text-[11px]  text-muted-foreground">
               <span>{isDirty ? 'Unsaved changes' : 'Saved'}</span>
               <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
               <span>{isAutoSaving ? 'Saving…' : 'Synced'}</span>
@@ -1288,7 +1288,7 @@ export default function WorkflowEditor() {
                 onClick={() => {
                   setValidationPanelOpen(!validationPanelOpen);
                 }}
-                className={`cursor-pointer px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border transition
+                className={`cursor-pointer px-3 py-1 rounded-full text-[10px] font-bold  border transition
                   ${
                     validationErrors.length > 0
                       ? 'bg-destructive/10 text-destructive border-destructive/20'
@@ -1574,7 +1574,7 @@ export default function WorkflowEditor() {
                 <div className="p-2 bg-muted/80 rounded-lg">
                   <Rocket className="w-5 h-5 text-primary" />
                 </div>
-                <h2 className="text-xl font-semibold">Deploy Workflow</h2>
+                <h2 className="text-xl font-semibold">Deploy workflow</h2>
               </div>
               <button onClick={() => setShowDeployModal(false)} className="p-1 hover:bg-muted rounded">
                 <X className="w-5 h-5" />
@@ -1586,12 +1586,12 @@ export default function WorkflowEditor() {
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Deployment Successful!</h3>
+                <h3 className="text-lg font-semibold mb-2">Deployment successful!</h3>
                 <p className="text-muted-foreground mb-4">Your workflow is now live and ready to run.</p>
                 
                 {deployedWebhookUrl && (
                   <div className="mt-4 p-4 bg-muted rounded-lg border border-border text-left">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
+                    <label className="text-xs font-semibold text-muted-foreground  mb-2 block">
                       Webhook URL
                     </label>
                     <div className="flex items-center gap-2">
@@ -1632,7 +1632,7 @@ export default function WorkflowEditor() {
                 <div className="p-6">
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">Workflow Name</label>
+                      <label className="block text-sm font-medium mb-2">Workflow name</label>
                       <input 
                         type="text"
                         value={workflowName}
@@ -1645,7 +1645,7 @@ export default function WorkflowEditor() {
                       <p className="text-muted-foreground">{nodes.length} nodes configured</p>
                     </div>
                     <div className="p-4 bg-muted/50 rounded-lg">
-                      <p className="text-sm font-medium mb-2">Deployment Options</p>
+                      <p className="text-sm font-medium mb-2">Deployment options</p>
                       <div className="space-y-2">
                         <label className="flex items-center gap-2">
                           <input type="checkbox" defaultChecked className="rounded" />

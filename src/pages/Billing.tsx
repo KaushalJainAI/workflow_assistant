@@ -51,7 +51,7 @@ export default function Billing() {
   return (
     <div className="h-full flex flex-col p-6 overflow-y-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Billing & Plans</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Billing & plans</h1>
         <p className="text-muted-foreground mt-2">Manage your subscription and usage limits</p>
       </div>
 
@@ -62,7 +62,7 @@ export default function Billing() {
               <Zap className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Monthly Executions</p>
+              <p className="text-sm font-medium text-muted-foreground">Monthly executions</p>
               <h3 className="text-2xl font-bold">12,842 / 50,000</h3>
             </div>
           </div>
@@ -77,7 +77,7 @@ export default function Billing() {
               <Rocket className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Active Workflows</p>
+              <p className="text-sm font-medium text-muted-foreground">Active workflows</p>
               <h3 className="text-2xl font-bold">18 / ∞</h3>
             </div>
           </div>
@@ -92,7 +92,7 @@ export default function Billing() {
               <CreditCard className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Current Plan</p>
+              <p className="text-sm font-medium text-muted-foreground">Current plan</p>
               <h3 className="text-2xl font-bold">Pro</h3>
             </div>
           </div>
@@ -103,7 +103,7 @@ export default function Billing() {
       </div>
 
 
-      <h2 className="text-xl font-semibold mb-6">Available Plans</h2>
+      <h2 className="text-xl font-semibold mb-6">Available plans</h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl stagger-children">
         {plans.map((plan) => (
           <div 

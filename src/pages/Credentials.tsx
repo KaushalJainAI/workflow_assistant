@@ -148,7 +148,7 @@ export default function Credentials() {
             <h3 className="font-bold text-lg text-foreground mb-1 group-hover:text-primary transition-colors line-clamp-1">
               {credential.name}
             </h3>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{credential.credential_type_display}</p>
+            <p className="text-xs font-medium text-muted-foreground ">{credential.credential_type_display}</p>
           </div>
         </div>
         <div className="relative">
@@ -455,7 +455,7 @@ export default function Credentials() {
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
-            <h3 className="text-lg font-semibold mb-2">Delete Credential?</h3>
+            <h3 className="text-lg font-semibold mb-2">Delete credential?</h3>
             <p className="text-muted-foreground mb-4">
               This action cannot be undone. Workflows using this credential will stop working.
             </p>

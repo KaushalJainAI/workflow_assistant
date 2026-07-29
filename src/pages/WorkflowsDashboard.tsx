@@ -48,7 +48,7 @@ export default function WorkflowsDashboard() {
     try {
       setIsCreating(true);
       const newWorkflow = await workflowsService.create({
-        name: 'Untitled Workflow',
+        name: 'Untitled workflow',
         description: 'A new empty workflow',
         status: 'draft',
         nodes: [], // Explicitly empty
@@ -131,14 +131,14 @@ export default function WorkflowsDashboard() {
             ) : (
               <Plus className="w-4 h-4" />
             )}
-            {isCreating ? 'Creating...' : 'New Workflow'}
+            {isCreating ? 'Creating...' : 'New workflow'}
           </button>
         }
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
             {[
-              { value: '', label: 'All Status' },
+              { value: '', label: 'All status' },
               { value: 'active', label: 'Active' },
               { value: 'inactive', label: 'Inactive' },
               { value: 'draft', label: 'Draft' }
@@ -198,7 +198,7 @@ export default function WorkflowsDashboard() {
               ) : (
                 <Plus className="w-4 h-4" />
               )}
-              {isCreating ? 'Creating Workflow...' : 'Create Workflow'}
+              {isCreating ? 'Creating Workflow...' : 'Create workflow'}
             </button>
           </div>
         ) : (

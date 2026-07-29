@@ -199,11 +199,11 @@ export default function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium mb-4">General Settings</h3>
+              <h3 className="text-lg font-medium mb-4">General settings</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
-                    <p className="font-medium">Instance Name</p>
+                    <p className="font-medium">Instance name</p>
                     <p className="text-sm text-muted-foreground">Personalize your platform title</p>
                   </div>
                   <input 
@@ -280,7 +280,7 @@ export default function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium mb-4">Account Settings</h3>
+              <h3 className="text-lg font-medium mb-4">Account settings</h3>
               <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4">
                 <div 
                   onClick={handleAvatarClick}
@@ -316,7 +316,7 @@ export default function Settings() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">First Name</label>
+                    <label className="block text-sm font-medium mb-2">First name</label>
                     <input 
                       type="text" 
                       name="first_name"
@@ -326,7 +326,7 @@ export default function Settings() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Last Name</label>
+                    <label className="block text-sm font-medium mb-2">Last name</label>
                     <input 
                       type="text" 
                       name="last_name"
@@ -337,7 +337,7 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Email Address</label>
+                  <label className="block text-sm font-medium mb-2">Email address</label>
                   <input 
                     type="email" 
                     name="email"
@@ -407,11 +407,11 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <p className="font-medium mb-3 text-foreground/90">Accent Palette</p>
+                  <p className="font-medium mb-3 text-foreground/90">Accent palette</p>
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { id: 'blue' as const, label: 'Classic Blue', color: 'bg-blue-500' },
-                      { id: 'magenta' as const, label: 'Quantum Pink', color: 'bg-pink-500' },
+                      { id: 'blue' as const, label: 'Communication blue', color: 'bg-primary' },
+                      { id: 'magenta' as const, label: 'Agent violet', color: 'bg-agent' },
                     ].map(({ id, label, color }) => (
                       <button
                         key={id}
@@ -442,11 +442,11 @@ export default function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium mb-4">API Settings</h3>
+              <h3 className="text-lg font-medium mb-4">API settings</h3>
               <div className="space-y-4">
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="font-medium">API Key</p>
+                    <p className="font-medium">API key</p>
                     <button 
                       onClick={handleRegenerateKey}
                       className="text-sm text-primary hover:underline"
@@ -495,7 +495,7 @@ export default function Settings() {
         return (
           <div className="space-y-8 max-w-7xl">
             <div>
-              <h3 className="text-2xl font-bold tracking-tight">Billing & Plans</h3>
+              <h3 className="text-2xl font-bold tracking-tight">Billing & plans</h3>
               <p className="text-muted-foreground mt-1">Manage your subscription and usage limits</p>
             </div>
 
@@ -506,7 +506,7 @@ export default function Settings() {
                     <Zap className="w-5 h-5 text-blue-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Monthly Executions</p>
+                    <p className="text-sm font-medium text-muted-foreground">Monthly executions</p>
                     <h3 className="text-2xl font-bold">{user?.credits || 0} / 50,000</h3>
                   </div>
                 </div>
@@ -536,7 +536,7 @@ export default function Settings() {
                     <CreditCard className="w-5 h-5 text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Credits Remaining</p>
+                    <p className="text-sm font-medium text-muted-foreground">Credits remaining</p>
                     <h3 className="text-2xl font-bold">{user?.credits || 0}</h3>
                   </div>
                 </div>

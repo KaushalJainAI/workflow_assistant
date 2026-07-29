@@ -90,17 +90,17 @@ const WorkflowDetailView = ({ workflow, onClose }: { workflow: WorkflowMetric; o
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-           <p className="text-sm font-medium text-muted-foreground mb-1">Total Executions</p>
+           <p className="text-sm font-medium text-muted-foreground mb-1">Total executions</p>
            <h3 className="text-3xl font-bold">{workflow.executions.toLocaleString()}</h3>
         </div>
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-           <p className="text-sm font-medium text-muted-foreground mb-1">Success Rate</p>
+           <p className="text-sm font-medium text-muted-foreground mb-1">Success rate</p>
            <h3 className="text-3xl font-bold text-green-500">
              {((1 - (workflow.failures / workflow.executions)) * 100).toFixed(1)}%
            </h3>
         </div>
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-           <p className="text-sm font-medium text-muted-foreground mb-1">Total Time Saved</p>
+           <p className="text-sm font-medium text-muted-foreground mb-1">Total time saved</p>
            <h3 className="text-3xl font-bold text-blue-500">{workflow.timeSaved}</h3>
         </div>
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
@@ -111,7 +111,7 @@ const WorkflowDetailView = ({ workflow, onClose }: { workflow: WorkflowMetric; o
 
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col max-h-[400px]">
         <div className="p-4 border-b border-border bg-muted/30 shrink-0">
-          <h3 className="font-semibold">Recent Executions</h3>
+          <h3 className="font-semibold">Recent executions</h3>
         </div>
         <div className="overflow-y-auto">
           <table className="w-full text-sm text-left">
@@ -217,7 +217,7 @@ export default function InsightsDashboard() {
       {/* Header Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card/50 p-6 rounded-xl border border-border/60 backdrop-blur-sm">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">System Insights</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Insights</h2>
           <p className="text-muted-foreground">Detailed metrics on performance, costs, and system health</p>
         </div>
         
@@ -250,7 +250,7 @@ export default function InsightsDashboard() {
               Live
             </span>
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Total Executions</p>
+          <p className="text-sm font-medium text-muted-foreground">Total executions</p>
           <h3 className="text-2xl font-bold mt-1">{totalExecutions.toLocaleString()}</h3>
         </div>
 
@@ -264,7 +264,7 @@ export default function InsightsDashboard() {
               ROI
             </span>
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Hours Saved</p>
+          <p className="text-sm font-medium text-muted-foreground">Time saved</p>
           <h3 className="text-2xl font-bold mt-1">{estimatedTimeSaved}h</h3>
         </div>
 
@@ -286,7 +286,7 @@ export default function InsightsDashboard() {
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Success Rate</p>
+          <p className="text-sm font-medium text-muted-foreground">Success rate</p>
           <h3 className="text-2xl font-bold mt-1">{successRate.toFixed(1)}%</h3>
         </div>
       </div>
@@ -348,15 +348,15 @@ export default function InsightsDashboard() {
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-secondary/50 rounded-lg text-center border border-border/50">
                 <span className="text-2xl font-bold text-primary">{SYSTEM_HEALTH.cpu}%</span>
-                <p className="text-xs text-muted-foreground">CPU Usage</p>
+                <p className="text-xs text-muted-foreground">CPU usage</p>
               </div>
               <div className="p-3 bg-secondary/50 rounded-lg text-center border border-border/50">
                 <span className="text-2xl font-bold text-blue-500">{SYSTEM_HEALTH.activeStreams}</span>
-                <p className="text-xs text-muted-foreground">Active Streams</p>
+                <p className="text-xs text-muted-foreground">Running now</p>
               </div>
               <div className="col-span-2 space-y-2 mt-2">
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Usage Tier Limit</span>
+                  <span>Usage tier limit</span>
                   <span>{Math.min(100, (totalExecutions / 50000) * 100).toFixed(1)}%</span>
                 </div>
                 <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
@@ -371,7 +371,7 @@ export default function InsightsDashboard() {
                <AlertTriangle className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="font-semibold text-xs text-blue-900 dark:text-blue-100">Optimization Tip</h4>
+              <h4 className="font-semibold text-xs text-blue-900 dark:text-blue-100">Optimization tip</h4>
               <p className="text-[10px] text-blue-700 dark:text-blue-300 mt-1">
                 Based on your {totalExecutions} executions, moving to the Pro plan would save you $12/month in overage credits.
               </p>
@@ -383,7 +383,7 @@ export default function InsightsDashboard() {
       {/* Workflow Performance Table */}
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         <div className="p-6 border-b border-border flex flex-col md:flex-row justify-between items-center gap-4">
-          <h3 className="font-semibold text-lg">Granular Performance</h3>
+          <h3 className="font-semibold text-lg">Per-workflow breakdown</h3>
           <div className="flex items-center gap-2 w-full md:w-auto">
             <div className="relative flex-1 md:w-64">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -402,12 +402,12 @@ export default function InsightsDashboard() {
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
               <tr>
-                <th className="px-6 py-3">Workflow Name</th>
+                <th className="px-6 py-3">Workflow name</th>
                 <th className="px-6 py-3 text-right">Executions</th>
-                <th className="px-6 py-3 text-right">Failure Rate</th>
-                <th className="px-6 py-3 text-right">Avg Runtime</th>
-                <th className="px-6 py-3 text-right">Time Saved</th>
-                <th className="px-6 py-3 text-right">Last Run</th>
+                <th className="px-6 py-3 text-right">Failure rate</th>
+                <th className="px-6 py-3 text-right">Avg runtime</th>
+                <th className="px-6 py-3 text-right">Time saved</th>
+                <th className="px-6 py-3 text-right">Last run</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">

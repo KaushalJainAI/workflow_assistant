@@ -256,7 +256,7 @@ const Sidebar = () => {
                         try {
                             setIsCreating(true);
                             const newWorkflow = await workflowsService.create({
-                                name: 'Untitled Workflow',
+                                name: 'Untitled workflow',
                                 description: 'A new empty workflow',
                                 status: 'draft',
                                 nodes: [],
@@ -286,7 +286,7 @@ const Sidebar = () => {
                         "transition-all duration-300 overflow-hidden",
                         collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-2"
                     )}>
-                        {isCreating ? 'Creating...' : 'New Workflow'}
+                        {isCreating ? 'Creating...' : 'New workflow'}
                     </span>
                 </button>
             </div>

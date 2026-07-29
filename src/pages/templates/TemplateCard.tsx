@@ -33,7 +33,7 @@ export default function TemplateCard({ template, onUse }: TemplateCardProps) {
         </div>
         <div className="flex flex-col gap-1.5 items-end">
             {template.is_featured && (
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-primary/15 text-primary font-bold uppercase tracking-wider">
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-primary/15 text-primary font-bold ">
                      Featured
                 </span>
             )}
@@ -46,7 +46,7 @@ export default function TemplateCard({ template, onUse }: TemplateCardProps) {
                 {template.name}
               </h3>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">
+                <span className="text-[10px] font-medium text-muted-foreground ">
                     BY {template.author_name}
                 </span>
               </div>

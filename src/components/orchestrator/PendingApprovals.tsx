@@ -24,27 +24,31 @@ interface PendingApprovalsProps {
   onActionClick: (action: PendingAction) => void;
 }
 
+/* Colour carries agency here: blue means the ball is in your court. Approvals and
+   clarifications are both "your turn", so they read blue rather than as warnings —
+   amber would imply something is wrong, when the agent is simply waiting. Only a
+   genuine failure is red. */
 const actionConfig = {
   approval: {
     icon: ShieldQuestion,
-    color: 'text-orange-500',
-    bgColor: 'bg-orange-500/10',
-    borderColor: 'border-orange-500/30',
-    label: 'Approval Required',
+    color: 'text-primary',
+    bgColor: 'bg-primary-subtle',
+    borderColor: 'border-primary-line',
+    label: 'Needs your approval',
   },
   clarification: {
     icon: HelpCircle,
-    color: 'text-blue-500',
-    bgColor: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/30',
-    label: 'Clarification Needed',
+    color: 'text-primary',
+    bgColor: 'bg-primary-subtle',
+    borderColor: 'border-primary-line',
+    label: 'Needs an answer',
   },
   error: {
     icon: AlertTriangle,
-    color: 'text-red-500',
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/30',
-    label: 'Error Recovery',
+    color: 'text-destructive',
+    bgColor: 'bg-destructive-subtle',
+    borderColor: 'border-red-200',
+    label: 'Failed — needs a decision',
   },
 };
 
@@ -67,11 +71,11 @@ export default function PendingApprovals({ actions, onActionClick }: PendingAppr
   return (
     <div className="bg-card border rounded-xl p-4">
       <div className="flex items-center gap-2 mb-4">
-        <div className="p-2 bg-orange-500/10 rounded-lg">
-          <Clock className="w-5 h-5 text-orange-500" />
+        <div className="p-2 bg-primary-subtle rounded-lg">
+          <Clock className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h3 className="font-semibold">Pending Actions</h3>
+          <h3 className="font-semibold">Pending actions</h3>
           <p className="text-xs text-muted-foreground">
             {actions.length} action{actions.length !== 1 ? 's' : ''} awaiting your response
           </p>
@@ -83,7 +87,7 @@ export default function PendingApprovals({ actions, onActionClick }: PendingAppr
           <div className="text-center py-8 text-muted-foreground">
             <ShieldQuestion className="w-10 h-10 mx-auto mb-2 opacity-30" />
             <p className="text-sm">No pending actions</p>
-            <p className="text-xs">All workflows are running smoothly</p>
+            <p className="text-xs">Nothing needs your approval right now</p>
           </div>
         ) : (
           actions.map((action) => {

@@ -38,7 +38,7 @@ export function StylePresetCard({ preset, isActive, onClick }: StylePresetCardPr
         )} />
       </div>
       <span className={cn(
-        "text-[10px] font-bold uppercase tracking-widest",
+        "text-[10px] font-bold ",
         isActive ? "text-primary" : "text-muted-foreground"
       )}>
         {preset.name}

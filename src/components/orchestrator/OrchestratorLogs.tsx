@@ -53,7 +53,7 @@ export default function OrchestratorLogs({ logs, maxHeight = "300px" }: Orchestr
       >
         <div className="flex items-center gap-2">
           <Terminal className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Activity Logs</h3>
+          <h3 className="text-xs font-bold  text-muted-foreground">Activity logs</h3>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono font-medium border border-border/50">
             {logs.length} events
           </span>

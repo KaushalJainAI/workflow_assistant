@@ -91,7 +91,7 @@ export default function MCPServers() {
               {server.name}
             </h3>
             <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-muted rounded text-muted-foreground">
+                <span className="text-[10px] font-bold  px-1.5 py-0.5 bg-muted rounded text-muted-foreground">
                     {server.type}
                 </span>
                 {server.required_credential_types && server.required_credential_types.length > 0 && (
@@ -163,7 +163,7 @@ export default function MCPServers() {
         {server.setup_notes || 'No setup notes provided.'}
       </div>
 
-      <div className="mt-auto pt-4 border-t border-border/60 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+      <div className="mt-auto pt-4 border-t border-border/60 flex items-center justify-between text-[10px] font-bold  text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <div className={cn("w-1.5 h-1.5 rounded-full", server.enabled ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-muted-foreground/30")} />
           {server.enabled ? 'Active' : 'Disabled'}
@@ -281,7 +281,7 @@ export default function MCPServers() {
             <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-6 mx-auto">
                 <Trash2 className="w-8 h-8 text-destructive" />
             </div>
-            <h3 className="text-xl font-bold mb-3 text-center tracking-tight">Remove MCP Server?</h3>
+            <h3 className="text-xl font-bold mb-3 text-center tracking-tight">Remove MCP server?</h3>
             <p className="text-muted-foreground mb-8 text-center text-sm font-medium leading-relaxed">
               Are you sure you want to remove this server? This will immediately disconnect its tools and context from your agents.
             </p>

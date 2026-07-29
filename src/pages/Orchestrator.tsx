@@ -666,8 +666,8 @@ export default function Orchestrator() {
               <Brain className="w-6 h-6 text-purple-500" />
             </div>
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-foreground/90">Orchestrator</h1>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] opacity-60">Monitor • Think • Execute</p>
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Orchestrator</h1>
+              <p className="text-[13px] text-muted-foreground">What the agent is doing, and what it needs from you</p>
             </div>
           </div>
 
@@ -684,13 +684,13 @@ export default function Orchestrator() {
             ) : (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-lg text-xs font-bold">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                LIVE TRACKING
+                Live tracking
               </div>
             )}
 
             {/* WebSocket status badge - Restored */}
             <div className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-300 shadow-sm",
+              "flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold  transition-all duration-300 shadow-sm",
               wsConnected 
                 ? "bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/20 shadow-emerald-500/5" 
                 : "bg-amber-500/10 text-amber-500 ring-1 ring-amber-500/20 animate-pulse shadow-amber-500/5"
@@ -700,7 +700,7 @@ export default function Orchestrator() {
               ) : (
                 <AlertCircle className="w-3.5 h-3.5" />
               )}
-              <span className="hidden md:inline">{wsConnected ? 'Connected' : 'Connecting...'}</span>
+              <span className="hidden md:inline">{wsConnected ? 'Connected' : 'Connecting…'}</span>
               <span className="md:hidden">{wsConnected ? 'Live' : '...'}</span>
             </div>
 
@@ -717,7 +717,7 @@ export default function Orchestrator() {
                   {dynamicProviders.find(p => p.slug === globalProvider)?.icon || '🤖'}
                 </span>
                 <div className="text-left hidden sm:block leading-tight pr-1">
-                  <div className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter opacity-70">Model Config</div>
+                  <div className="text-[11px] text-muted-foreground font-semibold">Model config</div>
                   <div className="line-clamp-1 max-w-[160px] text-foreground font-bold leading-none mt-0.5">
                     {dynamicProviders.find(p => p.slug === globalProvider)?.models.find(m => m.value === globalModel)?.name || globalModel}
                   </div>
@@ -729,14 +729,14 @@ export default function Orchestrator() {
                 <div className="absolute right-0 mt-2 w-72 bg-card border border-border/80 rounded-xl shadow-2xl p-4 z-50 animate-in zoom-in-95 duration-200">
                   <div className="flex items-center gap-2 mb-4 text-primary">
                     <Settings className="w-4 h-4" />
-                    <h4 className="font-bold text-sm">Orchestrator Config</h4>
+                    <h4 className="font-bold text-sm">Orchestrator config</h4>
                   </div>
                   
                   <div className="space-y-4">
                     <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                       <div className="flex items-center gap-2 text-amber-600 mb-1">
                         <AlertCircle className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Transparency Note</span>
+                        <span className="text-[10px] font-bold ">Transparency note</span>
                       </div>
                       <p className="text-[11px] text-amber-700 leading-tight">
                         Changing the AI Orchestrator requires a <strong>verified credential</strong> for the selected provider. All AI planning and execution rely on these API keys.
@@ -744,7 +744,7 @@ export default function Orchestrator() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Provider</label>
+                      <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Provider</label>
                       <Select
                         value={llmProvider}
                         onChange={(val) => {
@@ -765,7 +765,7 @@ export default function Orchestrator() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Model</label>
+                      <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Model</label>
                       <Select
                         value={llmModel}
                         onChange={setLlmModel}
@@ -780,7 +780,7 @@ export default function Orchestrator() {
 
                     {llmProvider !== 'ollama' && (
                       <div>
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Credential</label>
+                        <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Credential</label>
                         <Select
                           value={llmCredential || ''}
                           onChange={setLlmCredential}
@@ -830,7 +830,7 @@ export default function Orchestrator() {
             <div className="w-24 h-24 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-8 ring-8 ring-amber-500/5">
               <AlertCircle className="w-12 h-12 text-amber-500" />
             </div>
-            <h2 className="text-3xl font-black mb-3">Setup Required</h2>
+            <h2 className="text-3xl font-semibold mb-3">Setup required</h2>
             <p className="text-muted-foreground text-lg mb-10 leading-relaxed">
               Access to the AI Orchestrator is restricted because your active provider (<strong>{dynamicProviders.find(p => p.slug === globalProvider)?.name || globalProvider}</strong>) lacks a verified API key. 
               <br /><br />
@@ -839,7 +839,7 @@ export default function Orchestrator() {
             <div className="flex flex-col gap-4">
               <button 
                 onClick={() => navigate('/credentials')}
-                className="w-full bg-primary text-primary-foreground font-black py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-primary/20 text-lg"
+                className="w-full bg-primary text-primary-foreground font-semibold py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-primary/20 text-lg"
               >
                 Configure Credentials
               </button>
@@ -868,13 +868,13 @@ export default function Orchestrator() {
                     <div className="p-2 bg-primary/10 rounded-lg">
                       <Activity className="w-5 h-5 text-primary" />
                     </div>
-                    <h2 className="text-xl font-bold">Execution Timeline</h2>
+                    <h2 className="text-xl font-bold">Execution timeline</h2>
                   </div>
                   <div className="flex items-center gap-2">
                     {activeExecutionId && liveSteps.some(s => s.type === 'thinking' || s.type === 'executing') && (
                       <button
                         onClick={handleTerminateExecution}
-                        className="flex items-center gap-1.5 px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded-full text-[10px] font-bold uppercase transition-all hover:bg-red-500 hover:text-white"
+                        className="flex items-center gap-1.5 px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded text-[11px] font-semibold uppercase transition-all hover:bg-red-500 hover:text-white"
                       >
                         <Square className="w-3 h-3 fill-current" />
                         Terminate
@@ -888,7 +888,7 @@ export default function Orchestrator() {
                           : "bg-blue-500/10 text-blue-500 border-blue-500/20"
                       )}>
                         <div className={cn("w-1 h-1 rounded-full", activeSupervisionLevel === 'full' ? "bg-purple-500" : "bg-blue-500")} />
-                        <span className="uppercase tracking-tighter">
+                        <span className="tracking-tight">
                           {activeSupervisionLevel === 'full' ? 'Full Supervision' : 'Error Only Mode'}
                         </span>
                       </div>
@@ -900,10 +900,10 @@ export default function Orchestrator() {
                           ? (execWsConnected ? "bg-primary animate-pulse" : "bg-orange-500 animate-pulse") 
                           : "bg-muted-foreground"
                       )} />
-                      <span className="text-[10px] text-primary font-black uppercase tracking-widest">
+                      <span className="text-[10px] text-primary font-semibold ">
                         {activeExecutionId 
                           ? (liveSteps.some(s => s.type === 'thinking' || s.type === 'executing') 
-                            ? (execWsConnected ? 'Live Stream' : 'Live Stream (Connecting...)') 
+                            ? (execWsConnected ? 'Live' : 'Connecting…') 
                             : 'Execution Trace')
                           : 'Ready'}
                       </span>
@@ -915,7 +915,7 @@ export default function Orchestrator() {
                   {liveSteps.length === 0 ? (
                     <div className="text-center py-20 bg-muted/20 rounded-2xl border border-dashed border-border/60">
                       <Brain className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-                      <h3 className="font-bold text-lg">Waiting for Activity</h3>
+                      <h3 className="font-bold text-lg">Nothing running</h3>
                       <p className="max-w-xs mx-auto text-sm text-muted-foreground mt-2">
                          Start a workflow to see real-time AI reasoning and execution steps in this segment.
                       </p>
@@ -975,7 +975,7 @@ export default function Orchestrator() {
               <div className="bg-card border border-border/60 rounded-2xl p-6 shadow-sm shrink-0">
                 <div className="flex items-center gap-3 mb-6">
                   <RefreshCw className="w-5 h-5 text-muted-foreground" />
-                  <h2 className="text-lg font-bold">Execution History</h2>
+                  <h2 className="text-lg font-bold">Execution history</h2>
                 </div>
 
                 {historySteps.length === 0 ? (

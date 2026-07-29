@@ -63,7 +63,7 @@ export default function WorkflowCard({ workflow, onPlay, onDuplicate, onDelete }
               {workflow.name}
             </h3>
             <div className={cn(
-              "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border mt-1.5 uppercase tracking-wide",
+              "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border mt-1.5 ",
               getStatusColor(workflow.status)
             )}>
               {getStatusIcon(workflow.status)}

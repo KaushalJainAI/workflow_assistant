@@ -78,7 +78,7 @@ export default function SaveCustomNodeModal({ isOpen, onClose, baseNode, onSave 
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col scale-100 animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-lg font-bold">Save as Custom Node</h2>
+          <h2 className="text-lg font-bold">Save as custom Node</h2>
           <button onClick={onClose} className="p-1 hover:bg-muted rounded transition-colors">
             <X className="w-5 h-5" />
           </button>

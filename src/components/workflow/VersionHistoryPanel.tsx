@@ -22,7 +22,7 @@ export default function VersionHistoryPanel({
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <History className="w-5 h-5 text-muted-foreground" />
-          <h3 className="font-semibold">Version History</h3>
+          <h3 className="font-semibold">Version history</h3>
         </div>
         <button onClick={onClose} className="p-1 hover:bg-muted rounded">
           <X className="w-4 h-4" />
@@ -54,7 +54,7 @@ export default function VersionHistoryPanel({
                     </p>
                   </div>
                   {index === 0 && (
-                     <span className="text-[10px] uppercase tracking-wider font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                     <span className="text-[10px]  font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
                        Latest
                      </span>
                   )}

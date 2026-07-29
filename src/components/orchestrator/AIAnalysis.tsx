@@ -46,7 +46,7 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
     if (supervisionLevel === 'none' || supervisionLevel === 'error_only') {
       return (
         <div className="p-4 bg-muted/20 border border-border/30 rounded-xl text-center">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-widest opacity-60">
+          <p className="text-xs text-muted-foreground font-medium  opacity-60">
             No Supervision Active for this Execution
           </p>
           <p className="text-[10px] text-muted-foreground/40 mt-1">
@@ -148,8 +148,8 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                   <Brain className="w-5 h-5 text-purple-400" />
                 </div>
                 <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-400 opacity-80">Final Synthesis</h4>
-                  <h3 className="text-sm font-bold text-purple-100">AI Narrative Review</h3>
+                  <h4 className="text-[10px] font-semibold  text-purple-400 opacity-80">Final synthesis</h4>
+                  <h3 className="text-sm font-bold text-purple-100">What the agent concluded</h3>
                 </div>
               </div>
                 <div className="prose prose-invert prose-sm max-w-none ai-chat-prose">
@@ -164,7 +164,7 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
       {/* Activity Logs (Unified Node Flow) */}
       {nodeGroups.length > 0 && (
         <div>
-          <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2 mb-4 px-1 opacity-70">
+          <h3 className="text-[10px] font-semibold  text-muted-foreground flex items-center gap-2 mb-4 px-1 opacity-70">
             <Activity className="w-3 h-3 text-blue-500" />
             Unified Execution Flow
           </h3>
@@ -245,18 +245,18 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                                 
                                 <div className="flex items-center gap-2">
                                   {activity.model_name && (
-                                    <span className="text-[9px] font-bold text-sky-400/60 bg-sky-400/5 px-1.5 py-0.5 rounded border border-sky-400/20 uppercase tracking-tighter">
+                                    <span className="text-[9px] font-bold text-sky-400/60 bg-sky-400/5 px-1.5 py-0.5 rounded border border-sky-400/20 tracking-tight">
                                       {activity.model_name}
                                     </span>
                                   )}
-                                  <span className="text-[9px] font-bold text-muted-foreground/30 uppercase tracking-tighter">
+                                  <span className="text-[9px] font-bold text-muted-foreground/30 tracking-tight">
                                     {activity.node_name || activity.node_id}
                                   </span>
                                   {activity.reasoning && (
                                      <button 
                                        onClick={() => toggleReasoning(activity.id)}
                                        className={cn(
-                                         "text-[9px] font-black uppercase tracking-wider transition-colors px-2 py-0.5 rounded-md",
+                                         "text-[9px] font-semibold  transition-colors px-2 py-0.5 rounded-md",
                                          isReasoningExpanded ? "bg-primary/20 text-primary" : "text-primary/40 hover:bg-primary/10 hover:text-primary"
                                        )}
                                      >
@@ -289,7 +289,7 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                                 <div className="mt-3 p-3 bg-black/40 rounded-lg border border-primary/10 animate-in fade-in slide-in-from-top-1 duration-300 shadow-inner">
                                    <div className="flex items-center gap-1.5 mb-2 text-primary/70">
                                       <Sparkles className="w-3 h-3" />
-                                      <span className="text-[9px] font-black uppercase tracking-widest">Logic Analysis</span>
+                                      <span className="text-[9px] font-semibold ">Logic analysis</span>
                                    </div>
                                    <div className="text-muted-foreground italic text-[12px] leading-relaxed border-l-2 border-primary/20 pl-4 ai-chat-prose">
                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -309,7 +309,7 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                           <button 
                             onClick={() => toggleData(group.nodeId + groupIdx)}
                             className={cn(
-                              "flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors mb-3",
+                              "flex items-center gap-2 text-[10px] font-semibold  transition-colors mb-3",
                               expandedData.has(group.nodeId + groupIdx) ? "text-emerald-400" : "text-emerald-400/50 hover:text-emerald-400"
                             )}
                           >
@@ -321,7 +321,7 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                           {expandedData.has(group.nodeId + groupIdx) && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-1 duration-300">
                               <div className="space-y-1.5">
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/40 ml-1">Input</span>
+                                <span className="text-[9px] font-bold  text-muted-foreground/40 ml-1">Input</span>
                                 <div className="bg-black/60 rounded-lg p-3 border border-border/10 max-h-[200px] overflow-auto custom-scrollbar">
                                   <pre className="text-[10px] font-mono text-blue-400/70 leading-tight">
                                     {JSON.stringify(nodeLog.input_data, null, 2)}
@@ -329,7 +329,7 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ narrative, activities, nodeLogs
                                 </div>
                               </div>
                               <div className="space-y-1.5">
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-500/40 ml-1">Output</span>
+                                <span className="text-[9px] font-bold  text-emerald-500/40 ml-1">Output</span>
                                 <div className="bg-black/60 rounded-lg p-3 border border-emerald-500/10 max-h-[200px] overflow-auto custom-scrollbar">
                                   <pre className="text-[10px] font-mono text-emerald-400/70 leading-tight">
                                     {JSON.stringify(nodeLog.output_data, null, 2)}

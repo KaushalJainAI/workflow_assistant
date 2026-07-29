@@ -42,7 +42,7 @@ export default function ClarificationModal({
               <div className="p-2 bg-blue-500/10 rounded-lg">
                 <HelpCircle className="w-6 h-6 text-blue-500" />
               </div>
-              <h2 className="text-xl font-bold">Clarification Needed</h2>
+              <h2 className="text-xl font-bold">Clarification needed</h2>
             </div>
             <button onClick={onClose} className="p-1 hover:bg-muted rounded-full">
               <X className="w-5 h-5 text-muted-foreground" />

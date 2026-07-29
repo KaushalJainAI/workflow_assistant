@@ -205,7 +205,7 @@ export default function MCPServerModal({
               <h2 className="text-xl font-bold tracking-tight">
                 {initialData ? 'Edit MCP Server' : 'Register MCP Server'}
               </h2>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mt-0.5">
+              <p className="text-xs text-muted-foreground font-medium  mt-0.5">
                 Model Context Protocol Configuration
               </p>
             </div>
@@ -232,7 +232,7 @@ export default function MCPServerModal({
             <div className="space-y-6">
               {/* Name */}
               <div>
-                <label className="block text-sm font-bold mb-2">Server Name</label>
+                <label className="block text-sm font-bold mb-2">Server name</label>
                 <input
                   type="text"
                   value={name}
@@ -244,7 +244,7 @@ export default function MCPServerModal({
 
               {/* Type Selection */}
               <div>
-                <label className="block text-sm font-bold mb-3">Connection Type</label>
+                <label className="block text-sm font-bold mb-3">Connection type</label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
@@ -291,7 +291,7 @@ export default function MCPServerModal({
                   <div>
                     <label className="block text-sm font-bold mb-2 flex items-center justify-between">
                       Arguments
-                      <span className="text-[10px] text-muted-foreground uppercase">JSON Array</span>
+                      <span className="text-[10px] text-muted-foreground uppercase">JSON array</span>
                     </label>
                     <textarea
                       value={args}
@@ -377,7 +377,7 @@ export default function MCPServerModal({
               <div>
                 <label className="block text-sm font-bold mb-2 flex items-center justify-between">
                   Environment Vars
-                  <span className="text-[10px] text-muted-foreground uppercase">JSON Object</span>
+                  <span className="text-[10px] text-muted-foreground uppercase">JSON object</span>
                 </label>
                 <textarea
                   value={env}
@@ -392,7 +392,7 @@ export default function MCPServerModal({
                 <div>
                   <label className="block text-sm font-bold mb-2 flex items-center justify-between">
                     Credential Env Map
-                    <span className="text-[10px] text-muted-foreground uppercase font-medium">Map env → cred:field</span>
+                    <span className="text-[11px] text-muted-foreground font-medium">Map env → cred:field</span>
                   </label>
                   <textarea
                     value={credEnvMap}
@@ -406,7 +406,7 @@ export default function MCPServerModal({
                 <div>
                   <label className="block text-sm font-bold mb-2 flex items-center justify-between">
                     Header Map
-                    <span className="text-[10px] text-muted-foreground uppercase">Authorization, etc.</span>
+                    <span className="text-[11px] text-muted-foreground">Authorization, etc.</span>
                   </label>
                   <textarea
                     value={credHeaderMap}
@@ -422,7 +422,7 @@ export default function MCPServerModal({
 
           {/* Setup Notes */}
           <div>
-            <label className="block text-sm font-bold mb-2">Setup Notes</label>
+            <label className="block text-sm font-bold mb-2">Setup notes</label>
             <textarea
               value={setupNotes}
               onChange={(e) => setSetupNotes(e.target.value)}

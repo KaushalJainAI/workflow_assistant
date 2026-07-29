@@ -5,9 +5,9 @@ import { useNavigate } from 'react-router-dom';
 
 // Node definitions for search
 const nodeTypes = [
-  { id: 'manual_trigger', name: 'Manual Trigger', category: 'Triggers', icon: '🖱️' },
+  { id: 'manual_trigger', name: 'Manual trigger', category: 'Triggers', icon: '🖱️' },
   { id: 'webhook', name: 'Webhook', category: 'Triggers', icon: '🔗' },
-  { id: 'schedule', name: 'Schedule Trigger', category: 'Triggers', icon: '⏰' },
+  { id: 'schedule', name: 'Schedule trigger', category: 'Triggers', icon: '⏰' },
   { id: 'http_request', name: 'HTTP Request', category: 'Core', icon: '🌐' },
   { id: 'code', name: 'Code', category: 'Core', icon: '💻' },
   { id: 'set', name: 'Set', category: 'Core', icon: '📝' },
@@ -21,10 +21,10 @@ const nodeTypes = [
 ];
 
 const actions = [
-  { id: 'save', name: 'Save Workflow', shortcut: 'Ctrl+S', icon: Save },
-  { id: 'execute', name: 'Execute Workflow', shortcut: 'Ctrl+Enter', icon: Play },
-  { id: 'settings', name: 'Open Settings', shortcut: 'Ctrl+,', icon: Settings },
-  { id: 'new', name: 'New Workflow', shortcut: 'Ctrl+N', icon: Plus },
+  { id: 'save', name: 'Save workflow', shortcut: 'Ctrl+S', icon: Save },
+  { id: 'execute', name: 'Execute workflow', shortcut: 'Ctrl+Enter', icon: Play },
+  { id: 'settings', name: 'Open settings', shortcut: 'Ctrl+,', icon: Settings },
+  { id: 'new', name: 'New workflow', shortcut: 'Ctrl+N', icon: Plus },
 ];
 
 const navigation = [

@@ -131,7 +131,7 @@ export default function ExportPanel({
               <Share2 className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Export & Share</h2>
+              <h2 className="text-lg font-bold">Export & share</h2>
               <p className="text-sm text-muted-foreground">{workflowName}</p>
             </div>
           </div>
@@ -186,7 +186,7 @@ export default function ExportPanel({
                 <FileText className="w-5 h-5 text-purple-500" />
               </div>
               <div className="flex-1 text-left">
-                <div className="font-medium">Generate Documentation</div>
+                <div className="font-medium">Generate documentation</div>
                 <div className="text-xs text-muted-foreground">Create markdown documentation file</div>
               </div>
             </button>
@@ -205,7 +205,7 @@ export default function ExportPanel({
                   <Link2 className="w-5 h-5 text-orange-500" />
                 </div>
                 <div className="flex-1 text-left">
-                  <div className="font-medium">Create Share Link</div>
+                  <div className="font-medium">Create share link</div>
                   <div className="text-xs text-muted-foreground">Generate a read-only preview link</div>
                 </div>
               </button>

@@ -174,7 +174,7 @@ export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLo
       api: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
     };
     return (
-      <span className={cn("px-2 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider", colors[mode] || 'bg-muted text-muted-foreground border-border')}>
+      <span className={cn("px-2 py-0.5 rounded text-[10px] font-medium border ", colors[mode] || 'bg-muted text-muted-foreground border-border')}>
         {mode}
       </span>
     );
@@ -187,7 +187,7 @@ export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLo
         <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
           <Activity className="w-8 h-8 text-muted-foreground" />
         </div>
-        <h3 className="text-lg font-medium mb-1">No Executions Yet</h3>
+        <h3 className="text-lg font-medium mb-1">No executions yet</h3>
         <p className="text-muted-foreground max-w-sm">
           Save and run your workflow to see execution logs here.
         </p>
@@ -239,7 +239,7 @@ export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLo
       <div className="flex-1 overflow-auto">
         <table className="w-full border-collapse">
           <thead className="bg-muted/50 sticky top-0 z-10">
-            <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground font-semibold border-b border-border">
+            <tr className="text-left text-[11px]  text-muted-foreground font-semibold border-b border-border">
               <th className="px-4 py-2.5">Status</th>
               <th className="px-4 py-2.5">Execution ID</th>
               <th className="px-4 py-2.5">Mode</th>
@@ -263,7 +263,7 @@ export default function WorkflowExecutionLog({ workflowId }: WorkflowExecutionLo
                 <td colSpan={6} className="px-4 py-12 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Activity className="w-8 h-8 opacity-20" />
-                    <p className="text-sm">No executions discovered</p>
+                    <p className="text-sm">This workflow has not run yet</p>
                   </div>
                 </td>
               </tr>

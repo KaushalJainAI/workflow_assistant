@@ -33,6 +33,10 @@ import {
   Folder,
   Boxes,
   Square,
+  Mail,
+  FolderSearch,
+  LifeBuoy,
+  FileText,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -813,7 +817,7 @@ export default function StandaloneChat() {
           <div className="h-16 px-6 flex items-center justify-between border-b border-border/40 shrink-0">
             <div className="flex items-center gap-2">
               <History className="w-4 h-4 text-primary/70" />
-              <h2 className="font-bold text-xs uppercase tracking-widest">
+              <h2 className="font-bold text-xs ">
                 Conversations
               </h2>
             </div>
@@ -837,7 +841,7 @@ export default function StandaloneChat() {
               className="w-full h-11 flex items-center gap-3 px-4 rounded-xl bg-primary/10 hover:bg-primary/20 text-sm font-semibold transition"
             >
               <Plus className="w-4 h-4" />
-              New Conversation
+              New conversation
             </button>
           </div>
 
@@ -911,16 +915,16 @@ export default function StandaloneChat() {
                 <History className="w-5 h-5 group-hover:text-primary transition-colors" />
               </button>
             )}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-card/40 border border-border/40 rounded-xl">
-               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground/60">Quantum Core Online</span>
+            <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded border border-border bg-secondary">
+               <div className="w-1.5 h-1.5 rounded-full bg-success" />
+               <span className="text-[11px] font-semibold text-muted-foreground">Assistant online</span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl text-[10px] font-bold text-emerald-600 uppercase tracking-widest shadow-sm">
+             <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                 <Shield className="w-3.5 h-3.5" />
-                Encrypted Session
+                Encrypted
              </div>
           </div>
         </header>
@@ -1001,19 +1005,45 @@ export default function StandaloneChat() {
             isInitialState ? "flex flex-col items-center" : "space-y-12"
           )}>
             {isInitialState ? (
-              <div className="text-center space-y-6 md:space-y-8 mb-4 md:mb-16 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                <div className="relative group">
-                  <div className="absolute inset-0 bg-primary/20 rounded-[3rem] blur-2xl animate-pulse group-hover:bg-primary/30 transition-all" />
-                  <div className="relative w-20 h-20 md:w-28 md:h-28 bg-card border border-primary/20 rounded-[2rem] md:rounded-[3rem] flex items-center justify-center mx-auto shadow-2xl glass transition-transform group-hover:scale-110 duration-500 overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none" />
-                    <BrainCircuit className="w-9 h-9 md:w-12 md:h-12 text-primary relative z-10" />
-                  </div>
+              <div className="text-center space-y-6 mb-4 md:mb-12 animate-in fade-in duration-150">
+                <div className="w-12 h-12 bg-agent-subtle border border-agent-line rounded-lg flex items-center justify-center mx-auto">
+                  <BrainCircuit className="w-6 h-6 text-agent" />
                 </div>
-                <div className="space-y-3">
-                  <h1 className="text-2xl md:text-5xl font-black tracking-tight text-foreground/90 uppercase drop-shadow-sm">AIAAS Assistant</h1>
-                  <p className="text-muted-foreground font-medium text-base md:text-xl max-w-lg mx-auto leading-relaxed px-2">
-                    Deploying Quantum Intelligence for your most complex inquiries and creative tasks.
+                <div className="space-y-2">
+                  <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground">
+                    What should I take off your plate?
+                  </h1>
+                  <p className="text-muted-foreground text-base max-w-xl mx-auto leading-relaxed px-2">
+                    Describe the job in plain words. I'll build the workflow, run it,
+                    and check with you before anything leaves your account.
                   </p>
+                </div>
+                {/* Concrete starting points beat a blank box — each maps to a real
+                    capability (scheduling, connectors, documents, triage). A fixed
+                    grid keeps them from wrapping into a ragged pile. */}
+                <div className="grid sm:grid-cols-2 gap-2 max-w-2xl mx-auto pt-2 text-left">
+                  {[
+                    { icon: Mail, label: 'Email me a digest of overdue invoices',
+                      hint: 'Every Monday, 9am' },
+                    { icon: FolderSearch, label: 'Find files nobody has opened in 3 years',
+                      hint: 'Google Drive' },
+                    { icon: FileText, label: 'Pull the line items out of this invoice',
+                      hint: 'Upload a PDF' },
+                    { icon: LifeBuoy, label: 'Draft first replies to support tickets',
+                      hint: 'Needs your approval to send' },
+                  ].map(({ icon: Icon, label, hint }) => (
+                    <button
+                      key={label}
+                      onClick={() => setInput(label)}
+                      className="flex items-start gap-3 px-3 py-2.5 bg-card hover:bg-accent border border-border rounded transition-colors"
+                    >
+                      <Icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block text-[13px] text-foreground leading-snug">{label}</span>
+                        <span className="block text-[12px] text-muted-foreground mt-0.5">{hint}</span>
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
             ) : (
@@ -1068,11 +1098,11 @@ export default function StandaloneChat() {
                                     {message.content.match(/\*\*([^*]+)\*\*/)?.[1] || "Uploaded File"}
                                   </p>
                                   <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground/60 bg-background px-1.5 py-0.5 rounded">
+                                    <span className="text-[10px]  font-bold text-muted-foreground/60 bg-background px-1.5 py-0.5 rounded">
                                       {message.metadata?.file_type || 'File'}
                                     </span>
                                     {message.metadata?.has_extracted_text && (
-                                       <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                                       <span className="text-[10px]  font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
                                          Parsed
                                        </span>
                                     )}
@@ -1120,7 +1150,7 @@ export default function StandaloneChat() {
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             onClick={(e) => { if (!src?.url) e.preventDefault(); }}
-                                            className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 text-[11px] font-black rounded border border-primary/30 no-underline cursor-pointer transition-all bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground shadow-sm"
+                                            className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 text-[11px] font-semibold rounded border border-primary/30 no-underline cursor-pointer transition-all bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground shadow-sm"
                                           >
                                             {citNum}
                                           </a>
@@ -1129,7 +1159,7 @@ export default function StandaloneChat() {
                                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[280px] p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 invisible group-hover/cit:opacity-100 group-hover/cit:visible transition-all duration-200 z-50 flex flex-col gap-1.5 pointer-events-none">
                                               <div className="flex items-center gap-1.5 text-zinc-400">
                                                 <Globe2 className="w-3 h-3 shrink-0" />
-                                                <span className="text-[10px] uppercase font-bold tracking-wider truncate">
+                                                <span className="text-[10px] font-semibold truncate">
                                                   {(() => { try { return new URL(src.url).hostname; } catch { return 'Source'; } })()}
                                                 </span>
                                               </div>
@@ -1173,7 +1203,7 @@ export default function StandaloneChat() {
                                             <div className="w-3 h-3 rounded-full bg-amber-500/80" />
                                             <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
                                           </div>
-                                          <span className="text-[11px] font-black tracking-[0.2em] text-zinc-500 uppercase">{lang || 'CODE'}</span>
+                                          <span className="text-[11px] font-semibold text-zinc-500 uppercase">{lang || 'CODE'}</span>
                                         </div>
                                         <button
                                           onClick={() => {
@@ -1185,7 +1215,7 @@ export default function StandaloneChat() {
                                           title="Copy code"
                                         >
                                           <Copy className="w-3.5 h-3.5 group-hover/copybtn:scale-110 transition-transform" />
-                                          <span className="text-[11px] font-bold uppercase tracking-wider">Copy</span>
+                                          <span className="text-[11px] font-bold ">Copy</span>
                                         </button>
                                       </div>
                                       
@@ -1333,7 +1363,7 @@ export default function StandaloneChat() {
                         <div className="mt-2 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
                             <Zap className="w-3.5 h-3.5 text-amber-500/70" />
-                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-600/70">Agent Activity Log</span>
+                            <span className="text-[11px] font-semibold  text-amber-600/70">Agent activity log</span>
                             <div className="h-px flex-1 bg-amber-500/10" />
                           </div>
                           <div className="space-y-1">
@@ -1344,7 +1374,7 @@ export default function StandaloneChat() {
                                 style={{ animationDelay: `${i * 30}ms` }}
                               >
                                 <div className="flex items-center gap-3.5 text-[14px] text-muted-foreground">
-                                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10 text-[10px] font-black text-amber-600 shrink-0 border border-amber-500/10">
+                                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10 text-[10px] font-semibold text-amber-600 shrink-0 border border-amber-500/10">
                                     {trace.iteration || i + 1}
                                   </span>
                                   <span className="font-mono font-bold text-amber-600/80 text-[14px]">{trace.tool}</span>
@@ -1375,19 +1405,19 @@ export default function StandaloneChat() {
                         <div className="mt-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
                             <Code className="w-3.5 h-3.5 text-emerald-500/70" />
-                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-600/70">Secure Sandbox Code</span>
+                            <span className="text-[11px] font-semibold  text-emerald-600/70">Secure sandbox code</span>
                             <div className="h-px flex-1 bg-emerald-500/10" />
                           </div>
                           <div className="space-y-4">
                             {message.metadata.code_executions.map((exec: any, i: number) => (
                               <div key={i} className="space-y-2 border-b border-emerald-500/5 last:border-0 pb-4 last:pb-0">
                                 <div className="flex items-center gap-2">
-                                   <span className="text-[10px] font-black text-emerald-600/50">Execution #{exec.iteration || i+1}</span>
+                                   <span className="text-[10px] font-semibold text-emerald-600/50">Execution #{exec.iteration || i+1}</span>
                                    <div className="h-px flex-1 bg-emerald-500/5" />
                                 </div>
                                 <div className="rounded-xl overflow-hidden border border-emerald-500/10 bg-zinc-950 shadow-sm">
                                    <div className="px-3 py-1.5 bg-zinc-900/50 flex items-center justify-between border-b border-white/5">
-                                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Input Code</span>
+                                      <span className="text-[9px] font-bold text-zinc-500 ">Input code</span>
                                    </div>
                                    <pre className="p-4 text-[13px] overflow-x-auto text-zinc-300 font-mono leading-relaxed bg-zinc-950">
                                       <code>{exec.code}</code>
@@ -1396,7 +1426,7 @@ export default function StandaloneChat() {
                                 {(exec.output || exec.result) && (
                                    <div className="rounded-xl overflow-hidden border border-blue-500/10 bg-zinc-950/50 shadow-sm">
                                       <div className="px-3 py-1.5 bg-zinc-900/50 flex items-center justify-between border-b border-white/5">
-                                         <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Execution Output</span>
+                                         <span className="text-[9px] font-bold text-zinc-500 ">Execution output</span>
                                       </div>
                                       <pre className="p-4 text-[12px] overflow-x-auto text-blue-400/90 font-mono leading-relaxed whitespace-pre-wrap bg-zinc-950/20">
                                          <code>{exec.output || exec.result}</code>
@@ -1511,7 +1541,7 @@ export default function StandaloneChat() {
                             </div>
                             <div>
                               <h3 className="font-bold text-foreground leading-tight">{message.metadata.workflow_name}</h3>
-                              <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold mt-0.5">Workflow Suggestion</p>
+                              <p className="text-xs text-muted-foreground  font-bold mt-0.5">Workflow suggestion</p>
                             </div>
                           </div>
                           <div className="flex gap-3 mt-5">
@@ -1605,7 +1635,7 @@ export default function StandaloneChat() {
                         <Loader2 className="w-5 h-5 text-primary animate-spin" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="text-sm font-bold animate-pulse text-foreground/80">Uploading File...</h4>
+                        <h4 className="text-sm font-bold animate-pulse text-foreground/80">Uploading file...</h4>
                         <p className="text-xs text-muted-foreground font-medium mt-0.5">Processing document contents</p>
                       </div>
                     </div>
@@ -1644,10 +1674,10 @@ export default function StandaloneChat() {
                       {liveThinking && (
                         <button
                           onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
-                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-all text-[10px] font-black uppercase tracking-wider text-primary/60"
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-all text-[10px] font-semibold  text-primary/60"
                         >
                           <BrainCircuit className="w-3 h-3" />
-                          {isReasoningExpanded ? 'Hide Reasoning' : 'View Reasoning'}
+                          {isReasoningExpanded ? 'Hide reasoning' : 'View reasoning'}
                           <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isReasoningExpanded && "rotate-180")} />
                         </button>
                       )}
@@ -1658,7 +1688,7 @@ export default function StandaloneChat() {
                       <div className="mt-2 p-4 rounded-2xl bg-muted/30 border border-border/40 animate-in fade-in slide-in-from-top-2 duration-300">
                         <div className="flex items-center gap-2 mb-3">
                           <Sparkles className="w-3.5 h-3.5 text-primary/60" />
-                          <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Internal Processing</span>
+                          <span className="text-[10px] font-semibold  text-muted-foreground/60">Internal processing</span>
                         </div>
                         <div className="prose prose-invert prose-sm max-w-none text-muted-foreground/80 italic font-medium leading-relaxed">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -1682,7 +1712,7 @@ export default function StandaloneChat() {
                       <div className="space-y-2 animate-in fade-in duration-300">
                         <div className="flex items-center gap-3 px-1 mb-2">
                           <BrainCircuit className="w-4 h-4 text-primary/60" />
-                          <span className="text-sm font-black uppercase tracking-[0.15em] text-muted-foreground/90">Agent Timeline</span>
+                          <span className="text-sm font-semibold  text-muted-foreground/90">Agent timeline</span>
                           <div className="h-px flex-1 bg-border/30" />
                         </div>
                         <div className="space-y-2">
@@ -1702,7 +1732,7 @@ export default function StandaloneChat() {
                                          <BrainCircuit className="w-3.5 h-3.5 text-primary/60" />
                                       </div>
                                     ) : (
-                                      <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/20 text-xs font-black text-amber-600 shrink-0 border border-amber-500/20 shadow-sm">
+                                      <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/20 text-xs font-semibold text-amber-600 shrink-0 border border-amber-500/20 shadow-sm">
                                          {activity.iteration || '?'}
                                       </span>
                                     )}
@@ -1710,7 +1740,7 @@ export default function StandaloneChat() {
                                     <div className="flex flex-col gap-1 min-w-0 flex-1">
                                       {isThought ? (
                                         <div className="flex items-center gap-2 pt-1">
-                                          <span className="text-[11px] font-black uppercase tracking-[0.1em] text-muted-foreground/50">Processing</span>
+                                          <span className="text-[11px] font-semibold  text-muted-foreground/50">Processing</span>
                                           <Loader2 className="w-2.5 h-2.5 animate-spin text-muted-foreground/20" />
                                         </div>
                                       ) : (
@@ -1761,7 +1791,7 @@ export default function StandaloneChat() {
                           className="flex items-center gap-3 px-1 mb-2 w-full group"
                         >
                           <Code className="w-4 h-4 text-emerald-500/60 group-hover:text-emerald-500 transition-colors" />
-                          <span className="text-sm font-black uppercase tracking-[0.15em] text-muted-foreground/90">Code Sandbox</span>
+                          <span className="text-sm font-semibold  text-muted-foreground/90">Code sandbox</span>
                           <div className="h-px flex-1 bg-border/20" />
                           <ChevronDown className={cn("w-4 h-4 text-muted-foreground/40 transition-transform duration-300", isLiveCodeExpanded && "rotate-180")} />
                         </button>
@@ -1773,7 +1803,7 @@ export default function StandaloneChat() {
                                 <div className="px-4 py-2 bg-emerald-500/10 flex items-center justify-between border-b border-emerald-500/10">
                                    <div className="flex items-center gap-2">
                                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                      <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Active Execution {i+1}</span>
+                                      <span className="text-[10px] font-semibold text-emerald-600 ">Active Execution {i+1}</span>
                                    </div>
                                 </div>
                                 <div className="p-4 space-y-3">
@@ -1784,7 +1814,7 @@ export default function StandaloneChat() {
                                      <div className="space-y-1.5">
                                         <div className="flex items-center gap-2 px-1">
                                            <div className="h-px flex-1 bg-blue-500/10" />
-                                           <span className="text-[9px] font-bold text-blue-500/60 uppercase">Console Output</span>
+                                           <span className="text-[9px] font-bold text-blue-500/60 uppercase">Console output</span>
                                            <div className="h-px flex-1 bg-blue-500/10" />
                                         </div>
                                         <pre className="text-[12px] text-blue-400/80 font-mono bg-zinc-950/30 p-3 rounded-lg overflow-x-auto border border-blue-500/5 whitespace-pre-wrap">
@@ -1814,8 +1844,8 @@ export default function StandaloneChat() {
                             )}
                           </div>
                           <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-700">
-                             <h4 className="text-sm font-black uppercase tracking-widest text-primary/60">
-                                {liveStatus.phase === 'visualizing' ? 'Developing Vision' : 'Composing Motion'}
+                             <h4 className="text-sm font-semibold  text-primary/60">
+                                {liveStatus.phase === 'visualizing' ? 'Developing vision' : 'Composing motion'}
                              </h4>
                              <p className="text-xs text-muted-foreground/60 font-medium italic">
                                 "{activeIntent === 'image' ? 'Infusing pixels with intelligence...' : 'Stitching frames through the latent space...'}"
@@ -1900,7 +1930,7 @@ export default function StandaloneChat() {
                            />
                          ))}
                          {(liveImages.length > 4 || liveVideos.length > 4) && (
-                           <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-black text-muted-foreground/30 uppercase tracking-widest text-center px-2">
+                           <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-semibold text-muted-foreground/30  text-center px-2">
                               +{liveImages.length + liveVideos.length - 8} more
                            </div>
                          )}
@@ -1927,17 +1957,17 @@ export default function StandaloneChat() {
                 <div className="flex-1 space-y-4 max-w-[92%] md:max-w-[85%]">
                   <div className="bg-card/60 p-6 rounded-3xl rounded-tl-none shadow-sm glass border border-amber-500/30 space-y-4">
                     <div className="space-y-1">
-                      <h3 className="text-lg font-black uppercase tracking-tight text-amber-600">Permission Required</h3>
+                      <h3 className="text-lg font-semibold tracking-tight text-amber-600">Permission required</h3>
                       <p className="text-muted-foreground text-sm font-medium">The agent wants to execute a sensitive operation:</p>
                     </div>
                     
                     <div className="bg-muted/30 p-4 rounded-2xl border border-border/40 font-mono text-[13px] space-y-2 overflow-hidden">
                       <div className="flex items-center gap-2">
-                        <span className="text-amber-600 font-black tracking-widest uppercase text-[10px]">Tool:</span>
+                        <span className="text-amber-600 font-semibold  text-[10px]">Tool:</span>
                         <span className="font-bold text-foreground">{pendingToolCall.tool}</span>
                       </div>
                       <div className="space-y-1">
-                        <span className="text-amber-600 font-black tracking-widest uppercase text-[10px]">Arguments:</span>
+                        <span className="text-amber-600 font-semibold  text-[10px]">Arguments:</span>
                         {pendingToolCall.tool === 'execute_shell' && typeof pendingToolCall.args?.command === 'string' && /[;&|>]/.test(pendingToolCall.args.command) ? (
                           <>
                             <div className="text-[10px] text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded my-1 border border-red-500/20">
@@ -1958,14 +1988,14 @@ export default function StandaloneChat() {
                     <div className="flex gap-3">
                       <button
                         onClick={() => handleApproveTool(pendingToolCall.call_id)}
-                        className="flex-1 h-11 bg-primary text-primary-foreground font-black rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
+                        className="flex-1 h-11 bg-primary text-primary-foreground font-semibold rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
                       >
                         <Check className="w-4 h-4" />
                         Approve
                       </button>
                       <button
                         onClick={() => setPendingToolCall(null)}
-                        className="flex-1 h-11 bg-muted text-muted-foreground font-black rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
+                        className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
                       >
                         <X className="w-4 h-4" />
                         Deny
@@ -2006,7 +2036,7 @@ export default function StandaloneChat() {
                     >
                       <div className="flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-amber-500/50" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground/60">Continue Exploring</span>
+                        <span className="text-[10px] font-semibold  text-muted-foreground/60">Continue exploring</span>
                       </div>
                       <ChevronDown className={cn(
                         "w-4 h-4 text-muted-foreground/50 transition-transform duration-300",
@@ -2045,7 +2075,7 @@ export default function StandaloneChat() {
                    <div className="flex animate-in fade-in slide-in-from-bottom-2 duration-300 absolute bottom-full mb-3 left-4">
                      <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl group backdrop-blur-md">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 shrink-0">Reference</span>
+                          <span className="text-[10px] font-semibold  text-emerald-600 shrink-0">Reference</span>
                           <div className="w-px h-3 bg-emerald-500/30 shrink-0" />
                           <span className="text-xs font-medium text-emerald-700/80 truncate max-w-[300px] italic">"{activeReference.textSnippet}"</span>
                         </div>
@@ -2113,7 +2143,7 @@ export default function StandaloneChat() {
                             key={tool.key}
                             onClick={() => toggleIntent(tool.key)}
                             className={cn(
-                              "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border shrink-0",
+                              "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[10px] font-bold  transition-all border shrink-0",
                               activeIntent === tool.key
                                 ? tool.color === 'blue' ? 'bg-blue-500/15 border-blue-500/40 text-blue-500'
                                 : tool.color === 'purple' ? 'bg-purple-500/15 border-purple-500/40 text-purple-500'
@@ -2138,7 +2168,7 @@ export default function StandaloneChat() {
                         <button 
                           onClick={() => setShowModelDropdown(!showModelDropdown)}
                           className={cn(
-                            "flex items-center gap-2 h-8 px-3 rounded-lg transition-all text-[10px] font-bold uppercase tracking-wider border",
+                            "flex items-center gap-2 h-8 px-3 rounded-lg transition-all text-[10px] font-bold  border",
                             showModelDropdown 
                               ? "bg-primary/10 border-primary/30 text-primary"
                               : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
@@ -2148,7 +2178,7 @@ export default function StandaloneChat() {
                             {dynamicProviders.find(p => p.slug === llmProvider)?.icon || '🤖'}
                           </span>
                           <span className="hidden sm:inline max-w-[120px] truncate">
-                            {dynamicProviders.find(p => p.slug === llmProvider)?.models.find(m => m.value === llmModel)?.name || 'Select Model'}
+                            {dynamicProviders.find(p => p.slug === llmProvider)?.models.find(m => m.value === llmModel)?.name || 'Select model'}
                           </span>
                           <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", showModelDropdown && "rotate-180")} />
                         </button>
@@ -2162,7 +2192,7 @@ export default function StandaloneChat() {
                               
                               {/* Provider Grid */}
                               <div className="p-3 border-b border-border/30">
-                                <label className="text-[9px] font-black uppercase text-muted-foreground/50 tracking-widest mb-2 block px-1">AI Provider</label>
+                                <label className="text-[11px] font-semibold text-muted-foreground mb-2 block px-1">AI provider</label>
                                 <div className="grid grid-cols-4 gap-1.5">
                                   {dynamicProviders.map(p => (
                                     <button
@@ -2230,7 +2260,7 @@ export default function StandaloneChat() {
                                       <span className="truncate flex-1">{m.name}</span>
                                       {m.is_free && (
                                         <span className={cn(
-                                          "text-[7px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0",
+                                          "text-[7px] font-semibold  px-1.5 py-0.5 rounded shrink-0",
                                           llmModel === m.value
                                             ? "bg-primary-foreground/20 text-primary-foreground"
                                             : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"

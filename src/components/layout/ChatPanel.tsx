@@ -557,7 +557,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={(e) => { if (!src?.url) e.preventDefault(); }}
-                                    className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-black rounded border border-primary/30 no-underline cursor-pointer transition-all bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground shadow-sm"
+                                    className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-semibold rounded border border-primary/30 no-underline cursor-pointer transition-all bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground shadow-sm"
                                   >
                                     {citNum}
                                   </a>
@@ -565,7 +565,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[240px] p-2 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl opacity-0 invisible group-hover/cit:opacity-100 group-hover/cit:visible transition-all duration-200 z-50 flex flex-col gap-1 pointer-events-none">
                                       <div className="flex items-center gap-1.5 text-zinc-400">
                                         <Globe2 className="w-3 h-3 shrink-0" />
-                                        <span className="text-[9px] uppercase font-bold tracking-wider truncate">
+                                        <span className="text-[10px] font-semibold truncate">
                                           {(() => { try { return new URL(src.url).hostname; } catch { return 'Source'; } })()}
                                         </span>
                                       </div>
@@ -598,7 +598,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                         <div className="mt-4 space-y-2">
                           <div className="flex items-center gap-2 px-1">
                             <ImageIcon className="w-3.5 h-3.5 text-emerald-500/80" />
-                            <span className="text-xs font-black uppercase tracking-[0.1em] text-muted-foreground/90">Photos</span>
+                            <span className="text-xs font-semibold  text-muted-foreground/90">Photos</span>
                             <span className="text-xs font-bold text-muted-foreground/60">{imgs.length} found</span>
                             <div className="h-px flex-1 bg-border/40" />
                           </div>
@@ -657,7 +657,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                         <div className="mt-4 space-y-2">
                           <div className="flex items-center gap-2 px-1">
                             <Video className="w-3.5 h-3.5 text-purple-500/80" />
-                            <span className="text-xs font-black uppercase tracking-[0.1em] text-muted-foreground/90">Videos</span>
+                            <span className="text-xs font-semibold  text-muted-foreground/90">Videos</span>
                             <span className="text-xs font-bold text-muted-foreground/60">{vids.length} found</span>
                             <div className="h-px flex-1 bg-border/40" />
                           </div>
@@ -805,7 +805,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                 </div>
                 <div className="flex flex-col gap-2 pt-1.5 flex-1 min-w-0">
                    <div className="flex items-center justify-between gap-2">
-                     <span className="text-[11px] font-black uppercase tracking-widest text-muted-foreground truncate">
+                     <span className="text-[11px] font-semibold  text-muted-foreground truncate">
                        {buddyAction || thinkingStatus}
                      </span>
                      <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0">
@@ -861,7 +861,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
               <div className="flex animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl max-w-full group">
                    <div className="flex items-center gap-1.5 min-w-0">
-                     <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 shrink-0">Reference</span>
+                     <span className="text-[10px] font-semibold  text-emerald-600 shrink-0">Reference</span>
                      <div className="w-px h-3 bg-emerald-500/30 shrink-0" />
                      <span className="text-xs font-medium text-emerald-700/80 truncate italic">"{activeReference.textSnippet}"</span>
                    </div>
@@ -896,7 +896,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                     <div className="absolute bottom-full left-0 mb-2 w-48 bg-card border border-border rounded-xl shadow-2xl p-2 z-50 animate-in slide-in-from-bottom-2 duration-200">
                       <button className="w-full flex items-center gap-3 p-2.5 hover:bg-muted rounded-lg text-xs font-semibold text-foreground/80 hover:text-primary transition-all">
                         <ImageIcon className="w-4 h-4" />
-                        Upload Image
+                        Upload image
                       </button>
                       <button className="w-full flex items-center gap-3 p-2.5 hover:bg-muted rounded-lg text-xs font-semibold text-foreground/80 hover:text-primary transition-all">
                         <FileIcon className="w-4 h-4" />
@@ -904,7 +904,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                       </button>
                       <button className="w-full flex items-center gap-3 p-2.5 hover:bg-muted rounded-lg text-xs font-semibold text-foreground/80 hover:text-primary transition-all">
                         <Camera className="w-4 h-4" />
-                        Take Screenshot
+                        Take screenshot
                       </button>
                     </div>
                   )}
@@ -959,7 +959,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                       </span>
                     </div>
                     <div className="flex flex-col items-start leading-[1.1] min-w-0">
-                      <span className="text-[9px] font-bold uppercase text-muted-foreground tracking-wider">Model</span>
+                      <span className="text-[11px] font-semibold text-muted-foreground">Model</span>
                       <span className="text-xs font-bold text-foreground truncate block max-w-[140px]">
                         {dynamicProviders.find(p => p.slug === llmProvider)?.models.find(m => m.value === llmModel)?.name || llmModel}
                       </span>
@@ -975,7 +975,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                     <div className="absolute bottom-[110%] left-0 w-[280px] bg-card border border-border rounded-xl shadow-xl z-[60] p-3 animate-in slide-in-from-bottom-2 duration-200">
                         <div className="space-y-4">
                           <div>
-                              <label className="text-[10px] font-bold uppercase text-muted-foreground mb-2 block px-1">AI Provider</label>
+                              <label className="text-[11px] font-semibold text-muted-foreground mb-2 block px-1">AI provider</label>
                               <div className="grid grid-cols-3 gap-2">
                                 {dynamicProviders.map(p => (
                                   <button
@@ -998,7 +998,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                               </div>
                           </div>
                           <div>
-                              <label className="text-[10px] font-bold uppercase text-muted-foreground mb-2 block px-1">Select Model</label>
+                              <label className="text-[11px] font-semibold text-muted-foreground mb-2 block px-1">Select model</label>
                               <div className="px-1 mb-2">
                                 <input
                                   type="text"
@@ -1077,7 +1077,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
         )}
       >
         <div className="p-4 border-b border-border flex justify-between items-center bg-card shrink-0">
-           <span className="font-semibold text-sm">Past Conversations</span>
+           <span className="font-semibold text-sm">Past conversations</span>
            <button 
              onClick={() => setShowHistory(false)} 
              className="p-1 hover:bg-muted rounded transition-colors"
@@ -1095,7 +1095,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            New Chat
+            New chat
           </button>
         </div>
         <div className="flex-1 overflow-auto bg-card custom-scrollbar">

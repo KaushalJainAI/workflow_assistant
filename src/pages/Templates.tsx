@@ -59,7 +59,7 @@ export default function TemplatesPage() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                     <div>
                         <h1 className="text-3xl font-bold text-foreground mb-1">
-                            Template Library
+                            Templates
                         </h1>
                         <p className="text-muted-foreground">
                             Explore and deploy pre-built workflows for your automation needs

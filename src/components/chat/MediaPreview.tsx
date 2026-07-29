@@ -105,7 +105,7 @@ export function MediaPreview({ url, type, title, source, thumbnail, className, c
           {detectedType === 'pdf' && !thumbnail && (
             <div className="w-full h-full flex flex-col items-center justify-center bg-red-500/5">
               <FileText className="w-10 h-10 text-red-500/20 group-hover:text-red-500/40 transition-colors" />
-              <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[8px] font-black text-red-600 uppercase tracking-widest">
+              <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[8px] font-semibold text-red-600 ">
                 PDF
               </div>
             </div>
@@ -147,7 +147,7 @@ export function MediaPreview({ url, type, title, source, thumbnail, className, c
         <div className="space-y-0.5">
           <div className="flex items-center justify-between gap-1.5">
             <span className={cn(
-               "text-[9px] font-black uppercase tracking-wider text-muted-foreground/30",
+               "text-[9px] font-semibold  text-muted-foreground/30",
                detectedType === 'image' && "group-hover:text-emerald-500",
                detectedType === 'video' && "group-hover:text-purple-500",
                detectedType === 'pdf' && "group-hover:text-red-500",

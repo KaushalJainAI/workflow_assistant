@@ -85,7 +85,7 @@ export default function ExecutionDetailModal({
             <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 {getStatusBadge(execution.status)}
-                <h2 className="text-base font-semibold truncate max-w-md">Execution Details</h2>
+                <h2 className="text-base font-semibold truncate max-w-md">Execution details</h2>
                 <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border">
                    {execution.execution_id}
                 </span>
@@ -110,19 +110,19 @@ export default function ExecutionDetailModal({
             
             <div className="p-4 bg-muted/20 border-b border-border grid grid-cols-4 gap-4 text-xs">
               <div>
-                <p className="text-muted-foreground mb-1 uppercase tracking-tighter font-semibold">Trigger</p>
-                <p className="font-medium uppercase tracking-wider text-[10px]">{execution.trigger_type}</p>
+                <p className="text-muted-foreground mb-1 tracking-tight font-semibold">Trigger</p>
+                <p className="font-medium  text-[10px]">{execution.trigger_type}</p>
               </div>
               <div>
-                <p className="text-muted-foreground mb-1 uppercase tracking-tighter font-semibold">Started</p>
+                <p className="text-muted-foreground mb-1 tracking-tight font-semibold">Started</p>
                 <p className="font-medium">{new Date(execution.created_at).toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-muted-foreground mb-1 uppercase tracking-tighter font-semibold">Finished</p>
+                <p className="text-muted-foreground mb-1 tracking-tight font-semibold">Finished</p>
                 <p className="font-medium">{execution.completed_at ? new Date(execution.completed_at).toLocaleString() : '—'}</p>
               </div>
               <div>
-                <p className="text-muted-foreground mb-1 uppercase tracking-tighter font-semibold">Duration</p>
+                <p className="text-muted-foreground mb-1 tracking-tight font-semibold">Duration</p>
                 <p className="font-medium font-mono">{execution.duration_ms ? `${(execution.duration_ms / 1000).toFixed(2)}s` : 'Unknown'}</p>
               </div>
             </div>

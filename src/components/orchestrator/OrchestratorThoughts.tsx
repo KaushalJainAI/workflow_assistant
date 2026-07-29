@@ -64,10 +64,10 @@ export default function OrchestratorThoughts({ thoughts, isThinking, thinkingMes
             <Sparkles className="w-5 h-5 text-primary animate-pulse" />
           </div>
           <div>
-            <h3 className="font-bold text-sm tracking-tight">AI Thought Process</h3>
+            <h3 className="font-bold text-sm tracking-tight">Agent reasoning</h3>
             <div className="flex items-center gap-2">
               <div className={cn("w-1.5 h-1.5 rounded-full", isThinking ? "bg-emerald-500 animate-ping" : "bg-muted-foreground/30")} />
-              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+              <p className="text-[10px] text-muted-foreground font-semibold ">
                 {isThinking ? 'Processing Intelligence' : 'Awaiting Input'}
               </p>
             </div>
@@ -90,7 +90,7 @@ export default function OrchestratorThoughts({ thoughts, isThinking, thinkingMes
           <div className="flex items-start gap-3 p-3 bg-primary/5 border border-primary/10 rounded-lg animate-in fade-in slide-in-from-top-1 duration-300">
             <Loader2 className="w-4 h-4 text-primary animate-spin mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-xs font-bold text-primary uppercase tracking-tighter mb-1">Active Reasoning</p>
+              <p className="text-xs font-bold text-primary tracking-tight mb-1">Thinking now</p>
               <p className="text-sm font-medium italic text-foreground/80">{thinkingMessage}</p>
             </div>
           </div>
@@ -126,7 +126,7 @@ export default function OrchestratorThoughts({ thoughts, isThinking, thinkingMes
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <span className={cn("text-[10px] font-black uppercase tracking-tight", config.color)}>
+                      <span className={cn("text-[10px] font-semibold tracking-tight", config.color)}>
                         {config.label}
                       </span>
                       {thought.nodeId && (
@@ -149,7 +149,7 @@ export default function OrchestratorThoughts({ thoughts, isThinking, thinkingMes
         {thoughts.length > 1 && !isExpanded && (
           <button 
             onClick={() => setIsExpanded(true)}
-            className="w-full py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-primary transition-colors flex items-center justify-center gap-1 bg-muted/20 rounded-md border border-dashed border-border/60"
+            className="w-full py-1 text-[10px] font-bold text-muted-foreground  hover:text-primary transition-colors flex items-center justify-center gap-1 bg-muted/20 rounded-md border border-dashed border-border/60"
           >
             <ChevronDown className="w-3 h-3" />
             View {thoughts.length - 1} more thoughts

@@ -218,14 +218,14 @@ export default function OrchestratorTimeline({ steps, currentStepId }: Orchestra
                            "w-1.5 h-1.5 rounded-full",
                            step.type === 'completed' ? "bg-green-500" : (step.type === 'error' ? "bg-red-500" : "bg-blue-500")
                          )} />
-                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                         <span className="text-[10px] font-bold  text-muted-foreground">
                            Status: {step.type}
                          </span>
                       </div>
                       {step.duration && (
                         <div className="flex items-center gap-1.5 px-2 py-1 bg-muted rounded-md border border-border/40">
                            <Clock className="w-3 h-3 text-muted-foreground" />
-                           <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                           <span className="text-[10px] font-bold  text-muted-foreground">
                              {formatDuration(step.duration)}
                            </span>
                         </div>
@@ -252,7 +252,7 @@ export default function OrchestratorTimeline({ steps, currentStepId }: Orchestra
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                              <Brain className="w-3.5 h-3.5 text-primary" />
-                             <span className="text-[10px] font-black uppercase tracking-widest text-primary">
+                             <span className="text-[10px] font-semibold  text-primary">
                                Cognitive Analysis
                              </span>
                           </div>
@@ -287,7 +287,7 @@ export default function OrchestratorTimeline({ steps, currentStepId }: Orchestra
                           <div className="mt-3 pt-3 border-t border-primary/10 animate-in fade-in slide-in-from-top-1 duration-300">
                              <div className="flex items-center gap-1.5 mb-2 text-primary/70">
                                <Sparkles className="w-3 h-3" />
-                               <span className="text-[9px] font-bold uppercase tracking-wider">Internal Technical Reasoning</span>
+                               <span className="text-[9px] font-bold ">Internal technical reasoning</span>
                              </div>
                              <div className="text-[12px] leading-snug text-foreground/70 bg-black/20 p-3 rounded-lg border border-primary/5 ai-chat-prose">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -305,10 +305,10 @@ export default function OrchestratorTimeline({ steps, currentStepId }: Orchestra
                         {step.input && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                              <span className="text-[10px] font-bold  text-muted-foreground">
                                 Node Input
                               </span>
-                              <div className="text-[9px] text-muted-foreground/60">JSON Schema</div>
+                              <div className="text-[9px] text-muted-foreground/60">JSON schema</div>
                             </div>
                             <pre className="text-[11px] p-4 rounded-xl bg-muted/30 border border-border/40 overflow-x-auto font-mono scrollbar-thin max-h-[300px]">
                               {JSON.stringify(step.input, null, 2)}
@@ -318,10 +318,10 @@ export default function OrchestratorTimeline({ steps, currentStepId }: Orchestra
                         {step.output && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between px-1">
-                               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                               <span className="text-[10px] font-bold  text-emerald-600 dark:text-emerald-400">
                                 Node Output
                               </span>
-                              <div className="text-[9px] text-emerald-600/60">Produced Result</div>
+                              <div className="text-[9px] text-emerald-600/60">Produced result</div>
                             </div>
                             <pre className="text-[11px] p-4 rounded-xl bg-emerald-500/[0.03] border border-emerald-500/10 overflow-x-auto font-mono text-emerald-700 dark:text-emerald-400 scrollbar-thin max-h-[300px]">
                               {JSON.stringify(step.output, null, 2)}

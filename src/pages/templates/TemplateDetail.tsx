@@ -109,22 +109,22 @@ export default function TemplateDetail() {
       return (
           <div className="flex flex-col items-center justify-center h-full bg-background gap-4">
               <Loader2 className="w-10 h-10 animate-spin text-primary/50" />
-              <p className="text-muted-foreground text-sm font-medium animate-pulse font-mono">INITIALIZING_ASTRA_CORE...</p>
+              <p className="text-muted-foreground text-sm font-medium ">Loading template…</p>
           </div>
       )
   }
 
-  if (!template) return <div className="h-full bg-background flex items-center justify-center text-muted-foreground font-mono">ERR_TEMPLATE_NOT_FOUND</div>;
+  if (!template) return <div className="h-full bg-background flex items-center justify-center text-muted-foreground font-mono">That template no longer exists</div>;
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-500 overflow-hidden">
       {/* System Header - Simplified */}
       <header className="border-b border-border/40 bg-card/50 backdrop-blur-md px-6 py-4 flex items-center justify-between z-20 shadow-sm">
         <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mb-1">
-                <Link to="/templates" className="hover:text-primary transition-colors">TEMPLATES</Link>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                <Link to="/templates" className="hover:text-primary transition-colors">Templates</Link>
                 <ChevronRight className="w-3 h-3" />
-                <span className="uppercase text-foreground font-semibold tracking-wider">{template.category}</span>
+                <span className="text-foreground font-semibold">{template.category}</span>
             </div>
             <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-3">
                 {template.name}
@@ -213,7 +213,7 @@ export default function TemplateDetail() {
                <div className="p-6 space-y-8">
                    {/* Description Panel - Moved to Top */}
                    <section className="space-y-3">
-                       <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                       <h3 className="text-xs font-bold font-mono  text-muted-foreground flex items-center gap-2">
                            <Layout className="w-4 h-4" /> Specification
                        </h3>
                        <div className="text-sm leading-relaxed text-muted-foreground bg-muted/30 p-4 rounded-lg border border-border/50">
@@ -224,25 +224,25 @@ export default function TemplateDetail() {
                    {/* Metrics Grid - Moved Below Description */}
                    <div className="grid grid-cols-2 gap-3">
                         <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
-                            <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                            <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
                                 <Server className="w-3 h-3" /> Nodes
                             </div>
                             <div className="text-lg font-bold font-mono tracking-tight">{template.nodes?.length || 0}</div>
                         </div>
                         <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
-                             <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                             <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
                                 <Activity className="w-3 h-3 text-emerald-500" /> Uptime
                             </div>
                             <div className="text-lg font-bold font-mono tracking-tight text-emerald-500">{typeof template.success_rate === 'number' ? template.success_rate.toFixed(1) : '0'}%</div>
                         </div>
                         <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
-                             <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                             <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
                                 <Cpu className="w-3 h-3 text-blue-500" /> Run Time
                             </div>
                             <div className="text-lg font-bold font-mono tracking-tight text-blue-500">~240ms</div>
                         </div>
                         <div className="bg-muted/10 border border-border/40 rounded-lg p-3 flex flex-col items-center justify-center">
-                             <div className="text-[10px] font-mono text-muted-foreground uppercase flex items-center gap-1.5 mb-1">
+                             <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
                                 <TrendingUp className="w-3 h-3 text-amber-500" /> Usage
                             </div>
                             <div className="text-lg font-bold font-mono tracking-tight text-amber-500">{template.usage_count}</div>
@@ -251,7 +251,7 @@ export default function TemplateDetail() {
 
                    {/* Integrations Panel */}
                    <section className="space-y-3">
-                        <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                        <h3 className="text-xs font-bold font-mono  text-muted-foreground flex items-center gap-2">
                            <ShieldCheck className="w-4 h-4 text-primary" /> Required Integrations
                        </h3>
                        <div className="space-y-2">
@@ -279,7 +279,7 @@ export default function TemplateDetail() {
 
                    {/* Similar Templates */}
                    <section className="space-y-3">
-                        <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                        <h3 className="text-xs font-bold font-mono  text-muted-foreground flex items-center gap-2">
                            <GitBranch className="w-4 h-4" /> Related Workflows
                        </h3>
                        <div className="space-y-2">

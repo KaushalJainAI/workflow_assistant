@@ -69,9 +69,9 @@ export const TemplatesGallery: React.FC<TemplatesGalleryProps> = ({ onClose, onS
       <div className="flex items-center justify-between p-8 border-b border-white/5 bg-[#0b0e14]/50">
         <div>
             <h2 className="text-xl font-bold text-white tracking-tight">
-                Blueprint Library
+                Templates
             </h2>
-            <p className="text-[10px] text-primary/70 font-bold uppercase tracking-[0.2em] mt-1">Foundational Nodes & Flows</p>
+            <p className="text-[10px] text-primary/70 font-bold  mt-1">Ready-made workflows you can copy</p>
         </div>
         <button 
           onClick={onClose}
@@ -99,7 +99,7 @@ export const TemplatesGallery: React.FC<TemplatesGalleryProps> = ({ onClose, onS
                     key={cat}
                     onClick={() => setSelectedCategory(cat === 'All' ? null : cat.toLowerCase())}
                     className={cn(
-                        "px-4 py-1.5 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap border uppercase tracking-widest",
+                        "px-4 py-1.5 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap border ",
                         (selectedCategory === cat.toLowerCase() || (cat === 'All' && !selectedCategory))
                             ? "bg-primary text-primary-foreground border-primary shadow-[0_0_15px_rgba(59,130,246,0.2)]"
                             : "bg-white/5 text-slate-500 border-white/5 hover:border-white/20 hover:text-slate-300"
@@ -115,13 +115,13 @@ export const TemplatesGallery: React.FC<TemplatesGalleryProps> = ({ onClose, onS
         {loading || searching ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest animate-pulse">Syncing Blueprints...</span>
+            <span className="text-[10px] text-slate-500 font-bold  animate-pulse">Syncing Blueprints...</span>
           </div>
         ) : !data || data.results.length === 0 ? (
           <div className="text-center py-20">
             <Search className="w-12 h-12 mx-auto mb-4 text-slate-800" />
-            <p className="text-sm font-bold text-slate-400 uppercase tracking-tight">No Specifications Found</p>
-            <p className="text-[10px] text-slate-600 mt-1 uppercase tracking-widest">Modify search parameters</p>
+            <p className="text-sm font-bold text-slate-400 tracking-tight">No templates match your search</p>
+            <p className="text-[10px] text-slate-600 mt-1 ">Modify search parameters</p>
           </div>
         ) : (
           data.results.map((template) => (
@@ -132,7 +132,7 @@ export const TemplatesGallery: React.FC<TemplatesGalleryProps> = ({ onClose, onS
             >
               <div className="relative z-10 flex flex-col h-full">
                 <div className="flex items-center justify-between mb-4">
-                    <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-primary/80 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20">
+                    <span className="text-[9px] font-bold  text-primary/80 bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20">
                         {template.category}
                     </span>
                     <div className="flex items-center gap-1.5 text-amber-500">
@@ -141,7 +141,7 @@ export const TemplatesGallery: React.FC<TemplatesGalleryProps> = ({ onClose, onS
                     </div>
                 </div>
                 
-                <h3 className="font-bold text-slate-200 group-hover:text-primary transition-colors mb-2 line-clamp-1 text-sm tracking-tight uppercase">
+                <h3 className="font-bold text-slate-200 group-hover:text-primary transition-colors mb-2 line-clamp-1 text-sm tracking-tight">
                   {template.name}
                 </h3>
                 
@@ -154,7 +154,7 @@ export const TemplatesGallery: React.FC<TemplatesGalleryProps> = ({ onClose, onS
                         <div className="w-5 h-5 rounded-lg bg-white/5 flex items-center justify-center border border-white/10 group-hover:border-primary/30 transition-colors">
                             <User className="w-2.5 h-2.5 text-slate-400 group-hover:text-primary" />
                         </div>
-                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">@ {template.author_name}</span>
+                        <span className="text-[9px] font-bold text-slate-600 ">@ {template.author_name}</span>
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded-lg border border-white/5 group-hover:border-primary/10">
@@ -178,7 +178,7 @@ export const TemplatesGallery: React.FC<TemplatesGalleryProps> = ({ onClose, onS
                   <Tag className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
-                  <div className="text-xs font-bold text-white uppercase tracking-widest">Custom Nodes?</div>
+                  <div className="text-xs font-bold text-white ">Custom Nodes?</div>
                   <div className="text-[10px] text-slate-500 font-medium mt-1">Architect unique modules via AI-assisted synthesis.</div>
               </div>
           </div>

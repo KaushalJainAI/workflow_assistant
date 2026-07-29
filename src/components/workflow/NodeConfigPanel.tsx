@@ -544,7 +544,7 @@ export default function NodeConfigPanel({
                     {/* My Skills */}
                     <div className="space-y-0.5 mb-2">
                       <div className="flex items-center gap-2 px-2 py-1">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">My Skills</span>
+                        <span className="text-[10px] font-bold text-muted-foreground ">My skills</span>
                         <div className="h-px flex-1 bg-border/50" />
                       </div>
                       {skillSearchResults.mine.length > 0 ? (
@@ -572,7 +572,7 @@ export default function NodeConfigPanel({
                     {/* Public Library */}
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2 px-2 py-1">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Public Library</span>
+                        <span className="text-[10px] font-bold text-muted-foreground ">Public library</span>
                         <div className="h-px flex-1 bg-border/50" />
                       </div>
                       {skillSearchResults.public.length > 0 ? (
@@ -864,7 +864,7 @@ export default function NodeConfigPanel({
                   </div>
                   <div>
                     <h3 className="font-bold text-xl text-foreground">{node.data?.label || 'Node'}</h3>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                    <p className="text-[10px] text-muted-foreground  font-bold">
                       {nodeType.replace(/_/g, ' ')}
                     </p>
                   </div>
@@ -968,7 +968,7 @@ export default function NodeConfigPanel({
                             <div className="p-4 bg-muted/40 border border-border/80 rounded-2xl animate-in fade-in zoom-in-95 duration-200 shadow-inner">
                               <div className="flex flex-col gap-4">
                                 <div className="space-y-1.5">
-                                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Parameter Name</label>
+                                  <label className="text-[11px] font-bold  text-muted-foreground ml-1">Parameter name</label>
                                   <input
                                     type="text"
                                     value={newParamName}
@@ -984,7 +984,7 @@ export default function NodeConfigPanel({
                                 </div>
                                 <div className="flex gap-3">
                                   <div className="flex-1 space-y-1.5">
-                                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Type</label>
+                                    <label className="text-[11px] font-bold  text-muted-foreground ml-1">Type</label>
                                     <select
                                       value={newParamType}
                                       onChange={(e) => setNewParamType(e.target.value as 'text' | 'number' | 'boolean' | 'json')}
@@ -1030,7 +1030,7 @@ export default function NodeConfigPanel({
                                         <h5 className="text-sm font-bold text-foreground/90 capitalize truncate max-w-[200px]" title={key}>
                                           {displayName}
                                         </h5>
-                                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-full tracking-tighter">
+                                        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-full tracking-tighter">
                                           {typeLabel}
                                         </span>
                                       </div>
@@ -1210,7 +1210,7 @@ export default function NodeConfigPanel({
                   </button>
                   <button
                     onClick={handleForceSave}
-                    className="px-10 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-black tracking-tight hover:opacity-90 shadow-lg shadow-primary/20 transition-all active:scale-95"
+                    className="px-10 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold tracking-tight hover:opacity-90 shadow-lg shadow-primary/20 transition-all active:scale-95"
                   >
                     DONE
                   </button>

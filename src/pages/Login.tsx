@@ -131,7 +131,7 @@ export default function Login() {
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border/60" />
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
+              <div className="relative flex justify-center text-xs">
                 <span className="bg-card/60 backdrop-blur px-3 text-muted-foreground">
                   Or continue with
                 </span>

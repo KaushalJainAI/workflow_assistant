@@ -23,7 +23,7 @@ export function Lightbox({ isOpen, onClose, result }: LightboxProps) {
         <X size={24} />
       </button>
 
-      <div className="relative flex flex-col md:flex-row w-full max-w-6xl max-h-[90vh] bg-card border border-border/50 rounded-[40px] overflow-hidden shadow-2xl">
+      <div className="relative flex flex-col md:flex-row w-full max-w-6xl max-h-[90vh] bg-card border border-border/50 rounded-lg overflow-hidden shadow-2xl">
         {/* Media Container */}
         <div className="flex-1 bg-black/5 flex items-center justify-center overflow-hidden min-h-[40vh]">
           {result.type === 'image' ? (
@@ -46,7 +46,7 @@ export function Lightbox({ isOpen, onClose, result }: LightboxProps) {
         <div className="w-full md:w-80 p-8 border-t md:border-t-0 md:border-l border-border/40 flex flex-col justify-between overflow-y-auto">
           <div className="space-y-8">
             <div className="space-y-4">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Original Prompt</label>
+              <label className="text-[10px] font-semibold  text-muted-foreground">Original prompt</label>
               <p className="text-sm font-medium leading-relaxed italic text-foreground/80">
                 "{result.prompt}"
               </p>
@@ -54,11 +54,11 @@ export function Lightbox({ isOpen, onClose, result }: LightboxProps) {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">Type</label>
+                <label className="text-[10px] font-semibold  text-muted-foreground/50">Type</label>
                 <div className="text-xs font-bold uppercase">{result.type}</div>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">Time</label>
+                <label className="text-[10px] font-semibold  text-muted-foreground/50">Time</label>
                 <div className="text-xs font-bold">{result.timestamp.toLocaleTimeString()}</div>
               </div>
             </div>

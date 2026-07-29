@@ -71,7 +71,7 @@ export function ImagineChat({
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/40">
         <Sparkles size={16} className="text-primary" />
-        <span className="text-sm font-medium">Imagine Agent</span>
+        <span className="text-sm font-medium">Imagine agent</span>
         <span className={cn('ml-auto text-[11px] px-2 py-0.5 rounded-full', isConnected ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground')}>
           {isConnected ? 'live' : 'offline'}
         </span>

@@ -106,7 +106,7 @@ export default function ImportWorkflowModal({ isOpen, onClose, onImport }: Impor
               <FileJson className="w-5 h-5 text-blue-500" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">Import Workflow</h2>
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">Import workflow</h2>
               <p className="text-sm text-[var(--text-secondary)]">Upload or paste workflow JSON</p>
             </div>
           </div>

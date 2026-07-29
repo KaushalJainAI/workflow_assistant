@@ -181,7 +181,7 @@ export default function Signup() {
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border/60" />
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
+              <div className="relative flex justify-center text-xs">
                 <span className="bg-card/60 backdrop-blur px-3 text-muted-foreground">
                   Or continue with
                 </span>
@@ -221,7 +221,7 @@ export default function Signup() {
             By clicking create account, you agree to our{' '}
             <Link to="#" className="underline hover:text-primary transition-colors">Terms of Service</Link>
             {' '}and{' '}
-            <Link to="#" className="underline hover:text-primary transition-colors">Privacy Policy</Link>.
+            <Link to="#" className="underline hover:text-primary transition-colors">Privacy policy</Link>.
           </div>
         </div>
 

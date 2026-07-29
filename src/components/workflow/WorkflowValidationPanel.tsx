@@ -33,7 +33,7 @@ export default function WorkflowValidationPanel({
       {/* Content */}
       <div className="flex flex-col h-full max-h-[30vh]">
         <div className="flex items-center justify-between p-3 border-b border-border bg-muted/20">
-          <h3 className="font-semibold text-sm">Validation Issues</h3>
+          <h3 className="font-semibold text-sm">Validation issues</h3>
           <button onClick={onToggle} className="p-1 hover:bg-muted rounded text-muted-foreground">
             <X className="w-4 h-4" />
           </button>

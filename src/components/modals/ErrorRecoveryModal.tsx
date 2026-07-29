@@ -31,7 +31,7 @@ export default function ErrorRecoveryModal({
                 <AlertTriangle className="w-6 h-6 text-red-500" />
               </div>
               <div>
-                <h2 className="text-xl font-bold">Execution Error</h2>
+                <h2 className="text-xl font-bold">Execution error</h2>
                 <p className="text-sm text-muted-foreground">Node: {nodeName}</p>
               </div>
             </div>
@@ -55,7 +55,7 @@ export default function ErrorRecoveryModal({
                 <RefreshCcw className="w-4 h-4" />
               </div>
               <div className="text-left">
-                <div className="font-semibold">Retry Node</div>
+                <div className="font-semibold">Retry node</div>
                 <div className="text-xs text-muted-foreground">Attempt to execute the node again</div>
               </div>
             </button>
@@ -81,7 +81,7 @@ export default function ErrorRecoveryModal({
                 <StopCircle className="w-4 h-4 text-destructive" />
               </div>
               <div className="text-left">
-                <div className="font-semibold text-destructive">Stop Execution</div>
+                <div className="font-semibold text-destructive">Stop execution</div>
                 <div className="text-xs text-muted-foreground">Abort the workflow execution</div>
               </div>
             </button>

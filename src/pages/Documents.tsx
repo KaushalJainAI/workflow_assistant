@@ -264,7 +264,7 @@ export default function Documents() {
             className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all shadow-lg shadow-primary/20 active:scale-95 hover:bg-primary/90"
           >
             <Upload className="w-4 h-4" />
-            Upload Files
+            Upload files
           </button>
         }
       >
@@ -334,7 +334,7 @@ export default function Documents() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Knowledge Bases</h2>
+              <h2 className="text-sm font-bold text-foreground ">Knowledge bases</h2>
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{kbs.length}</span>
             </div>
             <button
@@ -425,7 +425,7 @@ export default function Documents() {
                   <div className="p-2 bg-primary/10 rounded-lg">
                     <Database className="w-5 h-5 text-primary" />
                   </div>
-                  <h2 className="text-lg font-bold">New Knowledge Base</h2>
+                  <h2 className="text-lg font-bold">New knowledge base</h2>
                 </div>
                 <button onClick={() => setShowCreateKb(false)} className="text-muted-foreground hover:text-foreground">
                   <X className="w-5 h-5" />
@@ -433,7 +433,7 @@ export default function Documents() {
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Name *</label>
+                  <label className="text-xs font-bold text-muted-foreground  mb-2 block">Name *</label>
                   <input
                     type="text"
                     value={newKbName}
@@ -445,7 +445,7 @@ export default function Documents() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Description</label>
+                  <label className="text-xs font-bold text-muted-foreground  mb-2 block">Description</label>
                   <input
                     type="text"
                     value={newKbDesc}
@@ -532,7 +532,7 @@ export default function Documents() {
                   
                   {status ? (
                       <div className={cn(
-                          "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted",
+                          "text-[10px] font-bold  px-2 py-0.5 rounded-md bg-muted",
                           status.color
                       )}>
                           {status.label}
@@ -540,12 +540,12 @@ export default function Documents() {
                   ) : (
                     <div className="space-y-1">
                         <div className="flex items-center gap-1.5 justify-center">
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">{formatSize(doc.file_size)}</span>
+                            <span className="text-[11px] text-muted-foreground">{formatSize(doc.file_size)}</span>
                             <span className="w-1 h-1 rounded-full bg-border" />
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">{doc.chunk_count} chunks</span>
+                            <span className="text-[11px] text-muted-foreground">{doc.chunk_count} chunks</span>
                         </div>
                         {activeTab === 'public' && doc.author_name && (
-                           <div className="text-[9px] font-bold text-primary uppercase tracking-tight">
+                           <div className="text-[9px] font-bold text-primary tracking-tight">
                              By {doc.author_name}
                            </div>
                         )}
@@ -607,7 +607,7 @@ export default function Documents() {
                   <div className="flex items-center gap-3 mb-0.5">
                     <p className="font-bold text-foreground tracking-tight truncate">{doc.title}</p>
                     {doc.is_shared && activeTab === 'personal' && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-primary/20 text-primary rounded border border-primary/30 uppercase tracking-wider">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-primary/20 text-primary rounded border border-primary/30 ">
                         Shared
                       </span>
                     )}
@@ -622,7 +622,7 @@ export default function Documents() {
                 
                 {status ? (
                     <div className={cn(
-                        "text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 px-3 py-1.5 bg-background rounded-lg",
+                        "text-[10px] font-bold  flex items-center gap-2 px-3 py-1.5 bg-background rounded-lg",
                         status.color
                     )}>
                         {status.icon}
@@ -630,13 +630,13 @@ export default function Documents() {
                     </div>
                 ) : (
                     <div className="hidden md:flex items-center gap-8">
-                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-20">
+                        <div className="text-[11px] text-muted-foreground w-20">
                           {formatSize(doc.file_size)}
                         </div>
-                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-24">
+                        <div className="text-[11px] text-muted-foreground w-24">
                           {doc.chunk_count} chunks
                         </div>
-                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-24">
+                        <div className="text-[11px] text-muted-foreground w-24">
                           {formatDate(doc.created_at)}
                         </div>
                     </div>
@@ -695,7 +695,7 @@ export default function Documents() {
                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
               >
                 <Upload className="w-4 h-4" />
-                Upload Your First File
+                Upload your first file
               </button>
             )}
           </div>
@@ -720,7 +720,7 @@ export default function Documents() {
           <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
             <div className="p-6 border-b border-border/60 flex items-center justify-between">
               <div>
-                  <h2 className="text-xl font-bold text-foreground">Upload Documents</h2>
+                  <h2 className="text-xl font-bold text-foreground">Upload documents</h2>
                   <p className="text-xs text-muted-foreground mt-1">Add files to your private registry</p>
               </div>
               <button 
@@ -770,7 +770,7 @@ export default function Documents() {
                 <Globe className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-foreground">Share Document</h2>
+                <h2 className="text-xl font-bold text-foreground">Share document</h2>
                 <p className="text-xs text-muted-foreground mt-1">Make this file available to everyone</p>
               </div>
             </div>
@@ -784,7 +784,7 @@ export default function Documents() {
               </div>
 
               <div className="space-y-3">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Before you share:</p>
+                <p className="text-xs font-bold text-muted-foreground ">Before you share:</p>
                 <ul className="space-y-2">
                   {[
                       "Ensure the file contains no sensitive data",
@@ -812,7 +812,7 @@ export default function Documents() {
                 className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm transition-all hover:bg-primary/90 active:scale-95 flex items-center gap-2"
               >
                 <Globe className="w-4 h-4" />
-                Share Document
+                Share document
               </button>
             </div>
           </div>
