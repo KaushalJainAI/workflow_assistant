@@ -174,6 +174,7 @@ const AppContent = () => {
               {/* Build */}
               <Route path="/agents" element={<Agents />} />
               <Route path="/agents/new" element={<AgentBuilder />} />
+              <Route path="/agents/:id" element={<AgentBuilder />} />
               <Route path="/extract" element={<Extract />} />
               {/* Improve — UI ahead of the API; see PreviewNotice on each page. */}
               <Route path="/evals" element={<Evals />} />

@@ -10,7 +10,7 @@
  * the point of the board is that the agent's choices stay inspectable.
  */
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bot, Send, Sparkles, Cpu, MemoryStick, FolderLock, Wrench, Plug,
@@ -26,6 +26,7 @@ import {
   type AgentConfig, type TriggerMode, type Autonomy, type FileAccess,
 } from '../types/agentConfig';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
+import { findSampleAgent } from '../lib/sampleAgents';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
 
@@ -124,7 +125,12 @@ function Toggle({ on, onChange, label, hint }: {
 
 export default function AgentBuilder() {
   const navigate = useNavigate();
-  const [cfg, setCfg] = useState<AgentConfig>(DEFAULT_AGENT);
+  // /agents/new -> blank board. /agents/:id -> the same board, prefilled.
+  // Editing and creating are the same act, so they are the same screen.
+  const { id } = useParams<{ id: string }>();
+  const existing = id && id !== 'new' ? findSampleAgent(id) : undefined;
+
+  const [cfg, setCfg] = useState<AgentConfig>(existing?.config ?? DEFAULT_AGENT);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
@@ -173,7 +179,7 @@ export default function AgentBuilder() {
   };
 
   const reset = () => {
-    setCfg(DEFAULT_AGENT);
+    setCfg(existing?.config ?? DEFAULT_AGENT);
     setTouched(new Set());
     setMessages([]);
   };
@@ -185,9 +191,13 @@ export default function AgentBuilder() {
           <Bot className="w-5 h-5 text-agent" />
         </div>
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">New agent</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {existing ? cfg.name || 'Agent' : 'New agent'}
+          </h1>
           <p className="text-[13px] text-muted-foreground">
-            Describe the job, or set the knobs yourself
+            {existing
+              ? `${existing.runs} runs · ${Math.round((existing.unattended / existing.runs) * 100)}% handled without you · ${existing.spend}`
+              : 'Describe the job, or set the knobs yourself'}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -200,7 +210,7 @@ export default function AgentBuilder() {
             onClick={() => toast.info('Saving needs the agents API — nothing is persisted yet.')}
             className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90">
             <Save className="w-4 h-4" />
-            Create agent
+            {existing ? 'Save changes' : 'Create agent'}
           </button>
         </div>
       </header>
@@ -474,7 +484,7 @@ export default function AgentBuilder() {
               <button
                 onClick={() => toast.info('Saving needs the agents API — nothing is persisted yet.')}
                 className="px-4 py-2 text-sm font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90">
-                Create agent
+                {existing ? 'Save changes' : 'Create agent'}
               </button>
               <button onClick={() => navigate('/agents')}
                 className="px-4 py-2 text-sm rounded border border-border hover:bg-secondary">
