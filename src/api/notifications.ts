@@ -1,3 +1,4 @@
+import { asArray } from './unwrap';
 import apiClient from './client';
 
 export interface Notification {
@@ -13,7 +14,10 @@ export interface Notification {
 export const notificationsService = {
   async getNotifications(): Promise<Notification[]> {
     const response = await apiClient.get('/notifications/');
-    return response.data;
+    // DRF returns {count, next, previous, results} for this router viewset, but
+    // the signature says Notification[] — TypeScript believed it and the
+    // .filter() in NotificationsTab threw "e.filter is not a function".
+    return asArray<Notification>(response.data);
   },
 
   async markAsRead(id: number): Promise<void> {

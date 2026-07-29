@@ -41,6 +41,7 @@ import ApprovalModal from '../components/modals/ApprovalModal';
 import ClarificationModal from '../components/modals/ClarificationModal';
 import { normalizeToItems } from '../types/nodeData';
 import apiClient, { tokenManager } from '../api/client';
+import { asArray } from '../api/unwrap';
 import WorkflowExecutionLog from '../components/workflow/WorkflowExecutionLog';
 import { generateUniqueNodeLabel } from '../lib/utils';
 // import ErrorRecoveryModal from '../components/modals/ErrorRecoveryModal';
@@ -242,8 +243,11 @@ export default function WorkflowEditor() {
     const fetchSkills = async () => {
       try {
         const response = await apiClient.get('/skills/');
+        // /skills/ is paginated, so response.data is {count, results, ...} and
+        // .map threw straight into the catch below — the picker silently stayed
+        // empty rather than reporting anything.
         // Mapping from Skill model to the simplified {id, title} format
-        setAvailableSkills(response.data.map((s: any) => ({
+        setAvailableSkills(asArray<{ id: number; title: string }>(response.data).map((s) => ({
           id: s.id.toString(),
           title: s.title
         })));
