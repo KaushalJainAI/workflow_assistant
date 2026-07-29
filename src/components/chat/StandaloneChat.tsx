@@ -43,13 +43,13 @@ import remarkGfm from 'remark-gfm';
 import { credentialsService, chatService, type StandaloneChatMessage as ChatMessage, type ChatSession } from '../../api';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
 import { TextSelectionMenu } from './TextSelectionMenu';
 import { MediaPreview } from './MediaPreview';
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
+import GuestBanner from './GuestBanner';
 
 interface PendingToolCall {
   tool: string;
@@ -58,7 +58,6 @@ interface PendingToolCall {
 }
 
 export default function StandaloneChat() {
-  const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const isGuest = !isAuthenticated;
   
@@ -196,7 +195,7 @@ export default function StandaloneChat() {
 
       if (isGuest) {
         setLlmProvider('nvidia');
-        setLlmModel('nvidia/llama-3.3-nemotron-super-49b-v1');
+        setLlmModel('nvidia/nemotron-3-super-120b-a12b:free');
         setIsCheckingCredentials(false);
         return;
       }
@@ -209,7 +208,7 @@ export default function StandaloneChat() {
         if (validCount === 0) {
           // User has no per-user credentials — keep the NVIDIA env-key default.
           setLlmProvider('nvidia');
-          setLlmModel('nvidia/llama-3.3-nemotron-super-49b-v1');
+          setLlmModel('nvidia/nemotron-3-super-120b-a12b:free');
         } else {
           const savedProvider = localStorage.getItem('standalone_chat_llm_provider');
           const savedModel = localStorage.getItem('standalone_chat_llm_model');
@@ -777,24 +776,7 @@ export default function StandaloneChat() {
       {/* Guest banner — encourage login without blocking chat. On mobile it's a
           56px band that visually contains the floating hamburger (fixed top-3
           left-3, 44px tall), so they read as one top bar. */}
-      {isGuest && (
-        <div className="absolute top-0 left-0 right-0 z-40 bg-primary/10 border-b border-primary/20 backdrop-blur-md pl-16 pr-3 md:px-4 py-2 min-h-14 md:min-h-0 flex items-center justify-between gap-2 md:gap-3 text-sm">
-          <div className="flex items-center gap-2 min-w-0">
-            <Sparkles className="w-4 h-4 text-primary shrink-0" />
-            <span className="truncate">
-              <span className="font-semibold">Guest mode</span>
-              <span className="hidden md:inline"> — chatting with NVIDIA Nemotron 3 Super (120B/12B-active). Log in to save history, upload files, run workflows, and access the help agent.</span>
-              <span className="md:hidden text-muted-foreground"> — log in for more</span>
-            </span>
-          </div>
-          <button
-            onClick={() => navigate('/login')}
-            className="shrink-0 px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
-          >
-            Log in
-          </button>
-        </div>
-      )}
+      {isGuest && <GuestBanner model={llmModel} />}
 
       {/* 1. History Sidebar — overlay drawer on mobile, in-flow on desktop */}
       {showHistory && (
