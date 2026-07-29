@@ -77,6 +77,7 @@ export default function TemplateDetail() {
           setIsBookmarked(bookmarked);
           toast.success(bookmarked ? "Bookmarked" : "Removed bookmark");
       } catch (error) {
+        console.error('Failed to toggle bookmark', error);
           toast.error("Failed to toggle bookmark");
       }
   };
@@ -98,6 +99,7 @@ export default function TemplateDetail() {
            toast.success("Workflow created successfully!");
            navigate(`/workflow/${result.id}`);
       } catch (error) {
+        console.error('Operation failed', error);
           toast.dismiss();
           toast.error("Failed to create workflow");
       }

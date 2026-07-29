@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { nodeService, type NodeSchema } from '../api';
 
 // Simple in-memory cache to avoid repeated fetches
-let nodeCache: Record<string, NodeSchema> = {};
+const nodeCache: Record<string, NodeSchema> = {};
 let listeners: ((cache: Record<string, NodeSchema>) => void)[] = [];
 
 export function useNodeTypes() {

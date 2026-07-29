@@ -191,6 +191,7 @@ export default function Orchestrator() {
                   });
                 }
             } catch (e) {
+              console.error('Narrative not found yet or failed to fetch', e);
                 console.warn('Narrative not found yet or failed to fetch');
                 setActiveNarrative(null);
             }

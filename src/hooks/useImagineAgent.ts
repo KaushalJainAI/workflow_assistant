@@ -151,7 +151,10 @@ export function useImagineAgent() {
     try {
       const res = await imagineAgent.resume(state.conversationId, decision, overrides);
       _applyResponse(res);
-    } catch (e: any) {
+    } catch (e: unknown) {
+      // Clearing isSending without a word left a resume that failed looking
+      // identical to one that succeeded and returned nothing.
+      console.error('Imagine agent resume failed', e);
       setState(s => ({ ...s, isSending: false }));
     }
   }, [state.conversationId, _applyResponse]);

@@ -445,10 +445,13 @@ export default function NodeConfigPanel({
           </div>
         );
 
-      case 'credential':
+      // Braced like the cases around it: without it, these declarations are
+      // scoped to the whole switch, so a sibling case touching `typeId` would
+      // hit the temporal dead zone rather than a clean undefined.
+      case 'credential': {
         const requiredType = field.credentialType;
         let typeId: number | undefined;
-        
+
         if (requiredType) {
           const typeDef = credentialTypes.find(t => t.service_identifier === requiredType);
           if (typeDef) {
@@ -474,6 +477,7 @@ export default function NodeConfigPanel({
             }}
           />
         );
+      }
 
       case 'skills': {
         const selectedIds: string[] = Array.isArray(value) ? (value as string[]) : [];

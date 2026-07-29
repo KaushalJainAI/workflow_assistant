@@ -318,6 +318,7 @@ export default function StandaloneChat() {
         setConversationId(newSession.id);
         uploadFileToSession(newSession.id, file);
       } catch (err) {
+        console.error('Failed to create session for upload', err);
         toast.error("Failed to create session for upload");
       }
     } else {
@@ -342,6 +343,7 @@ export default function StandaloneChat() {
       setMessages(prev => prev.filter(m => m.id !== msgId));
       toast.success("Message deleted");
     } catch (err) {
+      console.error('Failed to delete message', err);
       toast.error("Failed to delete message");
     } finally {
       setDeletingMsgId(null);
@@ -424,6 +426,7 @@ export default function StandaloneChat() {
       handleSend(userMsg.content);
       toast.success('Regenerating response...');
     } catch (err) {
+      console.error('Failed to rewrite message', err);
       toast.error('Failed to rewrite message');
     } finally {
       setDeletingMsgId(null);
@@ -461,6 +464,7 @@ export default function StandaloneChat() {
       }
       toast.success('Message ready to edit');
     } catch (err) {
+      console.error('Failed to reverse context', err);
       toast.error('Failed to reverse context');
     } finally {
       setDeletingMsgId(null);
@@ -483,6 +487,7 @@ export default function StandaloneChat() {
       }, 50);
       toast.success('Message ready to edit');
     } catch (err) {
+      console.error('Failed to prepare message for editing', err);
       toast.error('Failed to prepare message for editing');
     } finally {
       setDeletingMsgId(null);
@@ -1169,7 +1174,7 @@ export default function StandaloneChat() {
                                   </a>
                                 );
                               },
-                              code: ({ node, inline, className, children, ...props }: any) => {
+                              code: ({ node: _node, inline, className, children, ...props }: any) => {
                                 const match = /language-(\w+)/.exec(className || '');
                                 const lang = match ? match[1].toUpperCase() : '';
                                 

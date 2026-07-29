@@ -988,6 +988,7 @@ export async function validateWorkflow(
       warnings.push(...backendResult.warnings);
       info.push(...backendResult.info);
     } catch (error) {
+      console.error('Operation failed', error);
       warnings.push({
         type: 'warning',
         code: 'BACKEND_VALIDATION_UNAVAILABLE',

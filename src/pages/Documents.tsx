@@ -140,6 +140,7 @@ export default function Documents() {
         await documentsService.upload(file);
         successCount++;
       } catch (err) {
+        console.error('Failed to upload ${file.name}', err);
         toast.error(`Failed to upload ${file.name}`);
       } finally {
         setLocalUploadingDocs(prev => prev.filter(d => d.id !== tempId));

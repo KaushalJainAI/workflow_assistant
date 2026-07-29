@@ -292,6 +292,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
       setMessages(messages.filter(m => m.id !== messageId));
       toast.success('Message deleted');
     } catch (err) {
+      console.error('Failed to delete message', err);
       toast.error('Failed to delete message');
     } finally {
       setDeletingMsgId(null);
@@ -325,6 +326,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
       handleSend(userMsg.content);
       toast.success('Regenerating response...');
     } catch (err) {
+      console.error('Failed to rewrite message', err);
       toast.error('Failed to rewrite message');
     } finally {
       setDeletingMsgId(null);
@@ -348,6 +350,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
       }
       toast.success('Message ready to edit');
     } catch (err) {
+      console.error('Failed to reverse context', err);
       toast.error('Failed to reverse context');
     } finally {
       setDeletingMsgId(null);
@@ -370,6 +373,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
       }, 50);
       toast.success('Message ready to edit');
     } catch (err) {
+      console.error('Failed to prepare message for editing', err);
       toast.error('Failed to prepare message for editing');
     } finally {
       setDeletingMsgId(null);

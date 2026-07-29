@@ -50,6 +50,7 @@ export default function ImportWorkflowModal({ isOpen, onClose, onImport }: Impor
       setJsonInput(content);
       handleValidate(content);
     } catch (error) {
+      console.error('error', error);
       setErrors([{ type: 'error', message: 'Failed to read file' }]);
     }
   };

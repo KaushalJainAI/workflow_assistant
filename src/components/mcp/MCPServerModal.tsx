@@ -116,6 +116,7 @@ export default function MCPServerModal({
         parsedArgs = JSON.parse(args);
         if (!Array.isArray(parsedArgs)) throw new Error('Args must be an array');
       } catch (e) {
+        console.error('Invalid JSON in Args: must be an array of strings', e);
         setError('Invalid JSON in Args: must be an array of strings');
         setSaving(false);
         return;
@@ -125,6 +126,7 @@ export default function MCPServerModal({
         parsedEnv = JSON.parse(env);
         if (typeof parsedEnv !== 'object' || Array.isArray(parsedEnv)) throw new Error('Env must be an object');
       } catch (e) {
+        console.error('Invalid JSON in Env: must be an object', e);
         setError('Invalid JSON in Env: must be an object');
         setSaving(false);
         return;
@@ -134,6 +136,7 @@ export default function MCPServerModal({
         parsedCredEnvMap = JSON.parse(credEnvMap);
         if (typeof parsedCredEnvMap !== 'object' || Array.isArray(parsedCredEnvMap)) throw new Error('Cred Env Map must be an object');
       } catch (e) {
+        console.error('Invalid JSON in Credential Env Map', e);
         setError('Invalid JSON in Credential Env Map');
         setSaving(false);
         return;
@@ -143,6 +146,7 @@ export default function MCPServerModal({
         parsedCredHeaderMap = JSON.parse(credHeaderMap);
         if (typeof parsedCredHeaderMap !== 'object' || Array.isArray(parsedCredHeaderMap)) throw new Error('Cred Header Map must be an object');
       } catch (e) {
+        console.error('Invalid JSON in Credential Header Map', e);
         setError('Invalid JSON in Credential Header Map');
         setSaving(false);
         return;

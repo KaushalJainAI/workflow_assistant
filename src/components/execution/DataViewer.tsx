@@ -98,6 +98,7 @@ export default function DataViewer({
       }
       setIsEditing(false);
     } catch (e) {
+      console.error('Invalid JSON', e);
       toast.error('Invalid JSON');
     }
   };

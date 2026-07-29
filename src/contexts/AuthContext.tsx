@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await authService.getProfile();
         return userData;
       } catch (err) {
+        console.error('Operation failed', err);
         tokenManager.clearTokens();
         return null;
       }
