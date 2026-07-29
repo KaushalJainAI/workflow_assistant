@@ -21,6 +21,7 @@ import nodeService from '../api/nodeService';
 import { kbService } from '../api/documents';
 import { cn } from '../lib/utils';
 import PreviewNotice from '../components/ui/PreviewNotice';
+import MultiSelect from '../components/ui/MultiSelect';
 import {
   DEFAULT_AGENT, CONNECTOR_OPTIONS, TRIGGER_COPY, AUTONOMY_COPY, FILE_ACCESS_COPY,
   type AgentConfig, type TriggerMode, type Autonomy, type FileAccess,
@@ -43,7 +44,7 @@ function Section({ icon: Icon, title, hint, children }: {
   icon: typeof Cpu; title: string; hint?: string; children: React.ReactNode;
 }) {
   return (
-    <section className="border border-border rounded bg-card">
+    <section className="border border-border rounded bg-card mb-4 break-inside-avoid">
       <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
         <Icon className="w-4 h-4 text-muted-foreground" />
         <h3 className="text-[13px] font-semibold">{title}</h3>
@@ -281,8 +282,9 @@ export default function AgentBuilder() {
 
         {/* ---- knob board ---- */}
         <div className="hidden lg:block flex-1 overflow-y-auto p-6 bg-bg-1">
-          <div className="max-w-3xl space-y-4">
+          <div className="max-w-[1600px]">
             <PreviewNotice what="The agents API" />
+            <div className="2xl:columns-2 2xl:gap-4">
 
             <Section icon={Bot} title="Identity">
               <Knob path="name" touched={touched} label="Name">
@@ -382,45 +384,31 @@ export default function AgentBuilder() {
             </Section>
 
             <Section icon={Plug} title="Context it is given">
-              <Knob path="connectors" touched={touched} label="Connectors">
-                <div className="flex flex-wrap gap-1.5">
-                  {CONNECTOR_OPTIONS.map((c) => {
-                    const on = cfg.connectors.includes(c.id);
-                    return (
-                      <button key={c.id}
-                        onClick={() => set('connectors', on
-                          ? cfg.connectors.filter((x) => x !== c.id)
-                          : [...cfg.connectors, c.id])}
-                        className={cn('px-2.5 py-1 rounded border text-[13px] transition-colors',
-                          on ? 'border-primary bg-primary-subtle text-primary font-medium'
-                             : 'border-border hover:bg-secondary')}>
-                        {c.label}
-                      </button>
-                    );
-                  })}
-                </div>
+              <Knob path="connectors" touched={touched} label="Connectors"
+                    hint={cfg.connectors.length ? `${cfg.connectors.length} selected` : undefined}>
+                <MultiSelect
+                  options={CONNECTOR_OPTIONS.map((c) => ({ id: c.id, label: c.label }))}
+                  value={cfg.connectors}
+                  onChange={(v) => set('connectors', v)}
+                  placeholder="No connectors — it works only with what you give it"
+                  searchPlaceholder="Search connectors…"
+                />
               </Knob>
-              <Knob path="knowledgeBases" touched={touched} label="Knowledge bases">
-                {kbs.length === 0 ? (
-                  <p className="text-[12px] text-muted-foreground">None yet — add documents first.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {kbs.map((kb) => {
-                      const on = cfg.knowledgeBases.includes(kb.id);
-                      return (
-                        <button key={kb.id}
-                          onClick={() => set('knowledgeBases', on
-                            ? cfg.knowledgeBases.filter((x) => x !== kb.id)
-                            : [...cfg.knowledgeBases, kb.id])}
-                          className={cn('px-2.5 py-1 rounded border text-[13px] transition-colors',
-                            on ? 'border-primary bg-primary-subtle text-primary font-medium'
-                               : 'border-border hover:bg-secondary')}>
-                          {kb.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+              <Knob path="knowledgeBases" touched={touched} label="Knowledge bases"
+                    hint={cfg.knowledgeBases.length ? `${cfg.knowledgeBases.length} selected` : undefined}>
+                {/* Ids are numeric on the wire; the control speaks strings. */}
+                <MultiSelect
+                  options={kbs.map((kb) => ({
+                    id: String(kb.id),
+                    label: kb.name,
+                    hint: `${kb.doc_count} documents`,
+                  }))}
+                  value={cfg.knowledgeBases.map(String)}
+                  onChange={(v) => set('knowledgeBases', v.map(Number))}
+                  placeholder="No knowledge bases"
+                  searchPlaceholder="Search knowledge bases…"
+                  emptyText="None yet — add documents first."
+                />
               </Knob>
               <Toggle on={cfg.useOrgContext} onChange={(v) => set('useOrgContext', v)}
                 label="Organisation context" hint="House style, entity names, standing facts." />
@@ -479,6 +467,8 @@ export default function AgentBuilder() {
               <Toggle on={cfg.indexing} onChange={(v) => set('indexing', v)}
                 label="Indexing" hint="Index what it drops so it can retrieve it later." />
             </Section>
+
+            </div>
 
             <div className="flex items-center gap-2 pb-8">
               <button
