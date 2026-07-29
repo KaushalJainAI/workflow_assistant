@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { googleAuthAvailable } from '../lib/googleAuth';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -126,7 +127,9 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6">
+          {/* Hidden where the built redirect URI does not match this origin —
+              Google would reject it and strand the user on an error page. */}
+          {googleAuthAvailable() && <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border/60" />
@@ -165,7 +168,7 @@ export default function Login() {
                 Google
               </button>
             </div>
-          </div>
+          </div>}
         </div>
 
         <p className="text-center text-sm text-muted-foreground">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { googleAuthAvailable } from '../lib/googleAuth';
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -176,7 +177,9 @@ export default function Signup() {
             </button>
           </form>
 
-          <div className="mt-6">
+          {/* Hidden where the built redirect URI does not match this origin —
+              Google would reject it and strand the user on an error page. */}
+          {googleAuthAvailable() && <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border/60" />
@@ -215,7 +218,7 @@ export default function Signup() {
                 Google
               </button>
             </div>
-          </div>
+          </div>}
 
           <div className="mt-6 text-center text-xs text-muted-foreground">
             By clicking create account, you agree to our{' '}
