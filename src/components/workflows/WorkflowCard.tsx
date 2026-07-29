@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { type WorkflowListItem } from '../../api';
 import { cn } from '../../lib/utils';
+import WorkflowIcon from './WorkflowIcon';
 
 interface WorkflowCardProps {
   workflow: WorkflowListItem;
@@ -56,7 +57,7 @@ export default function WorkflowCard({ workflow, onPlay, onDuplicate, onDelete }
             className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/5"
             style={{ backgroundColor: `${workflow.color}15`, color: workflow.color }}
           >
-            {workflow.icon || '⚡'}
+            <WorkflowIcon icon={workflow.icon} />
           </div>
           <div>
             <h3 className="font-bold text-lg text-foreground group-hover:text-primary transition-colors line-clamp-1">
