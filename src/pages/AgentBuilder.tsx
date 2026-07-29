@@ -11,23 +11,24 @@
  */
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bot, Send, Sparkles, Cpu, MemoryStick, FolderLock, Wrench, Plug,
-  ShieldCheck, Clock, Layers, Save, RotateCcw, Check,
+  ShieldCheck, Clock, Layers, Save, RotateCcw, Check, Globe, Loader2, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import nodeService from '../api/nodeService';
 import { kbService } from '../api/documents';
+import skillsService from '../api/skills';
+import agentsService from '../api/agents';
 import { cn } from '../lib/utils';
-import PreviewNotice from '../components/ui/PreviewNotice';
 import MultiSelect from '../components/ui/MultiSelect';
 import {
   DEFAULT_AGENT, CONNECTOR_OPTIONS, TRIGGER_COPY, AUTONOMY_COPY, FILE_ACCESS_COPY,
-  type AgentConfig, type TriggerMode, type Autonomy, type FileAccess,
+  EGRESS_COPY,
+  type AgentConfig, type TriggerMode, type Autonomy, type FileAccess, type Egress,
 } from '../types/agentConfig';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
-import { findSampleAgent } from '../lib/sampleAgents';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
 
@@ -126,16 +127,23 @@ function Toggle({ on, onChange, label, hint }: {
 
 export default function AgentBuilder() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   // /agents/new -> blank board. /agents/:id -> the same board, prefilled.
   // Editing and creating are the same act, so they are the same screen.
   const { id } = useParams<{ id: string }>();
-  const existing = id && id !== 'new' ? findSampleAgent(id) : undefined;
+  const isNew = !id || id === 'new';
 
-  const [cfg, setCfg] = useState<AgentConfig>(existing?.config ?? DEFAULT_AGENT);
+  const [cfg, setCfg] = useState<AgentConfig>(DEFAULT_AGENT);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { data: existing, isLoading } = useQuery({
+    queryKey: ['agent', id],
+    queryFn: () => agentsService.get(id!),
+    enabled: !isNew,
+  });
 
   // Real model catalogue — the picker should show what is actually callable.
   const { data: providers = [] } = useQuery({
@@ -148,18 +156,66 @@ export default function AgentBuilder() {
     queryFn: () => kbService.list(),
     staleTime: 5 * 60 * 1000,
   });
+  const { data: skills = [] } = useQuery({
+    queryKey: ['agent-builder', 'skills'],
+    queryFn: () => skillsService.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fill the board once the agent arrives. The server's shape is AgentConfig,
+  // so there is nothing to translate — which is the point of the contract.
+  //
+  // Adjusted during render rather than in an effect (the pattern React documents
+  // for deriving state from changing props). An effect would paint the empty
+  // board first and then overwrite it, and any edit made in that gap would be
+  // silently discarded.
+  const [loadedId, setLoadedId] = useState<number | null>(null);
+  if (existing && loadedId !== existing.id) {
+    setLoadedId(existing.id);
+    setCfg({ ...DEFAULT_AGENT, ...existing });
+  }
+
+  const save = useMutation({
+    mutationFn: (config: AgentConfig) =>
+      isNew ? agentsService.create(config) : agentsService.update(id!, config),
+    onSuccess: (agent) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agent', id] });
+      toast.success(isNew ? `${agent.name} created` : 'Saved');
+      setTouched(new Set());
+      if (isNew) navigate(`/agents/${agent.id}`, { replace: true });
+    },
+    // The server validates the same rules the board shows, so its message is
+    // more specific than anything generic we could write here.
+    onError: (err: { response?: { data?: Record<string, unknown> } }) => {
+      const data = err.response?.data;
+      const first = data && Object.entries(data)[0];
+      toast.error(
+        first ? `${first[0]}: ${String(Array.isArray(first[1]) ? first[1][0] : first[1])}`
+              : 'Could not save this agent.'
+      );
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => agentsService.remove(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success('Agent deleted');
+      navigate('/agents');
+    },
+  });
 
   const activeProvider = useMemo(
     () => providers.find((p) => p.slug === cfg.provider) ?? providers[0],
     [providers, cfg.provider]
   );
 
-  // Seed the model once the catalogue arrives, rather than shipping a hardcoded id.
-  useEffect(() => {
-    if (!cfg.model && activeProvider?.models?.length) {
-      setCfg((c) => ({ ...c, provider: activeProvider.slug, model: activeProvider.models[0].value }));
-    }
-  }, [activeProvider, cfg.model]);
+  // The model actually in force: what was chosen, or the provider's first once
+  // the catalogue arrives. Derived rather than written back into state by an
+  // effect — an effect would race the agent's own load and could overwrite a
+  // saved model with the catalogue's default.
+  const effectiveModel = cfg.model || activeProvider?.models?.[0]?.value || '';
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -180,9 +236,29 @@ export default function AgentBuilder() {
   };
 
   const reset = () => {
-    setCfg(existing?.config ?? DEFAULT_AGENT);
+    setCfg(existing ? { ...DEFAULT_AGENT, ...existing } : DEFAULT_AGENT);
     setTouched(new Set());
     setMessages([]);
+  };
+
+  const submit = () => {
+    if (!cfg.name.trim()) {
+      toast.error('Give the agent a name first.');
+      return;
+    }
+    // Persist the model actually shown in the picker, not the empty string
+    // that was there before the catalogue loaded.
+    save.mutate({ ...cfg, model: effectiveModel });
+  };
+
+  // What actually happened, once there is something to report. Before the first
+  // run there is no honest number, so the line says what to do instead.
+  const subtitle = () => {
+    if (isNew) return 'Describe the job, or set the knobs yourself';
+    if (!existing) return 'Loading…';
+    if (!existing.runs) return 'Not run yet';
+    const pct = Math.round((existing.unattended / existing.runs) * 100);
+    return `${existing.runs} runs · ${pct}% handled without you · ₹${existing.spend}`;
   };
 
   return (
@@ -193,25 +269,32 @@ export default function AgentBuilder() {
         </div>
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight">
-            {existing ? cfg.name || 'Agent' : 'New agent'}
+            {isNew ? 'New agent' : cfg.name || 'Agent'}
           </h1>
-          <p className="text-[13px] text-muted-foreground">
-            {existing
-              ? `${existing.runs} runs · ${Math.round((existing.unattended / existing.runs) * 100)}% handled without you · ${existing.spend}`
-              : 'Describe the job, or set the knobs yourself'}
-          </p>
+          <p className="text-[13px] text-muted-foreground">{subtitle()}</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {!isNew && (
+            <button
+              onClick={() => {
+                if (confirm(`Delete ${cfg.name}? This cannot be undone.`)) remove.mutate();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border text-destructive hover:bg-destructive-subtle">
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
+          )}
           <button onClick={reset}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border hover:bg-secondary">
             <RotateCcw className="w-4 h-4" />
             Reset
           </button>
           <button
-            onClick={() => toast.info('Saving needs the agents API — nothing is persisted yet.')}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90">
-            <Save className="w-4 h-4" />
-            {existing ? 'Save changes' : 'Create agent'}
+            onClick={submit}
+            disabled={save.isPending || isLoading}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            {save.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isNew ? 'Create agent' : 'Save changes'}
           </button>
         </div>
       </header>
@@ -283,7 +366,6 @@ export default function AgentBuilder() {
         {/* ---- knob board ---- */}
         <div className="hidden lg:block flex-1 overflow-y-auto p-6 bg-bg-1">
           <div className="max-w-[1600px]">
-            <PreviewNotice what="The agents API" />
             <div className="2xl:columns-2 2xl:gap-4">
 
             <Section icon={Bot} title="Identity">
@@ -314,7 +396,7 @@ export default function AgentBuilder() {
                   </select>
                 </Knob>
                 <Knob path="model" touched={touched} label="Model">
-                  <select value={cfg.model} onChange={(e) => set('model', e.target.value)}
+                  <select value={effectiveModel} onChange={(e) => set('model', e.target.value)}
                     className="w-full h-9 px-2 rounded border border-input bg-background text-sm">
                     {(activeProvider?.models ?? []).map((mo) => (
                       <option key={mo.value} value={mo.value}>
@@ -410,6 +492,21 @@ export default function AgentBuilder() {
                   emptyText="None yet — add documents first."
                 />
               </Knob>
+              <Knob path="skills" touched={touched} label="Skills"
+                    hint={cfg.skills.length ? `${cfg.skills.length} selected` : undefined}>
+                <MultiSelect
+                  options={skills.map((s) => ({
+                    id: String(s.id),
+                    label: s.title,
+                    hint: s.description || s.category,
+                  }))}
+                  value={cfg.skills.map(String)}
+                  onChange={(v) => set('skills', v.map(Number))}
+                  placeholder="No skills"
+                  searchPlaceholder="Search skills…"
+                  emptyText="None yet — write one in Skills first."
+                />
+              </Knob>
               <Toggle on={cfg.useOrgContext} onChange={(v) => set('useOrgContext', v)}
                 label="Organisation context" hint="House style, entity names, standing facts." />
               <Knob path="useEnvironment" touched={touched} label="">
@@ -443,6 +540,21 @@ export default function AgentBuilder() {
                     id, label: AUTONOMY_COPY[id].label, hint: AUTONOMY_COPY[id].hint,
                   }))} />
               </Knob>
+              <Knob path="egress" touched={touched} label="Network access"
+                    hint="separate from web search">
+                <Choice<Egress>
+                  value={cfg.egress} onChange={(v) => set('egress', v)}
+                  options={(Object.keys(EGRESS_COPY) as Egress[]).map((id) => ({
+                    id, label: EGRESS_COPY[id].label, hint: EGRESS_COPY[id].hint,
+                  }))} />
+                {cfg.tools.shell && cfg.egress === 'full' && (
+                  <p className="mt-2 flex items-start gap-1.5 text-[12px] text-destructive">
+                    <Globe className="w-3.5 h-3.5 mt-px shrink-0" />
+                    Shell plus an open network is refused on save — anything the agent
+                    reads, it can also send. Narrow one of the two.
+                  </p>
+                )}
+              </Knob>
               <Toggle on={cfg.notifyOnHitl} onChange={(v) => set('notifyOnHitl', v)}
                 label="Notify me when it stops to ask" hint="Otherwise it waits silently in Inbox." />
               <Knob path="reviewAgent" touched={touched} label="">
@@ -472,9 +584,10 @@ export default function AgentBuilder() {
 
             <div className="flex items-center gap-2 pb-8">
               <button
-                onClick={() => toast.info('Saving needs the agents API — nothing is persisted yet.')}
-                className="px-4 py-2 text-sm font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90">
-                {existing ? 'Save changes' : 'Create agent'}
+                onClick={submit}
+                disabled={save.isPending}
+                className="px-4 py-2 text-sm font-semibold rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {isNew ? 'Create agent' : 'Save changes'}
               </button>
               <button onClick={() => navigate('/agents')}
                 className="px-4 py-2 text-sm rounded border border-border hover:bg-secondary">

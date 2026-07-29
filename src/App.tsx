@@ -26,9 +26,13 @@ import Runs from './pages/Runs';
 import Agents from './pages/Agents';
 import AgentBuilder from './pages/AgentBuilder';
 import Extract from './pages/Extract';
+import ExtractionSchemaDetail from './pages/ExtractionSchemaDetail';
 import Evals from './pages/Evals';
+import EvalSuiteDetail from './pages/EvalSuiteDetail';
 import Datasets from './pages/Datasets';
+import DatasetDetail from './pages/DatasetDetail';
 import Tuning from './pages/Tuning';
+import TuningJobDetail from './pages/TuningJobDetail';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AssistantProvider, useAssistant } from './contexts/AssistantContext';
@@ -176,10 +180,16 @@ const AppContent = () => {
               <Route path="/agents/new" element={<AgentBuilder />} />
               <Route path="/agents/:id" element={<AgentBuilder />} />
               <Route path="/extract" element={<Extract />} />
-              {/* Improve — UI ahead of the API; see PreviewNotice on each page. */}
+              <Route path="/extract/:id" element={<ExtractionSchemaDetail />} />
+              {/* Improve: corrections become datasets, datasets grade agents
+                  and tune models. Each list has a detail page because the rows
+                  are the point and there are too many to inline. */}
               <Route path="/evals" element={<Evals />} />
+              <Route path="/evals/:id" element={<EvalSuiteDetail />} />
               <Route path="/datasets" element={<Datasets />} />
+              <Route path="/datasets/:id" element={<DatasetDetail />} />
               <Route path="/tuning" element={<Tuning />} />
+              <Route path="/tuning/:id" element={<TuningJobDetail />} />
               {/* Runs replaced the old dead-end redirect. */}
               <Route path="/executions" element={<Navigate to="/runs" replace />} />
             </Route>

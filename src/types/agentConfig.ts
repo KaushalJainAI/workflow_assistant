@@ -10,6 +10,7 @@
 export type TriggerMode = 'goal' | 'maintenance' | 'template';
 export type Autonomy = 'full' | 'ask' | 'review';
 export type FileAccess = 'none' | 'readonly' | 'scoped' | 'full';
+export type Egress = 'none' | 'allowlist' | 'full';
 
 export interface AgentConfig {
   // Identity
@@ -42,7 +43,8 @@ export interface AgentConfig {
   // Context the agent is given
   connectors: string[];      // gdrive, gmail, photos, sheets, ...
   knowledgeBases: number[];
-  skills: string[];
+  /** Skill ids, not titles — a title is not a stable reference. */
+  skills: number[];
   useOrgContext: boolean;
   useEnvironment: boolean;   // time / place
 
@@ -55,6 +57,13 @@ export interface AgentConfig {
   notifyOnHitl: boolean;
   reviewAgent: boolean;
   spendCapRupees: number;
+  /**
+   * Whether the sandbox can reach the network. Separate from the web-search
+   * tool: search goes through us and is logged, egress is the agent opening its
+   * own socket. An agent that can run code but cannot dial out is a very
+   * different thing to hand a stranger.
+   */
+  egress: Egress;
 
   // Context lifecycle
   recursiveContext: boolean;
@@ -100,6 +109,7 @@ export const DEFAULT_AGENT: AgentConfig = {
   notifyOnHitl: true,
   reviewAgent: false,
   spendCapRupees: 500,
+  egress: 'none',
 
   recursiveContext: true,
   compaction: true,
@@ -125,6 +135,12 @@ export const AUTONOMY_COPY: Record<Autonomy, { label: string; hint: string }> = 
   full: { label: 'Runs unattended', hint: 'No approval gate. Only for reversible work.' },
   ask: { label: 'Asks before side effects', hint: 'Pauses before anything leaves your account.' },
   review: { label: 'Every step reviewed', hint: 'You approve each step. Slow, for high-stakes work.' },
+};
+
+export const EGRESS_COPY: Record<Egress, { label: string; hint: string }> = {
+  none: { label: 'No network', hint: 'The sandbox cannot dial out at all. The safe default.' },
+  allowlist: { label: 'Allowlist', hint: 'Only hosts you have named.' },
+  full: { label: 'Open network', hint: 'Anything it likes. Not allowed together with shell access.' },
 };
 
 export const FILE_ACCESS_COPY: Record<FileAccess, { label: string; hint: string }> = {
