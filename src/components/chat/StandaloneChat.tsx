@@ -195,7 +195,7 @@ export default function StandaloneChat() {
 
       if (isGuest) {
         setLlmProvider('nvidia');
-        setLlmModel('nvidia/nemotron-3-super-120b-a12b:free');
+        setLlmModel('nvidia/nemotron-3-super-120b-a12b');
         setIsCheckingCredentials(false);
         return;
       }
@@ -208,7 +208,7 @@ export default function StandaloneChat() {
         if (validCount === 0) {
           // User has no per-user credentials — keep the NVIDIA env-key default.
           setLlmProvider('nvidia');
-          setLlmModel('nvidia/nemotron-3-super-120b-a12b:free');
+          setLlmModel('nvidia/nemotron-3-super-120b-a12b');
         } else {
           const savedProvider = localStorage.getItem('standalone_chat_llm_provider');
           const savedModel = localStorage.getItem('standalone_chat_llm_model');

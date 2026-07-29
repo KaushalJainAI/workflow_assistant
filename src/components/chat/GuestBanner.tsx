@@ -26,9 +26,9 @@ const DISMISS_KEY = 'guest_banner_collapsed';
 
 /* Model ids are slugs. Spell out the ones we actually serve — "120B/12B-active"
    is the interesting part (mixture-of-experts) and no amount of string munging
-   gets you there from "nemotron-3-super-120b-a12b:free". */
+   gets you there from the slug. */
 const MODEL_NAMES: Record<string, string> = {
-  'nvidia/nemotron-3-super-120b-a12b:free': 'Nemotron 3 Super (120B/12B-active)',
+  'nvidia/nemotron-3-super-120b-a12b': 'Nemotron 3 Super (120B/12B-active)',
   'nvidia/llama-3.3-nemotron-super-49b-v1': 'Llama 3.3 Nemotron Super 49B',
 };
 
