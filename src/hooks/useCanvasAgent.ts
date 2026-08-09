@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { tokenManager } from '../api/client';
+import { useState, useCallback } from 'react';
 import type { Node, Edge } from 'reactflow';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-
-const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
+import { useSocket } from '../lib/websocket';
 
 interface CanvasAction {
   action_type: string;
@@ -20,59 +18,10 @@ interface UseCanvasAgentOptions {
 
 export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
   const { setNodes, setEdges, onConnect } = options;
-  const [isConnected, setIsConnected] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttempts = useRef(0);
-  const intentionalCloseRef = useRef(false);
-  const maxReconnectAttempts = 5;
   const navigate = useNavigate();
 
-  const connect = useCallback(() => {
-    const token = tokenManager.getAccessToken();
-    if (!token) return;
-
-    if (wsRef.current) {
-      intentionalCloseRef.current = true;
-      wsRef.current.close();
-    }
-    intentionalCloseRef.current = false;
-
-    const ws = new WebSocket(`${WS_URL}/canvas-agent/?token=${token}`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      reconnectAttempts.current = 0;
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-      if (intentionalCloseRef.current) {
-        intentionalCloseRef.current = false;
-        return;
-      }
-      if (reconnectAttempts.current < maxReconnectAttempts) {
-        reconnectAttempts.current += 1;
-        setTimeout(connect, 3000);
-      }
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'canvas_action') {
-          handleActions(data.actions);
-        }
-      } catch (err) {
-        console.error('Failed to parse Canvas Agent message:', err);
-      }
-    };
-  }, []);
-
   const handleActions = useCallback((actions: CanvasAction[]) => {
-    let actionsApplied = 0;
-
     actions.forEach((action) => {
       const { action_type, payload } = action;
 
@@ -80,7 +29,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
         case 'navigate':
           if (payload.path) {
             navigate(payload.path);
-            actionsApplied++;
           }
           break;
 
@@ -88,12 +36,10 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
           if (payload.type === 'success') toast.success(payload.message);
           else if (payload.type === 'error') toast.error(payload.message);
           else toast(payload.message);
-          actionsApplied++;
           break;
 
         case 'open_modal':
           // Can be hooked into a global modal state manager later
-          actionsApplied++;
           break;
 
         case 'add_node':
@@ -111,7 +57,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
               },
             };
             setNodes((nds) => [...nds, newNode]);
-            actionsApplied++;
           }
           break;
 
@@ -124,7 +69,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
                   : n
               )
             );
-            actionsApplied++;
           }
           break;
 
@@ -136,7 +80,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
                 (e) => e.source !== payload.node_id && e.target !== payload.node_id
               )
             );
-            actionsApplied++;
           }
           break;
 
@@ -148,7 +91,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
               sourceHandle: payload.source_handle || 'output-0',
               targetHandle: payload.target_handle || 'input-0',
             });
-            actionsApplied++;
           }
           break;
 
@@ -163,7 +105,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
                   )
               )
             );
-            actionsApplied++;
           }
           break;
 
@@ -171,7 +112,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
           if (setNodes && setEdges) {
             setNodes([]);
             setEdges([]);
-            actionsApplied++;
           }
           break;
 
@@ -183,7 +123,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
             }));
             setNodes(normalizedNodes);
             setEdges(payload.edges);
-            actionsApplied++;
           }
           break;
 
@@ -191,18 +130,20 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
           console.warn(`Unknown action type: ${action_type}`);
       }
     });
-
-    if (actionsApplied > 0) {
-      // Don't show toast for every action, but maybe for overall completion
-      // toast.success(`Applied ${actionsApplied} AI actions`);
-    }
   }, [setNodes, setEdges, onConnect, navigate]);
 
+  const handleMessage = useCallback((data: any) => {
+    if (data.type === 'canvas_action') handleActions(data.actions);
+  }, [handleActions]);
+
+  const { isConnected, send } = useSocket({
+    path: '/canvas-agent/',
+    onMessage: handleMessage,
+  });
+
   const sendCanvasState = useCallback((nodes: Node[], edges: Edge[]) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'canvas_state', state: { nodes, edges } }));
-    }
-  }, []);
+    send({ type: 'canvas_state', state: { nodes, edges } });
+  }, [send]);
 
   const sendInstruction = async (
     instruction: string,
@@ -228,17 +169,6 @@ export function useCanvasAgent(options: UseCanvasAgentOptions = {}) {
       setIsProcessing(false);
     }
   };
-
-  useEffect(() => {
-    connect();
-    return () => {
-      intentionalCloseRef.current = true;
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [connect]);
 
   return { isConnected, isProcessing, sendInstruction, sendCanvasState };
 }

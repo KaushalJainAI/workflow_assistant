@@ -29,7 +29,8 @@ import { useKeyboardShortcuts, getDefaultShortcuts } from '../hooks/useKeyboardS
 import { useNodeTypes } from '../hooks/useNodeTypes';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import ImportWorkflowModal from '../components/workflow/ImportWorkflowModal';
-import { validateWorkflow, getValidationSummary, type ValidationError } from '../lib/validateWorkflow';
+import { useWorkflowValidation } from '../hooks/useWorkflowValidation';
+import { useWorkflowDeployment } from '../hooks/useWorkflowDeployment';
 import { workflowsService, orchestratorService } from '../api';
 import { downloadWorkflow } from '../lib/workflowSerializer';
 import { useVersionHistory } from '../hooks/useVersionHistory';
@@ -131,9 +132,6 @@ export default function WorkflowEditor() {
   const [triggerPanelOpen, setTriggerPanelOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
-  const [showDeployModal, setShowDeployModal] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [deploySuccess, setDeploySuccess] = useState(false);
   const [copiedNode, setCopiedNode] = useState<Node | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
@@ -145,18 +143,20 @@ export default function WorkflowEditor() {
   const [pendingSourceNodeId, setPendingSourceNodeId] = useState<string | null>(null);
   const [pendingSourceHandleId, setPendingSourceHandleId] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
-  const [validationWarnings, setValidationWarnings] = useState<ValidationError[]>([]);
-  const [validationSummary, setValidationSummary] = useState<string | null>(null);
-  const [validationPanelOpen, setValidationPanelOpen] = useState(false);
+  const {
+    errors: validationErrors,
+    warnings: validationWarnings,
+    summary: validationSummary,
+    isPanelOpen: validationPanelOpen,
+    togglePanel: toggleValidationPanel,
+    run: runValidation,
+  } = useWorkflowValidation({ setNodes });
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [supervisionLevel, setSupervisionLevel] = useState<SupervisionLevel>('error_only');
   const [workflowDescription, setWorkflowDescription] = useState('');
   const [workflowContext, setWorkflowContext] = useState('');
   const [showExecutionLog, setShowExecutionLog] = useState(false);
-  const [deployedWebhookUrl, setDeployedWebhookUrl] = useState<string | null>(null);
-  const [isUndeploying, setIsUndeploying] = useState(false);
   const [availableSkills, setAvailableSkills] = useState<{ id: string; title: string }[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
@@ -482,73 +482,6 @@ export default function WorkflowEditor() {
 
 
 
-  const handleDeploy = async () => {
-    setIsDeploying(true);
-    setDeployedWebhookUrl(null);
-    try {
-      if (!workflowBackendId) {
-        await handleSave();
-      }
-      
-      if (workflowBackendId) {
-        await orchestratorService.deployWorkflow(workflowBackendId);
-        setWorkflowStatus('active');
-        
-        // Find and set webhook URL if applicable
-        const webhookUrl = findWebhookUrl();
-        setDeployedWebhookUrl(webhookUrl);
-        
-        setDeploySuccess(true);
-        toast.success('Workflow deployed successfully');
-        
-        // If there's a webhook URL, don't auto-close the modal so user can copy it
-        if (!webhookUrl) {
-          setTimeout(() => {
-            setShowDeployModal(false);
-            setDeploySuccess(false);
-          }, 2000);
-        }
-      }
-    } catch (error: any) {
-      console.error('Deploy failed:', error);
-      
-      // Handle detailed backend validation errors
-      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Deployment failed';
-      const details = error.response?.data?.details;
-      
-      if (details && Array.isArray(details)) {
-        const detailMessages = details.map((d: any) => d.message || d).join('\n');
-        toast.error(`${errorMessage}:\n${detailMessages}`);
-      } else {
-        const tip = error.response?.data?.tip;
-        if (tip) {
-          toast.error(`${errorMessage}\n\nTip: ${tip}`);
-        } else {
-          toast.error(errorMessage);
-        }
-      }
-    } finally {
-      setIsDeploying(false);
-    }
-  };
-
-  const handleUndeploy = async () => {
-    if (!workflowBackendId) return;
-    
-    setIsUndeploying(true);
-    try {
-      await orchestratorService.undeployWorkflow(workflowBackendId);
-      setWorkflowStatus('draft');
-      toast.success('Workflow undeployed successfully');
-    } catch (error: any) {
-      console.error('Undeploy failed:', error);
-      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Undeploy failed';
-      toast.error(errorMessage);
-    } finally {
-      setIsUndeploying(false);
-    }
-  };
-
   // Handle batch save for settings
   const handleSettingsSave = async (desc: string, ctx: string, level: SupervisionLevel, skills: string[]) => {
     setWorkflowDescription(desc);
@@ -660,28 +593,14 @@ export default function WorkflowEditor() {
         saveVersion(nodes, edges, workflowName, 'Manual save');
       }
 
-      // Run validation on save
-      const result = await validateWorkflow(nodes, edges, { getNodeConfigFn: getNodeConfigSync });
-      setValidationErrors(result.errors);
-      setValidationWarnings(result.warnings);
-      setValidationSummary(getValidationSummary(result));
-      if (result.errors.length > 0 || result.warnings.length > 0) {
-        setValidationPanelOpen(true);
-      }
-      
-      // Update nodes with validation status
-      setNodes(currentNodes => currentNodes.map(node => {
-        const error = result.errors.find(e => e.nodeId === node.id);
-        const warning = result.warnings.find(w => w.nodeId === node.id);
-        return {
-           ...node,
-           data: {
-              ...node.data,
-              validationError: error || warning
-           }
-        };
-      }));
-      
+      // Validate on save; `runValidation` also stamps each node with its issue.
+      await runValidation(
+        nodes,
+        edges,
+        { getNodeConfigFn: getNodeConfigSync },
+        { openPanelOnIssues: true },
+      );
+
     } catch (error) {
       console.error('Failed to save workflow:', error);
     } finally {
@@ -689,6 +608,23 @@ export default function WorkflowEditor() {
       setIsAutoSaving(false);
     }
   }, [workflowName, nodes, edges, workflowBackendId, isSaving, saveVersion, workflowDescription, workflowContext, getNodeConfigSync]);
+
+  const {
+    isModalOpen: showDeployModal,
+    setModalOpen: setShowDeployModal,
+    isDeploying,
+    didSucceed: deploySuccess,
+    setDidSucceed: setDeploySuccess,
+    webhookUrl: deployedWebhookUrl,
+    isUndeploying,
+    deploy: handleDeploy,
+    undeploy: handleUndeploy,
+  } = useWorkflowDeployment({
+    workflowId: workflowBackendId,
+    onStatusChange: setWorkflowStatus,
+    findWebhookUrl,
+    save: handleSave,
+  });
 
   // Auto-save effect: triggers 2 seconds after the last change
   useEffect(() => {
@@ -1053,39 +989,24 @@ export default function WorkflowEditor() {
   }, [executionId, setNodes]);
 
   const handleExecute = useCallback(async () => {
-    // Validate before execution
-    const result = await validateWorkflow(nodes, edges, { 
-      validateWithBackend: true,
-      checkCredentials: true,
-      checkTypeCompatibility: true
-    });
-    setValidationErrors(result.errors);
-    setValidationWarnings(result.warnings);
-    setValidationSummary(getValidationSummary(result));
-
-    // Update nodes with validation status
-    setNodes(currentNodes => currentNodes.map(node => {
-      const error = result.errors.find(e => e.nodeId === node.id);
-      const warning = result.warnings.find(w => w.nodeId === node.id);
-      return {
-          ...node,
-          data: {
-            ...node.data,
-            validationError: error || warning,
-            // Clear previous execution data
-            outputData: undefined,
-            inputData: undefined,
-            executionStatus: 'pending'
-          }
-      };
-    }));
+    // Validate before execution. The same pass clears the previous run's data
+    // off every node, so the canvas does not show stale output next to new input.
+    const result = await runValidation(
+      nodes,
+      edges,
+      { validateWithBackend: true, checkCredentials: true, checkTypeCompatibility: true },
+      {
+        openPanelOnIssues: true,
+        nodePatch: {
+          outputData: undefined,
+          inputData: undefined,
+          executionStatus: 'pending',
+        },
+      },
+    );
     
     // Clear previous execution state
     setLastExecutionData({});
-
-    if (result.errors.length > 0 || result.warnings.length > 0) {
-      setValidationPanelOpen(true);
-    }
 
     if (!result.isValid) {
       toast.error(`Cannot execute workflow:\n${result.errors.map(e => e.message).join('\n')}`);
@@ -1290,7 +1211,7 @@ export default function WorkflowEditor() {
             {validationSummary && (
               <div
                 onClick={() => {
-                  setValidationPanelOpen(!validationPanelOpen);
+                  toggleValidationPanel();
                 }}
                 className={`cursor-pointer px-3 py-1 rounded-full text-[10px] font-bold  border transition
                   ${
@@ -1514,7 +1435,7 @@ export default function WorkflowEditor() {
           <div className="transition-all duration-300">
             <WorkflowValidationPanel 
               isOpen={validationPanelOpen}
-              onToggle={() => setValidationPanelOpen(!validationPanelOpen)}
+              onToggle={() => toggleValidationPanel()}
               errors={validationErrors}
               warnings={validationWarnings}
               onSelectNode={(nodeId) => {

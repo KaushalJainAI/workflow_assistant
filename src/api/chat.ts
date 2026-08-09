@@ -1,4 +1,5 @@
 import apiClient from './client';
+import { streamSse } from './sse';
 
 export interface ChatSession {
   id: string;
@@ -96,63 +97,19 @@ export const chatService = {
     llmModel?: string,
     approveToolCall?: string
   ): Promise<void> {
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-    const token = localStorage.getItem('access_token');
-    const body: Record<string, any> = { content };
+    const body: Record<string, unknown> = { content };
     if (intent && intent !== 'normal') body.intent = intent;
     if (reference) body.reference = reference;
     if (llmProvider) body.llm_provider = llmProvider;
     if (llmModel) body.llm_model = llmModel;
     if (approveToolCall) body.approve_tool_call = approveToolCall;
 
-    const response = await fetch(`${API_URL}/chat/sessions/${sessionId}/message/stream/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
+    return streamSse({
+      path: `/chat/sessions/${sessionId}/message/stream/`,
+      body,
+      onEvent,
       signal,
     });
-
-    if (!response.ok || !response.body) {
-      throw new Error(`Stream request failed: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      // Parse SSE lines
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // keep incomplete line in buffer
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event = JSON.parse(line.slice(6));
-            onEvent(event);
-          } catch {
-            // skip malformed events
-          }
-        }
-      }
-    }
-
-    // Process any remaining buffer
-    if (buffer.startsWith('data: ')) {
-      try {
-        const event = JSON.parse(buffer.slice(6));
-        onEvent(event);
-      } catch {
-        // skip
-      }
-    }
   },
 
   async uploadFile(sessionId: string, file: File): Promise<any> {
@@ -184,37 +141,13 @@ export const chatService = {
       onEvent: (event: { type: string; [key: string]: any }) => void,
       signal?: AbortSignal,
     ): Promise<void> {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-      const response = await fetch(`${API_URL}/chat/guest/sessions/${sessionId}/message/stream/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+      return streamSse({
+        path: `/chat/guest/sessions/${sessionId}/message/stream/`,
+        body: { content },
+        onEvent,
         signal,
+        authenticated: false,
       });
-
-      if (!response.body) {
-        throw new Error(`Stream request failed: ${response.status}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try { onEvent(JSON.parse(line.slice(6))); } catch { /* skip */ }
-          }
-        }
-      }
-      if (buffer.startsWith('data: ')) {
-        try { onEvent(JSON.parse(buffer.slice(6))); } catch { /* skip */ }
-      }
     },
   },
 };

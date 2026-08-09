@@ -23,7 +23,6 @@ import {
   Zap,
   Wand2,
   Globe2,
-  ExternalLink,
   Trash2,
   RotateCcw,
   ArrowUpFromLine,
@@ -37,24 +36,23 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { credentialsService, chatService, type StandaloneChatMessage as ChatMessage, type ChatSession } from '../../api';
+import { chatService, type StandaloneChatMessage as ChatMessage, type ChatSession } from '../../api';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 import { TextSelectionMenu } from './TextSelectionMenu';
 import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
+import MarkdownMessage from './MarkdownMessage';
 import type { HtmlArtifact as HtmlArtifactData } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
+import { useChatStream } from '../../hooks/useChatStream';
+import { useMessagePanels } from '../../hooks/useMessagePanels';
+import { useMessageSelection } from '../../hooks/useMessageSelection';
+import { useChatModelSelection } from '../../hooks/useChatModelSelection';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import GuestBanner from './GuestBanner';
-
-interface PendingToolCall {
-  tool: string;
-  args: any;
-  call_id: string;
-}
 
 /** Rough size hint for a reasoning trace, so the toggle says what it will cost to open. */
 function formatWordCount(text: string): string {
@@ -105,65 +103,61 @@ export default function StandaloneChat() {
   // --- Model Selection State ---
   // Default to NVIDIA Nemotron 3 Super so the chat works out-of-the-box using
   // the server-side NVIDIA_API_KEY (no per-user credential required).
-  const [llmProvider, setLlmProvider] = useState('nvidia');
-  const [llmModel, setLlmModel] = useState('nvidia/llama-3.3-nemotron-super-49b-v1');
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { providers: dynamicProviders } = useAIModels();
+
+  const {
+    provider: llmProvider,
+    model: llmModel,
+    setProvider: setLlmProvider,
+    isDropdownOpen: showModelDropdown,
+    setDropdownOpen: setShowModelDropdown,
+    searchQuery: modelSearchQuery,
+    setSearchQuery: setModelSearchQuery,
+    dropdownRef,
+    isChecking: isCheckingCredentials,
+    select: selectModel,
+    adopt: adoptSessionModel,
+  } = useChatModelSelection({ isGuest, providers: dynamicProviders });
 
   // --- Agentic Features State ---
   const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(true);
   const [activeIntent, setActiveIntent] = useState<'normal' | 'search' | 'image' | 'video' | 'research'>('normal');
   const [deletingMsgId, setDeletingMsgId] = useState<number | null>(null);
-  const [expandedSummaryMsgId, setExpandedSummaryMsgId] = useState<number | null>(null);
-  const [expandedSourcesMsgId, setExpandedSourcesMsgId] = useState<number | null>(null);
-  const [expandedImagesMsgId, setExpandedImagesMsgId] = useState<number | null>(null);
-  const [expandedVideosMsgId, setExpandedVideosMsgId] = useState<number | null>(null);
-  const [expandedActivityMsgId, setExpandedActivityMsgId] = useState<number | null>(null);
-  const [expandedThinkingMsgId, setExpandedThinkingMsgId] = useState<number | null>(null);
-  const [expandedCodeMsgId, setExpandedCodeMsgId] = useState<number | null>(null);
+  const { toggle: togglePanel, isOpen: isPanelOpen, openIdFor: openPanelId } = useMessagePanels();
   
   // Text Selection State
-  const [selectionPos, setSelectionPos] = useState<{ x: number; y: number } | null>(null);
-  const [selectedText, setSelectedText] = useState('');
-  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
-  const [activeReference, setActiveReference] = useState<{ messageId: number; textSnippet: string } | null>(null);
+  const {
+    anchor: selectionPos,
+    reference: activeReference,
+    syncFromDocument: syncSelection,
+    dismiss: dismissSelection,
+    copySelection,
+    referenceSelection,
+    clearReference,
+  } = useMessageSelection();
 
-  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
-  const [isCheckingCredentials, setIsCheckingCredentials] = useState(true);
-  const { providers: dynamicProviders } = useAIModels();
-  const [modelSearchQuery, setModelSearchQuery] = useState('');
+
 
   // --- File Upload State ---
   const [isUploading, setIsUploading] = useState(false);
 
   // --- Live Streaming State (Perplexity-like) ---
-  const [liveStatus, setLiveStatus] = useState<{ phase: string; message: string } | null>(null);
-  const [liveActivity, setLiveActivity] = useState<Array<{ 
-    type: 'tool' | 'thought'; 
-    tool?: string; 
-    args?: any; 
-    iteration?: number; 
-    thought?: string;
-  }>>([]);
-  const [liveSources, setLiveSources] = useState<Array<{ 
-    title: string; 
-    url: string; 
-    snippet?: string;
-    thumbnail?: string;
-    favicon?: string;
-  }>>([]);
-  const [liveImages, setLiveImages] = useState<any[]>([]);
-  const [liveVideos, setLiveVideos] = useState<any[]>([]);
-  
-  const [liveThinking, setLiveThinking] = useState('');
-  const [liveContent, setLiveContent] = useState('');
-  const [liveCodeExecutions, setLiveCodeExecutions] = useState<any[]>([]);
-  const [liveArtifacts, setLiveArtifacts] = useState<HtmlArtifactData[]>([]);
-  const [blockedAttachments, setBlockedAttachments] = useState<{ message: string; items: any[] } | null>(null);
+  const {
+    live,
+    applyEvent: applyStreamEvent,
+    reset: resetStream,
+    clearStatus: clearStreamStatus,
+    clearPendingToolCall,
+    dismissBlockedAttachments,
+  } = useChatStream();
+
+  // Bound as consts so a `&&` guard narrows them inside event handlers too,
+  // which a `live.x` property read does not.
+  const { pendingToolCall, blockedAttachments } = live;
+
   const [showSessionSettings, setShowSessionSettings] = useState(false);
   const [systemPromptDraft, setSystemPromptDraft] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [pendingToolCall, setPendingToolCall] = useState<PendingToolCall | null>(null);
   const [isReasoningExpanded, setIsReasoningExpanded] = useState(false);
   const [isLiveCodeExpanded, setIsLiveCodeExpanded] = useState(true);
   const [isLiveSourcesExpanded, setIsLiveSourcesExpanded] = useState(true);
@@ -197,67 +191,6 @@ export default function StandaloneChat() {
     return () => clearInterval(timer);
   }, [isLoading]);
 
-  useEffect(() => {
-    const checkAuthAndSettings = async () => {
-      setIsCheckingCredentials(true);
-      // The server now ships with an NVIDIA env key, so chat works for everyone
-      // without a per-user credential. We keep hasCredentials=true unconditionally
-      // and only read the credentials list to remember the user's preferred model.
-      setHasCredentials(true);
-
-      if (isGuest) {
-        setLlmProvider('nvidia');
-        setLlmModel('nvidia/nemotron-3-super-120b-a12b');
-        setIsCheckingCredentials(false);
-        return;
-      }
-
-      try {
-        // Best-effort credentials read — failure is fine, we no longer gate on it.
-        const list = await credentialsService.list().catch(() => ({ credentials: [] as any[] }));
-        const validCount = list.credentials.filter((c: any) => c.is_valid).length;
-
-        if (validCount === 0) {
-          // User has no per-user credentials — keep the NVIDIA env-key default.
-          setLlmProvider('nvidia');
-          setLlmModel('nvidia/nemotron-3-super-120b-a12b');
-        } else {
-          const savedProvider = localStorage.getItem('standalone_chat_llm_provider');
-          const savedModel = localStorage.getItem('standalone_chat_llm_model');
-          if (savedProvider) setLlmProvider(savedProvider);
-          if (savedModel) setLlmModel(savedModel);
-        }
-      } finally {
-        setIsCheckingCredentials(false);
-      }
-    };
-
-    checkAuthAndSettings();
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowModelDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Validate and sync settings once dynamic providers load
-  useEffect(() => {
-    if (dynamicProviders.length > 0) {
-      const currentProvider = dynamicProviders.find(p => p.slug === llmProvider);
-      if (currentProvider) {
-        // If the current model isn't in the provider's list, reset to default
-        const modelExists = currentProvider.models.some(m => m.value === llmModel);
-        if (!modelExists && currentProvider.models.length > 0) {
-          const defaultModel = currentProvider.models[0].value;
-          setLlmModel(defaultModel);
-          localStorage.setItem('standalone_chat_llm_model', defaultModel);
-        }
-      }
-    }
-  }, [dynamicProviders, llmProvider, llmModel]);
 
 
 
@@ -271,9 +204,7 @@ export default function StandaloneChat() {
         setMessages(session.messages as unknown as ChatMessage[]);
         setConversationId(id);
         setCurrentSession(session);
-        // Sync LLM settings
-        setLlmProvider(session.llm_provider);
-        setLlmModel(session.llm_model);
+        adoptSessionModel(session.llm_provider, session.llm_model);
       }
     } catch (e) {
       console.error("Failed to load conversation", e);
@@ -300,12 +231,8 @@ export default function StandaloneChat() {
   }, []);
 
   const saveLLMSettings = async (provider: string, model: string) => {
-    localStorage.setItem('standalone_chat_llm_provider', provider);
-    localStorage.setItem('standalone_chat_llm_model', model);
-    setLlmProvider(provider);
-    setLlmModel(model);
-    setShowModelDropdown(false);
-    
+    selectModel(provider, model);
+
     if (conversationId) {
       try {
         await chatService.updateSession(conversationId, { llm_provider: provider, llm_model: model });
@@ -522,7 +449,7 @@ export default function StandaloneChat() {
   const handleApproveTool = async (callId: string) => {
     if (!conversationId || !pendingToolCall) return;
     
-    setPendingToolCall(null);
+    clearPendingToolCall();
     setIsLoading(true);
     
     const controller = new AbortController();
@@ -568,112 +495,50 @@ export default function StandaloneChat() {
     }
   };
 
+  /**
+   * Applies one SSE frame. Live turn state is folded by `useChatStream`; only
+   * the effects that reach outside the turn are handled here.
+   */
   const handleStreamEvent = (event: any, optimisticId?: number, intentToSend?: string) => {
+    applyStreamEvent(event);
+
     switch (event.type) {
       case 'status':
-        setLiveStatus({ phase: event.phase, message: event.message });
+        // The optimistic user message gets its real database id here.
         if (optimisticId && event.user_message_id) {
-          setMessages(prev => {
-            const newMsgs = [...prev];
-            const userMsgIndex = newMsgs.findIndex(m => m.id === optimisticId);
-            if (userMsgIndex !== -1) {
-              newMsgs[userMsgIndex] = { ...newMsgs[userMsgIndex], id: event.user_message_id };
-            }
-            return newMsgs;
-          });
+          setMessages(prev => prev.map(m => (
+            m.id === optimisticId ? { ...m, id: event.user_message_id } : m
+          )));
         }
         break;
-      case 'thinking_chunk':
-        setLiveThinking(prev => prev + event.content);
-        break;
-      case 'content_chunk':
-        setLiveContent(prev => prev + event.content);
-        break;
-      case 'tool_call':
-        // Legacy support for older backend versions
-        setLiveActivity(prev => [...prev, { type: 'tool', tool: event.tool, args: event.args, iteration: event.iteration }]);
-        break;
-      case 'agent_trace':
-        if (event.sub_type === 'thought') {
-          setLiveActivity(prev => {
-            const last = prev[prev.length - 1];
-            if (last?.type === 'thought') {
-              return [...prev.slice(0, -1), { ...last, thought: event.content }];
-            }
-            return [...prev, { type: 'thought', thought: event.content }];
-          });
-        } else {
-          setLiveActivity(prev => [...prev, { 
-              type: 'tool', 
-              tool: event.tool, 
-              args: event.args, 
-              iteration: event.iteration,
-              thought: event.thought
-          }]);
-        }
-        break;
-      case 'sources_update':
-        setLiveSources(event.sources || []);
-        break;
-      case 'images_update':
-        setLiveImages(event.images || []);
-        break;
-      case 'html_artifact':
-        setLiveArtifacts(prev => [...prev, {
-          title: event.title,
-          html: event.html,
-          width: event.width,
-          height: event.height,
-        }]);
-        break;
-      case 'attachments_blocked':
-        // Persistent, not a transient toast: the user needs to still see this
-        // while they go and change the model, which is the action it asks for.
-        setBlockedAttachments({ message: event.message, items: event.items || [] });
-        break;
+
       case 'ask_permission':
-        setPendingToolCall({
-          tool: event.tool,
-          args: event.args,
-          call_id: event.call_id
-        });
         setIsLoading(false);
         break;
-      case 'videos_update':
-        setLiveVideos(event.videos || []);
-        break;
+
       case 'done':
         setMessages(prev => {
-          const newMsgs = [...prev];
-          if (optimisticId && event.user_message) {
-            const userMsgIndex = newMsgs.findIndex(m => m.id === optimisticId || m.id === event.user_message.id);
-            if (userMsgIndex !== -1) {
-              newMsgs[userMsgIndex] = { ...newMsgs[userMsgIndex], id: event.user_message.id };
-            }
-          }
-          return [...newMsgs, event.ai_response as unknown as ChatMessage];
+          const reconciled = optimisticId && event.user_message
+            ? prev.map(m => (
+                m.id === optimisticId || m.id === event.user_message.id
+                  ? { ...m, id: event.user_message.id }
+                  : m
+              ))
+            : prev;
+          return [...reconciled, event.ai_response as unknown as ChatMessage];
         });
         setIsLoading(false);
-        setLiveStatus(null);
-        setLiveActivity([]);
-        setLiveSources([]);
-        setLiveImages([]);
-        setLiveVideos([]);
-        setLiveContent('');
-        setLiveThinking('');
-        setLiveCodeExecutions([]);
-        setLiveArtifacts([]);
-        setActiveReference(null);
-        
+        clearReference();
+
         // Sync intent to session state if it was locked this turn
         if (intentToSend && currentSession && !['chat', 'search', 'normal'].includes(intentToSend) && currentSession.intent !== intentToSend) {
           setCurrentSession({ ...currentSession, intent: intentToSend });
         }
         break;
+
       case 'error':
         toast.error(event.message);
         setIsLoading(false);
-        setLiveStatus(null);
         break;
     }
   };
@@ -699,15 +564,7 @@ export default function StandaloneChat() {
     setInput('');
     setIsLoading(true);
     
-    // Reset live streaming state
-    setLiveStatus(null);
-    setLiveActivity([]);
-    setLiveSources([]);
-    setLiveImages([]);
-    setLiveVideos([]);
-    setLiveThinking('');
-    setLiveContent('');
-    setLiveCodeExecutions([]);
+    resetStream();
     setIsReasoningExpanded(false);
     setIsLiveCodeExpanded(true);
     setIsLiveSourcesExpanded(true);
@@ -769,7 +626,7 @@ export default function StandaloneChat() {
       } as ChatMessage]);
     } finally {
       setIsLoading(false);
-      setLiveStatus(null);
+      clearStreamStatus();
       abortControllerRef.current = null;
     }
   };
@@ -779,7 +636,7 @@ export default function StandaloneChat() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsLoading(false);
-      setLiveStatus(null);
+      clearStreamStatus();
       toast.info('Generation stopped');
     }
   };
@@ -876,8 +733,7 @@ export default function StandaloneChat() {
                     if (sessionDetails?.messages) {
                       setMessages(sessionDetails.messages as unknown as ChatMessage[]);
                       setConversationId(conv.id);
-                      setLlmProvider(sessionDetails.llm_provider);
-                      setLlmModel(sessionDetails.llm_model);
+                      adoptSessionModel(sessionDetails.llm_provider, sessionDetails.llm_model);
                       setShowHistory(false);
                     }
                   } finally {
@@ -1079,66 +935,18 @@ export default function StandaloneChat() {
             // shoves it upward and leaves a dead zone above the composer).
             isInitialState ? "flex items-center justify-center py-4" : "pt-8 pb-24"
           )}
-          onMouseUp={() => {
-            const selection = window.getSelection();
-            if (!selection || selection.isCollapsed) {
-              if (selectionPos) setSelectionPos(null);
-              return;
-            }
-            
-            const text = selection.toString().trim();
-            if (!text) {
-              if (selectionPos) setSelectionPos(null);
-              return;
-            }
-
-            let node = selection.anchorNode;
-            let messageId = null;
-            while (node && node !== document.body) {
-              if (node.nodeType === 1 && (node as HTMLElement).hasAttribute('data-message-id')) {
-                messageId = parseInt((node as HTMLElement).getAttribute('data-message-id') || '', 10);
-                break;
-              }
-              node = node.parentNode;
-            }
-
-            if (messageId) {
-              const range = selection.getRangeAt(0);
-              const rect = range.getBoundingClientRect();
-              setSelectionPos({
-                x: rect.left + rect.width / 2,
-                y: rect.top
-              });
-              setSelectedMessageId(messageId);
-              setSelectedText(text);
-            } else {
-              setSelectionPos(null);
-            }
-          }}
-          onKeyUp={() => {
-            // similar to mouse up
-            const selection = window.getSelection();
-            if (!selection || selection.isCollapsed) {
-              if (selectionPos) setSelectionPos(null);
-            }
-          }}
+          onMouseUp={syncSelection}
+          onKeyUp={syncSelection}
         >
-          <TextSelectionMenu 
+          <TextSelectionMenu
             position={selectionPos}
-            onClose={() => setSelectionPos(null)}
+            onClose={dismissSelection}
             onCopy={() => {
-              navigator.clipboard.writeText(selectedText);
+              copySelection();
               toast.success('Text copied to clipboard');
-              setSelectionPos(null);
-              window.getSelection()?.removeAllRanges();
             }}
             onReference={() => {
-              if (selectedMessageId) {
-                setActiveReference({ messageId: selectedMessageId, textSnippet: selectedText });
-                textareaRef.current?.focus();
-              }
-              setSelectionPos(null);
-              window.getSelection()?.removeAllRanges();
+              if (referenceSelection()) textareaRef.current?.focus();
             }}
           />
 
@@ -1277,116 +1085,10 @@ export default function StandaloneChat() {
                             </div>
                           </div>
                         ) : (
-                          <ReactMarkdown 
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              a: ({ href, children, ...props }) => {
-                                // Inline citation button: [1], [2], etc.
-                                    if (href?.startsWith('citation:')) {
-                                      const citNum = parseInt(href.split(':')[1]);
-                                      const src = message.metadata?.sources?.[citNum - 1];
-                                      return (
-                                        <div className="relative inline-block group/cit z-20 mx-0.5 align-text-top">
-                                          <a 
-                                            href={src?.url || '#'}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={(e) => { if (!src?.url) e.preventDefault(); }}
-                                            className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 text-[11px] font-semibold rounded border border-primary/30 no-underline cursor-pointer transition-all bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground shadow-sm"
-                                          >
-                                            {citNum}
-                                          </a>
-                                          {/* Hover Tooltip */}
-                                          {src && (
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[280px] p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 invisible group-hover/cit:opacity-100 group-hover/cit:visible transition-all duration-200 z-50 flex flex-col gap-1.5 pointer-events-none">
-                                              <div className="flex items-center gap-1.5 text-zinc-400">
-                                                <Globe2 className="w-3 h-3 shrink-0" />
-                                                <span className="text-[10px] font-semibold truncate">
-                                                  {(() => { try { return new URL(src.url).hostname; } catch { return 'Source'; } })()}
-                                                </span>
-                                              </div>
-                                              <p className="text-[12px] font-medium text-zinc-100 leading-snug line-clamp-2">
-                                                {src.title || src.url}
-                                              </p>
-                                              {/* Triangle pointer */}
-                                              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-[5px] border-l-transparent border-r-transparent border-t-zinc-800" />
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    }
-                                // Regular links: boxed style
-                                return (
-                                  <a 
-                                    href={href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 mx-0.5 px-2 py-0.5 text-primary font-semibold bg-primary/5 border border-primary/20 rounded-lg no-underline hover:bg-primary/15 hover:border-primary/40 transition-all shadow-sm"
-                                    {...props}
-                                  >
-                                    <ExternalLink className="w-3 h-3 opacity-60 shrink-0" />
-                                    {children}
-                                  </a>
-                                );
-                              },
-                              code: ({ node: _node, inline, className, children, ...props }: any) => {
-                                const match = /language-(\w+)/.exec(className || '');
-                                const lang = match ? match[1].toUpperCase() : '';
-                                
-                                if (!inline && match) {
-                                  const codeContent = String(children).replace(/\n$/, '');
-                                  return (
-                                    <div className="relative group/code my-6 rounded-2xl overflow-hidden border border-border/40 bg-[#0d1117] shadow-xl">
-                                      {/* Header */}
-                                      <div className="flex items-center justify-between px-5 py-3.5 bg-zinc-900/80 border-b border-white/5 backdrop-blur-md">
-                                        <div className="flex items-center gap-2.5">
-                                          <div className="flex gap-1.5 mr-2">
-                                            <div className="w-3 h-3 rounded-full bg-red-500/80" />
-                                            <div className="w-3 h-3 rounded-full bg-amber-500/80" />
-                                            <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-                                          </div>
-                                          <span className="text-[11px] font-semibold text-zinc-500 uppercase">{lang || 'CODE'}</span>
-                                        </div>
-                                        <button
-                                          onClick={() => {
-                                            navigator.clipboard.writeText(codeContent);
-                                            toast.success('Code copied to clipboard');
-                                            // Handle local copy state if needed, but toast is enough for now
-                                          }}
-                                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all border border-white/5 hover:border-white/20 group/copybtn"
-                                          title="Copy code"
-                                        >
-                                          <Copy className="w-3.5 h-3.5 group-hover/copybtn:scale-110 transition-transform" />
-                                          <span className="text-[11px] font-bold ">Copy</span>
-                                        </button>
-                                      </div>
-                                      
-                                      {/* Code Content */}
-                                      <div className="relative">
-                                        <pre className="p-6 overflow-x-auto text-[14px] leading-relaxed custom-scrollbar selection:bg-primary/20">
-                                          <code className={cn(className, "block")} {...props}>
-                                            {children}
-                                          </code>
-                                        </pre>
-                                        
-                                        {/* Subtle corner glow */}
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-3xl rounded-full -mr-16 -mt-16 pointer-events-none" />
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                
-                                // Inline code style
-                                return (
-                                  <code className={cn("px-1.5 py-0.5 rounded-md bg-muted font-mono text-sm border border-border/40 text-primary/90", className)} {...props}>
-                                    {children}
-                                  </code>
-                                );
-                              }
-                            }}
-                          >
-                            {message.content.replace(/\[(\d+)\]/g, '[$1](citation:$1)')}
-                          </ReactMarkdown>
+                          <MarkdownMessage
+                            content={message.content}
+                            sources={message.metadata?.sources}
+                          />
                         )}
                       </div>
                       {/* Quick Summary, Reasoning & Activity Row */}
@@ -1395,18 +1097,18 @@ export default function StandaloneChat() {
                           {message.metadata?.summary && (
                             <div className="flex-1 min-w-[140px] group/summary animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
-                                onClick={() => setExpandedSummaryMsgId(expandedSummaryMsgId === message.id ? null : message.id as number)}
+                                onClick={() => togglePanel('summary', message.id as number)}
                                 className={cn(
                                   "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
-                                  expandedSummaryMsgId === message.id
+                                  isPanelOpen('summary', message.id)
                                     ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
-                                <Sparkles className={cn("w-4 h-4", expandedSummaryMsgId === message.id ? "text-primary" : "text-muted-foreground/70")} />
+                                <Sparkles className={cn("w-4 h-4", isPanelOpen('summary', message.id) ? "text-primary" : "text-muted-foreground/70")} />
                                 <span className="text-[12px] font-bold tracking-tight">Summary</span>
                                 <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedSummaryMsgId === message.id && "rotate-180")} />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('summary', message.id) && "rotate-180")} />
                               </button>
                             </div>
                           )}
@@ -1414,15 +1116,15 @@ export default function StandaloneChat() {
                           {message.metadata?.thinking && (
                             <div className="flex-1 min-w-[140px] group/thinking animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
-                                onClick={() => setExpandedThinkingMsgId(expandedThinkingMsgId === message.id ? null : message.id as number)}
+                                onClick={() => togglePanel('thinking', message.id as number)}
                                 className={cn(
                                   "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
-                                  expandedThinkingMsgId === message.id
+                                  isPanelOpen('thinking', message.id)
                                     ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
-                                <BrainCircuit className={cn("w-4 h-4", expandedThinkingMsgId === message.id ? "text-primary" : "text-muted-foreground/70")} />
+                                <BrainCircuit className={cn("w-4 h-4", isPanelOpen('thinking', message.id) ? "text-primary" : "text-muted-foreground/70")} />
                                 <span className="text-[12px] font-bold tracking-tight">Reasoning</span>
                                 {/* Length hint: without it there is no way to
                                     tell a one-line thought from six paragraphs
@@ -1431,25 +1133,25 @@ export default function StandaloneChat() {
                                   {formatWordCount(message.metadata.thinking)}
                                 </span>
                                 <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedThinkingMsgId === message.id && "rotate-180")} />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('thinking', message.id) && "rotate-180")} />
                               </button>
                             </div>
                           )}
                           {message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
                             <div className="flex-1 min-w-[140px] group/activity animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
-                                onClick={() => setExpandedActivityMsgId(expandedActivityMsgId === message.id ? null : message.id as number)}
+                                onClick={() => togglePanel('activity', message.id as number)}
                                 className={cn(
                                   "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
-                                  expandedActivityMsgId === message.id
+                                  isPanelOpen('activity', message.id)
                                     ? "bg-amber-500/10 border-amber-500/30 text-amber-600 shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
-                                <Zap className={cn("w-4 h-4", expandedActivityMsgId === message.id ? "text-amber-600" : "text-muted-foreground/70")} />
+                                <Zap className={cn("w-4 h-4", isPanelOpen('activity', message.id) ? "text-amber-600" : "text-muted-foreground/70")} />
                                 <span className="text-[12px] font-bold tracking-tight">Activity</span>
                                 <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedActivityMsgId === message.id && "rotate-180")} />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('activity', message.id) && "rotate-180")} />
                               </button>
                             </div>
                           )}
@@ -1457,18 +1159,18 @@ export default function StandaloneChat() {
                           {message.metadata?.has_code_execution && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
                             <div className="flex-1 min-w-[140px] group/code animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
-                                onClick={() => setExpandedCodeMsgId(expandedCodeMsgId === message.id ? null : message.id as number)}
+                                onClick={() => togglePanel('code', message.id as number)}
                                 className={cn(
                                   "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
-                                  expandedCodeMsgId === message.id
+                                  isPanelOpen('code', message.id)
                                     ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
-                                <Code className={cn("w-4 h-4", expandedCodeMsgId === message.id ? "text-emerald-600" : "text-muted-foreground/70")} />
+                                <Code className={cn("w-4 h-4", isPanelOpen('code', message.id) ? "text-emerald-600" : "text-muted-foreground/70")} />
                                 <span className="text-[12px] font-bold tracking-tight">Code</span>
                                 <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", expandedCodeMsgId === message.id && "rotate-180")} />
+                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('code', message.id) && "rotate-180")} />
                               </button>
                             </div>
                           )}
@@ -1476,7 +1178,7 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Expanded Summary Content */}
-                      {message.role === 'assistant' && expandedSummaryMsgId === message.id && message.metadata?.summary && (
+                      {message.role === 'assistant' && isPanelOpen('summary', message.id) && message.metadata?.summary && (
                         <div className="mt-2 p-5 bg-card/40 backdrop-blur-md border border-primary/20 rounded-2xl animate-in slide-in-from-top-2 duration-300 shadow-sm relative overflow-hidden group">
                           <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40" />
                           <p className="text-[14px] font-medium text-foreground/90 leading-relaxed italic tracking-tight">
@@ -1486,7 +1188,7 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Expanded Thinking Content */}
-                      {message.role === 'assistant' && expandedThinkingMsgId === message.id && message.metadata?.thinking && (
+                      {message.role === 'assistant' && isPanelOpen('thinking', message.id) && message.metadata?.thinking && (
                         <div className="mt-2 overflow-hidden rounded-2xl border border-primary/20 bg-muted/20
                                         animate-in fade-in slide-in-from-top-2 duration-300 ease-out">
                           <div className="flex items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-2">
@@ -1519,7 +1221,7 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Tool Activity Trace — shows which tools the agent called */}
-                      {message.role === 'assistant' && expandedActivityMsgId === message.id && message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
+                      {message.role === 'assistant' && isPanelOpen('activity', message.id) && message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
                         <div className="mt-2 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
                             <Zap className="w-3.5 h-3.5 text-amber-500/70" />
@@ -1561,7 +1263,7 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Code Execution Log — shows sandbox results */}
-                      {message.role === 'assistant' && expandedCodeMsgId === message.id && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
+                      {message.role === 'assistant' && isPanelOpen('code', message.id) && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
                         <div className="mt-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
                             <Code className="w-3.5 h-3.5 text-emerald-500/70" />
@@ -1605,39 +1307,39 @@ export default function StandaloneChat() {
                         <div className="mt-6 flex flex-wrap gap-2">
                           {message.metadata?.sources?.length > 0 && (
                             <button
-                              onClick={() => setExpandedSourcesMsgId(expandedSourcesMsgId === message.id ? null : message.id as number)}
+                              onClick={() => togglePanel('sources', message.id as number)}
                               className={cn(
                                 "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
-                                expandedSourcesMsgId === message.id ? "bg-primary/10 border-primary/30 text-primary shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                isPanelOpen('sources', message.id) ? "bg-primary/10 border-primary/30 text-primary shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                               )}
                             >
-                              <Globe2 className={cn("w-3.5 h-3.5", expandedSourcesMsgId === message.id ? "text-primary" : "text-muted-foreground/60 group-hover:text-primary")} />
+                              <Globe2 className={cn("w-3.5 h-3.5", isPanelOpen('sources', message.id) ? "text-primary" : "text-muted-foreground/60 group-hover:text-primary")} />
                               <span className="text-[12px] font-bold">{message.metadata.sources.length} Sources</span>
                             </button>
                           )}
 
                           {message.metadata?.images?.length > 0 && (
                             <button
-                              onClick={() => setExpandedImagesMsgId(expandedImagesMsgId === message.id ? null : message.id as number)}
+                              onClick={() => togglePanel('images', message.id as number)}
                               className={cn(
                                 "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
-                                expandedImagesMsgId === message.id ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                isPanelOpen('images', message.id) ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                               )}
                             >
-                              <ImageIcon className={cn("w-3.5 h-3.5", expandedImagesMsgId === message.id ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
+                              <ImageIcon className={cn("w-3.5 h-3.5", isPanelOpen('images', message.id) ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
                               <span className="text-[12px] font-bold">{message.metadata.images.length} Images</span>
                             </button>
                           )}
 
                           {message.metadata?.videos?.length > 0 && (
                             <button
-                              onClick={() => setExpandedVideosMsgId(expandedVideosMsgId === message.id ? null : message.id as number)}
+                              onClick={() => togglePanel('videos', message.id as number)}
                               className={cn(
                                 "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
-                                expandedVideosMsgId === message.id ? "bg-purple-500/10 border-purple-500/30 text-purple-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                isPanelOpen('videos', message.id) ? "bg-purple-500/10 border-purple-500/30 text-purple-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                               )}
                             >
-                              <Video className={cn("w-3.5 h-3.5", expandedVideosMsgId === message.id ? "text-purple-600" : "text-muted-foreground/60 group-hover:text-purple-500")} />
+                              <Video className={cn("w-3.5 h-3.5", isPanelOpen('videos', message.id) ? "text-purple-600" : "text-muted-foreground/60 group-hover:text-purple-500")} />
                               <span className="text-[12px] font-bold">{message.metadata.videos.length} Videos</span>
                             </button>
                           )}
@@ -1645,7 +1347,7 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Content areas below the row triggers */}
-                      {message.role === 'assistant' && expandedSourcesMsgId === message.id && message.metadata?.sources?.length > 0 && (
+                      {message.role === 'assistant' && isPanelOpen('sources', message.id) && message.metadata?.sources?.length > 0 && (
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
                           {message.metadata.sources.map((item: any, i: number) => (
                             <MediaPreview 
@@ -1661,7 +1363,7 @@ export default function StandaloneChat() {
                         </div>
                       )}
 
-                      {message.role === 'assistant' && expandedImagesMsgId === message.id && message.metadata?.images?.length > 0 && (
+                      {message.role === 'assistant' && isPanelOpen('images', message.id) && message.metadata?.images?.length > 0 && (
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
                           {(message.metadata.images || []).map((item: any, i: number) => (
                             <MediaPreview 
@@ -1676,7 +1378,7 @@ export default function StandaloneChat() {
                         </div>
                       )}
 
-                      {message.role === 'assistant' && expandedVideosMsgId === message.id && message.metadata?.videos?.length > 0 && (
+                      {message.role === 'assistant' && isPanelOpen('videos', message.id) && message.metadata?.videos?.length > 0 && (
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
                           {(message.metadata.videos || []).map((item: any, i: number) => (
                             <MediaPreview 
@@ -1798,8 +1500,8 @@ export default function StandaloneChat() {
                 motion_generating: <Video className="w-5 h-5 text-amber-400" />,
               };
 
-              const statusMessage = liveStatus?.message || 'Thinking...';
-              const statusIcon = phaseIcons[liveStatus?.phase || 'thinking'] || phaseIcons.thinking;
+              const statusMessage = live.status?.message || 'Thinking...';
+              const statusIcon = phaseIcons[live.status?.phase || 'thinking'] || phaseIcons.thinking;
 
               return (
                 <div className="flex gap-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -1813,7 +1515,7 @@ export default function StandaloneChat() {
                         <span className="text-[15px] font-semibold text-foreground/80 animate-pulse">{statusMessage}</span>
                         <span className="text-[11px] font-mono text-muted-foreground/40 shrink-0">({thinkingTime.toFixed(1)}s)</span>
                       </div>
-                      {liveThinking && (
+                      {live.thinking && (
                         <button
                           onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-all text-[10px] font-semibold  text-primary/60"
@@ -1826,7 +1528,7 @@ export default function StandaloneChat() {
                     </div>
 
                     {/* Expandable Reasoning Process */}
-                    {liveThinking && isReasoningExpanded && (
+                    {live.thinking && isReasoningExpanded && (
                       <div className="mt-2 p-4 rounded-2xl bg-muted/30 border border-border/40 animate-in fade-in slide-in-from-top-2 duration-300">
                         <div className="flex items-center gap-2 mb-3">
                           <Sparkles className="w-3.5 h-3.5 text-primary/60" />
@@ -1834,28 +1536,28 @@ export default function StandaloneChat() {
                         </div>
                         <div className="prose prose-invert prose-sm max-w-none text-muted-foreground/80 italic font-medium leading-relaxed">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {liveThinking}
+                            {live.thinking}
                           </ReactMarkdown>
                         </div>
                       </div>
                     )}
 
                     {/* Live Content Stream */}
-                    {liveContent && (
+                    {live.content && (
                       <div className="prose prose-invert prose-sm max-w-none text-foreground/90 leading-relaxed animate-in fade-in duration-500">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {liveContent}
+                          {live.content}
                         </ReactMarkdown>
                       </div>
                     )}
 
                     {/* Artifacts as they arrive, before the turn is persisted. */}
-                    {liveArtifacts.map((art, i) => (
+                    {live.artifacts.map((art, i) => (
                       <HtmlArtifact key={`live-art-${i}`} artifact={art} />
                     ))}
 
                     {/* Live Activity Timeline */}
-                    {liveActivity.length > 0 && (
+                    {live.activity.length > 0 && (
                       <div className="space-y-2 animate-in fade-in duration-300">
                         <div className="flex items-center gap-3 px-1 mb-2">
                           <BrainCircuit className="w-4 h-4 text-primary/60" />
@@ -1863,7 +1565,7 @@ export default function StandaloneChat() {
                           <div className="h-px flex-1 bg-border/30" />
                         </div>
                         <div className="space-y-2">
-                           {liveActivity.map((activity, i) => {
+                           {live.activity.map((activity, i) => {
                              const isThought = activity.type === 'thought';
                              const thought = activity.thought;
                              const isLongThought = thought && thought.length > 200;
@@ -1905,7 +1607,7 @@ export default function StandaloneChat() {
                                         <div className="mt-1.5 group/thought relative">
                                           <div className={cn(
                                             "text-[13.5px] text-muted-foreground/75 italic leading-relaxed border-l-2 border-primary/20 pl-3 transition-all duration-300 ai-activity-markdown pb-1",
-                                            isLongThought && !expandedActivityMsgId && "max-h-[80px] overflow-hidden mask-fade-bottom"
+                                            isLongThought && openPanelId('activity') === null && "max-h-[80px] overflow-hidden mask-fade-bottom"
                                           )}>
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                               {thought}
@@ -1913,10 +1615,10 @@ export default function StandaloneChat() {
                                           </div>
                                           {isLongThought && (
                                             <button 
-                                              onClick={() => setExpandedActivityMsgId(expandedActivityMsgId === -i - 1 ? null : -i - 1)}
+                                              onClick={() => togglePanel('activity', -i - 1)}
                                               className="text-[10px] font-bold text-primary/40 hover:text-primary transition-colors flex items-center gap-1 mt-1"
                                             >
-                                              {expandedActivityMsgId === -i - 1 ? 'Show less' : 'Read more reasoning...'}
+                                              {isPanelOpen('activity', -i - 1) ? 'Show less' : 'Read more reasoning...'}
                                             </button>
                                           )}
                                         </div>
@@ -1931,7 +1633,7 @@ export default function StandaloneChat() {
                     )}
 
                     {/* Live Code Timeline */}
-                    {liveCodeExecutions.length > 0 && (
+                    {live.codeExecutions.length > 0 && (
                       <div className="space-y-3 animate-in fade-in duration-300 mt-4">
                         <button 
                           onClick={() => setIsLiveCodeExpanded(!isLiveCodeExpanded)}
@@ -1945,7 +1647,7 @@ export default function StandaloneChat() {
                         
                         {isLiveCodeExpanded && (
                           <div className="space-y-3">
-                            {liveCodeExecutions.map((exec, i) => (
+                            {live.codeExecutions.map((exec, i) => (
                               <div key={i} className="rounded-2xl overflow-hidden border border-emerald-500/20 bg-emerald-500/5 animate-in slide-in-from-bottom-2 duration-300">
                                 <div className="px-4 py-2 bg-emerald-500/10 flex items-center justify-between border-b border-emerald-500/10">
                                    <div className="flex items-center gap-2">
@@ -1978,13 +1680,13 @@ export default function StandaloneChat() {
                     )}
 
                     {/* Media Generation Animation (Visualize/Motion) */}
-                    {(liveStatus?.phase === 'visualizing' || liveStatus?.phase === 'motion_generating') && (
+                    {(live.status?.phase === 'visualizing' || live.status?.phase === 'motion_generating') && (
                       <div className="mt-4 relative overflow-hidden rounded-3xl border border-primary/20 bg-muted/20 aspect-video max-w-sm w-full group/media">
                         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent animate-pulse" />
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center p-6">
                           <div className="relative">
                             <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-ping duration-[3000ms]" />
-                            {liveStatus.phase === 'visualizing' ? (
+                            {live.status.phase === 'visualizing' ? (
                                 <ImageIcon className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
                             ) : (
                                 <Video className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
@@ -1992,7 +1694,7 @@ export default function StandaloneChat() {
                           </div>
                           <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-700">
                              <h4 className="text-sm font-semibold  text-primary/60">
-                                {liveStatus.phase === 'visualizing' ? 'Developing vision' : 'Composing motion'}
+                                {live.status.phase === 'visualizing' ? 'Developing vision' : 'Composing motion'}
                              </h4>
                              <p className="text-xs text-muted-foreground/60 font-medium italic">
                                 "{activeIntent === 'image' ? 'Infusing pixels with intelligence...' : 'Stitching frames through the latent space...'}"
@@ -2005,9 +1707,9 @@ export default function StandaloneChat() {
                     )}
 
                     {/* Live Discoveries Row — Sources and Media */}
-                    {(liveSources.length > 0 || liveImages.length > 0 || liveVideos.length > 0) && (
+                    {(live.sources.length > 0 || live.images.length > 0 || live.videos.length > 0) && (
                       <div className="mt-4 flex flex-wrap gap-2 animate-in fade-in duration-300">
-                        {liveSources.length > 0 && (
+                        {live.sources.length > 0 && (
                           <button
                             onClick={() => setIsLiveSourcesExpanded(!isLiveSourcesExpanded)}
                             className={cn(
@@ -2016,12 +1718,12 @@ export default function StandaloneChat() {
                             )}
                           >
                             <Globe2 className={cn("w-3.5 h-3.5", isLiveSourcesExpanded ? "text-primary" : "text-muted-foreground/60 group-hover:text-primary")} />
-                            <span className="text-[12px] font-bold">{liveSources.length} Sources</span>
+                            <span className="text-[12px] font-bold">{live.sources.length} Sources</span>
                             <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveSourcesExpanded && "rotate-180")} />
                           </button>
                         )}
 
-                        {(liveImages.length > 0 || liveVideos.length > 0) && (
+                        {(live.images.length > 0 || live.videos.length > 0) && (
                           <button
                             onClick={() => setIsLiveMediaExpanded(!isLiveMediaExpanded)}
                             className={cn(
@@ -2030,7 +1732,7 @@ export default function StandaloneChat() {
                             )}
                           >
                             <Sparkles className={cn("w-3.5 h-3.5", isLiveMediaExpanded ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
-                            <span className="text-[12px] font-bold">{liveImages.length + liveVideos.length} Media</span>
+                            <span className="text-[12px] font-bold">{live.images.length + live.videos.length} Media</span>
                             <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveMediaExpanded && "rotate-180")} />
                           </button>
                         )}
@@ -2038,9 +1740,9 @@ export default function StandaloneChat() {
                     )}
 
                     {/* Live Expanded Areas */}
-                    {liveSources.length > 0 && isLiveSourcesExpanded && (
+                    {live.sources.length > 0 && isLiveSourcesExpanded && (
                       <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 px-1 animate-in slide-in-from-top-2 duration-300">
-                        {liveSources.slice(0, 3).map((source, i) => (
+                        {live.sources.slice(0, 3).map((source, i) => (
                           <MediaPreview 
                             key={i}
                             url={source.url}
@@ -2050,17 +1752,17 @@ export default function StandaloneChat() {
                             className="opacity-80 hover:opacity-100 animate-in zoom-in-95 duration-300"
                           />
                         ))}
-                        {liveSources.length > 3 && (
+                        {live.sources.length > 3 && (
                           <div className="flex items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/20 text-[10px] font-bold text-muted-foreground/40 italic">
-                             +{liveSources.length - 3} more...
+                             +{live.sources.length - 3} more...
                           </div>
                         )}
                       </div>
                     )}
 
-                    {(liveImages.length > 0 || liveVideos.length > 0) && isLiveMediaExpanded && (
+                    {(live.images.length > 0 || live.videos.length > 0) && isLiveMediaExpanded && (
                        <div className="mt-3 flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-1 animate-in slide-in-from-top-2 duration-300">
-                         {liveImages.slice(0, 4).map((img, i) => (
+                         {live.images.slice(0, 4).map((img, i) => (
                            <MediaPreview 
                              key={`img-${i}`}
                              url={img.image || img.url}
@@ -2068,7 +1770,7 @@ export default function StandaloneChat() {
                              className="w-32 h-20 shrink-0 shadow-sm"
                            />
                          ))}
-                         {liveVideos.slice(0, 4).map((vid, i) => (
+                         {live.videos.slice(0, 4).map((vid, i) => (
                            <MediaPreview 
                              key={`vid-${i}`}
                              url={vid.url}
@@ -2076,16 +1778,16 @@ export default function StandaloneChat() {
                              className="w-32 h-20 shrink-0 shadow-sm"
                            />
                          ))}
-                         {(liveImages.length > 4 || liveVideos.length > 4) && (
+                         {(live.images.length > 4 || live.videos.length > 4) && (
                            <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-semibold text-muted-foreground/30  text-center px-2">
-                              +{liveImages.length + liveVideos.length - 8} more
+                              +{live.images.length + live.videos.length - 8} more
                            </div>
                          )}
                        </div>
                     )}
 
                     {/* Progress bar */}
-                    {!liveActivity.length && (
+                    {!live.activity.length && (
                       <div className="w-48 h-0.5 bg-muted/30 rounded-full overflow-hidden">
                         <div className="h-full bg-primary/40 rounded-full animate-indeterminate-slide" />
                       </div>
@@ -2141,7 +1843,7 @@ export default function StandaloneChat() {
                         Approve
                       </button>
                       <button
-                        onClick={() => setPendingToolCall(null)}
+                        onClick={() => clearPendingToolCall()}
                         className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
                       >
                         <X className="w-4 h-4" />
@@ -2234,7 +1936,7 @@ export default function StandaloneChat() {
                     {blockedAttachments.message}
                   </p>
                   <button
-                    onClick={() => setBlockedAttachments(null)}
+                    onClick={() => dismissBlockedAttachments()}
                     aria-label="Dismiss"
                     className="shrink-0 rounded p-0.5 text-amber-600/60 transition-colors hover:bg-amber-500/20 hover:text-amber-600"
                   >
@@ -2256,7 +1958,7 @@ export default function StandaloneChat() {
                           <span className="text-xs font-medium text-emerald-700/80 truncate max-w-[300px] italic">"{activeReference.textSnippet}"</span>
                         </div>
                         <button 
-                          onClick={() => setActiveReference(null)}
+                          onClick={() => clearReference()}
                           className="p-1 hover:bg-emerald-500/20 rounded-md transition-colors shrink-0 text-emerald-600/60 hover:text-emerald-600"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -2475,7 +2177,7 @@ export default function StandaloneChat() {
                       {/* Send button (platform style — round with ArrowUp) */}
                       <button
                         onClick={() => isLoading ? stopGeneration() : handleSend()}
-                        disabled={(!input.trim() && !isLoading) || (!hasCredentials && !isLoading)}
+                        disabled={!input.trim() && !isLoading}
                         className={cn(
                           "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg",
                           isLoading 

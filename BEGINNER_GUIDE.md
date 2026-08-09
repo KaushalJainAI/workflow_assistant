@@ -58,7 +58,7 @@ src/
 │   ├── AIChat.tsx         # AI workflow builder
 │   └── Logs.tsx           # System logs
 │
-├── hooks/                 # Custom React hooks (empty now)
+├── hooks/                 # Custom React hooks (shortcuts, sockets, page state)
 ├── lib/                   # Utility functions
 └── types/                 # TypeScript type definitions
 ```

@@ -24,8 +24,11 @@ const AssistantContext = createContext<AssistantContextType | undefined>(undefin
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const [llmProvider, setLlmProvider] = useState(localStorage.getItem('orchestrator_llm_provider') || 'openrouter');
-  const [llmModel, setLlmModel] = useState(localStorage.getItem('orchestrator_llm_model') || 'google/gemini-2.0-flash-exp:free');
+  // Default to NVIDIA NIM + Nemotron 3 Super, matching the UserProfile column
+  // defaults — it is served by the platform NVIDIA_API_KEY, so the assistant
+  // works before the user has configured any credential of their own.
+  const [llmProvider, setLlmProvider] = useState(localStorage.getItem('orchestrator_llm_provider') || 'nvidia');
+  const [llmModel, setLlmModel] = useState(localStorage.getItem('orchestrator_llm_model') || 'nvidia/nemotron-3-super-120b-a12b');
   const [llmCredential, setLlmCredential] = useState<string | null>(localStorage.getItem('orchestrator_llm_credential'));
 
   const toggleAssistant = () => setIsAssistantOpen(prev => !prev);

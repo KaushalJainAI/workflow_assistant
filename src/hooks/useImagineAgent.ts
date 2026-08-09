@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { tokenManager } from '../api/client';
+import { useCallback, useState } from 'react';
+import { useSocket } from '../lib/websocket';
 import { imagineAgent, type ImagineChatResponse, type ImagineGeneration, type ImagineIntent, type ImagineMessage } from '../api/imagineAgent';
-
-const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export interface ChatItem {
   key: string;
@@ -19,7 +17,6 @@ interface State {
   items: ChatItem[];
   pendingIntent: ImagineIntent | null;
   isSending: boolean;
-  isConnected: boolean;
 }
 
 export function useImagineAgent() {
@@ -28,79 +25,39 @@ export function useImagineAgent() {
     items: [],
     pendingIntent: null,
     isSending: false,
-    isConnected: false,
   });
-  const wsRef = useRef<WebSocket | null>(null);
-  const intentionalCloseRef = useRef(false);
-  const reconnectAttempts = useRef(0);
-  const maxReconnect = 5;
 
-  const connect = useCallback(() => {
-    const token = tokenManager.getAccessToken();
-    if (!token) return;
-    if (wsRef.current) {
-      intentionalCloseRef.current = true;
-      wsRef.current.close();
-    }
-    intentionalCloseRef.current = false;
-
-    const ws = new WebSocket(`${WS_URL}/imagine-agent/?token=${token}`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setState(s => ({ ...s, isConnected: true }));
-      reconnectAttempts.current = 0;
-    };
-    ws.onclose = () => {
-      setState(s => ({ ...s, isConnected: false }));
-      if (intentionalCloseRef.current) {
-        intentionalCloseRef.current = false;
-        return;
-      }
-      if (reconnectAttempts.current < maxReconnect) {
-        reconnectAttempts.current += 1;
-        const backoff = Math.min(1000 * 2 ** reconnectAttempts.current, 15000);
-        setTimeout(connect, backoff);
-      }
-    };
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        const t = msg.type;
-        const data = msg.data || {};
-        if (t === 'generation.completed' || t === 'generation.failed') {
-          setState(s => ({
-            ...s,
-            items: s.items.map(it =>
-              it.generation && it.generation.id === data.generation_id
-                ? {
-                    ...it,
-                    generation: {
-                      ...it.generation,
-                      status: data.status,
-                      output_url: data.output_url ?? it.generation.output_url,
-                      error_message: data.error ?? it.generation.error_message,
-                    },
-                    pending: false,
-                  }
-                : it
-            ),
-          }));
-        }
-      } catch {
-        /* ignore */
-      }
-    };
+  /** Folds a terminal generation event into whichever chat item owns it. */
+  const applyGenerationEvent = useCallback((data: any) => {
+    setState(s => ({
+      ...s,
+      items: s.items.map(it =>
+        it.generation && it.generation.id === data.generation_id
+          ? {
+              ...it,
+              generation: {
+                ...it.generation,
+                status: data.status,
+                output_url: data.output_url ?? it.generation.output_url,
+                error_message: data.error ?? it.generation.error_message,
+              },
+              pending: false,
+            }
+          : it
+      ),
+    }));
   }, []);
 
-  useEffect(() => {
-    connect();
-    return () => {
-      intentionalCloseRef.current = true;
-      wsRef.current?.close();
-      wsRef.current = null;
-    };
-  }, [connect]);
+  const handleMessage = useCallback((msg: any) => {
+    if (msg.type === 'generation.completed' || msg.type === 'generation.failed') {
+      applyGenerationEvent(msg.data || {});
+    }
+  }, [applyGenerationEvent]);
+
+  const { isConnected } = useSocket({
+    path: '/imagine-agent/',
+    onMessage: handleMessage,
+  });
 
   const _applyResponse = useCallback((res: ImagineChatResponse, userMsg?: string) => {
     setState(s => {
@@ -184,6 +141,7 @@ export function useImagineAgent() {
 
   return {
     ...state,
+    isConnected,
     sendMessage,
     resume,
     loadConversation,

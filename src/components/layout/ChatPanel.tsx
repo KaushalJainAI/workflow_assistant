@@ -20,19 +20,17 @@ import {
   RotateCcw,
   ArrowUpFromLine,
   Pencil,
-  Globe2,
   Video,
   Play,
   Monitor
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
 import { orchestratorService, type ChatMessage } from '../../api';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../contexts/AssistantContext';
 import { useCanvasAgentContext } from '../../contexts/CanvasAgentContext';
 import { TextSelectionMenu } from '../chat/TextSelectionMenu';
+import MarkdownMessage from '../chat/MarkdownMessage';
 import { useAIModels } from '../../hooks/useAIModels';
 import { useBuddy } from '../../hooks/useBuddy';
 
@@ -546,53 +544,12 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
                         : 'bg-muted rounded-tl-sm'
                     }`}
                   >
-                    <div className="text-sm prose prose-sm dark:prose-invert max-w-none ai-chat-prose">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          a: ({ href, children, ...props }) => {
-                            if (href?.startsWith('citation:')) {
-                              const citNum = parseInt(href.split(':')[1]);
-                              const src = message.metadata?.sources?.[citNum - 1];
-                              return (
-                                <div className="relative inline-block group/cit z-20 mx-0.5 align-text-top">
-                                  <a 
-                                    href={src?.url || '#'}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => { if (!src?.url) e.preventDefault(); }}
-                                    className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-semibold rounded border border-primary/30 no-underline cursor-pointer transition-all bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground shadow-sm"
-                                  >
-                                    {citNum}
-                                  </a>
-                                  {src && (
-                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[240px] p-2 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl opacity-0 invisible group-hover/cit:opacity-100 group-hover/cit:visible transition-all duration-200 z-50 flex flex-col gap-1 pointer-events-none">
-                                      <div className="flex items-center gap-1.5 text-zinc-400">
-                                        <Globe2 className="w-3 h-3 shrink-0" />
-                                        <span className="text-[10px] font-semibold truncate">
-                                          {(() => { try { return new URL(src.url).hostname; } catch { return 'Source'; } })()}
-                                        </span>
-                                      </div>
-                                      <p className="text-[11px] font-medium text-zinc-100 leading-snug line-clamp-2">
-                                        {src.title || src.url}
-                                      </p>
-                                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-0 h-0 border-l-4 border-r-4 border-t-[5px] border-l-transparent border-r-transparent border-t-zinc-800" />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            }
-                            return (
-                              <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium" {...props}>
-                                {children}
-                              </a>
-                            );
-                          }
-                        }}
-                      >
-                        {message.content.replace(/\[(\d+)\]/g, '[$1](citation:$1)')}
-                      </ReactMarkdown>
-                    </div>
+                    <MarkdownMessage
+                      variant="compact"
+                      content={message.content}
+                      sources={message.metadata?.sources}
+                      className="text-sm prose prose-sm dark:prose-invert max-w-none ai-chat-prose"
+                    />
 
                     {/* Image Results — Expandable Sidebar Version */}
                     {message.role === 'assistant' && message.metadata?.images && message.metadata.images.length > 0 && (() => {

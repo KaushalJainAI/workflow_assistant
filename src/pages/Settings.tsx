@@ -48,8 +48,8 @@ export default function Settings() {
     first_name: '',
     last_name: '',
     email: '',
-    llm_provider: 'openrouter',
-    llm_model: 'google/gemini-2.0-flash-exp:free',
+    llm_provider: 'nvidia',
+    llm_model: 'nvidia/nemotron-3-super-120b-a12b',
     default_temperature: 0.7,
     default_max_tokens: 2048,
   });
@@ -65,8 +65,8 @@ export default function Settings() {
         first_name: user.name?.split(' ')[0] || '',
         last_name: user.name?.split(' ').slice(1).join(' ') || '',
         email: user.email || '',
-        llm_provider: user.llm_provider || 'openrouter',
-        llm_model: user.llm_model || 'google/gemini-2.0-flash-exp:free',
+        llm_provider: user.llm_provider || 'nvidia',
+        llm_model: user.llm_model || 'nvidia/nemotron-3-super-120b-a12b',
         default_temperature: user.default_temperature || 0.7,
         default_max_tokens: user.default_max_tokens || 2048,
       });
@@ -227,10 +227,14 @@ export default function Settings() {
                     value={formData.llm_model}
                     onChange={(val) => handleSelectChange('llm_model', val)}
                     options={[
-                      { value: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash' },
-                      { value: 'openai/gpt-4o', label: 'GPT-4o' },
-                      { value: 'anthropic/claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
-                      { value: 'meta-llama/llama-3.1-405b', label: 'Llama 3.1 405B' },
+                      { value: 'nvidia/nemotron-3-super-120b-a12b', label: 'Nemotron 3 Super 120B (Default)' },
+                      { value: 'openrouter/free', label: 'Free Models Router' },
+                      { value: 'google/gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
+                      { value: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+                      { value: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
+                      { value: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+                      { value: 'anthropic/claude-opus-5', label: 'Claude Opus 5' },
+                      { value: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
                     ]}
                     className="w-[250px]"
                   />

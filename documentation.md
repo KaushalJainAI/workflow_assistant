@@ -31,6 +31,18 @@ Custom React hooks for global functionality:
 - `useTheme.ts`: Handles dark/light mode switching.
 - `useUndoRedo.ts`: Implements the undo/redo stack for node/edge changes.
 
+Real-time connections — `useWebSocket` / `useHITLWebSocket`, `useBuddy`, `useCanvasAgent`,
+`useImagineAgent` — are thin adapters over `lib/websocket.ts`. Add new socket features there
+rather than opening a `WebSocket` directly, so reconnect behaviour stays uniform.
+
+Page-level state extracted from the two largest components lives here too:
+- `useChatStream.ts`: reducer for one streamed assistant turn (status, activity, sources,
+  media, artifacts, pending approvals).
+- `useMessagePanels.ts`, `useMessageSelection.ts`, `useChatModelSelection.ts`: the rest of the
+  standalone chat's state.
+- `useWorkflowValidation.ts`, `useWorkflowDeployment.ts`: validation results and deploy /
+  undeploy for the workflow editor.
+
 ### 📂 `lib/`
 Configuration and logic for workflow nodes:
 - `nodeConfigs.ts`: Definitions for all available node types, including parameters and icons.
