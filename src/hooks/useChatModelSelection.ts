@@ -6,14 +6,12 @@
  * without reasoning about the other. They are separate effects here.
  *
  * The server ships an NVIDIA env key, so chat works without any per-user
- * credential — `hasCredentials` is therefore always true and the credentials
- * list is read only to decide whether to restore a saved preference.
+ * credential, so the choice is restored unconditionally from localStorage —
+ * it is a display preference, not an entitlement.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AIProvider } from '../api/nodeService';
-import type { Credential } from '../api/credentials';
-import { credentialsService } from '../api';
 
 const PROVIDER_KEY = 'standalone_chat_llm_provider';
 const MODEL_KEY = 'standalone_chat_llm_model';
@@ -23,12 +21,13 @@ const DEFAULT_PROVIDER = 'nvidia';
 const DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b';
 
 interface Options {
-  isGuest: boolean;
+  /** Retained for call-site symmetry; guests share the same stored default. */
+  isGuest?: boolean;
   /** Provider list from `useAIModels`; used to validate the stored model. */
   providers: AIProvider[];
 }
 
-export function useChatModelSelection({ isGuest, providers }: Options) {
+export function useChatModelSelection({ providers }: Options) {
   const [provider, setProvider] = useState(DEFAULT_PROVIDER);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [isDropdownOpen, setDropdownOpen] = useState(false);
@@ -36,40 +35,20 @@ export function useChatModelSelection({ isGuest, providers }: Options) {
   const [isChecking, setIsChecking] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Restore the user's preferred model, if they have credentials of their own.
+  // Restore the user's last chosen model.
+  //
+  // This used to be gated on the account having at least one valid credential,
+  // which meant the common case — a user on the server-side NVIDIA key — had
+  // their choice silently discarded on every reload. The stored pair is now
+  // always restored; an id the provider no longer offers is caught by the
+  // validation effect below, which is the check that actually matters.
   useEffect(() => {
-    let cancelled = false;
-
-    const restore = async () => {
-      setIsChecking(true);
-      if (isGuest) {
-        if (!cancelled) setIsChecking(false);
-        return;
-      }
-      try {
-        // Best-effort: nothing is gated on this, it only picks the default.
-        const list = await credentialsService
-          .list()
-          .catch(() => ({ credentials: [] as Credential[] }));
-        if (cancelled) return;
-
-        const validCount = list.credentials.filter((c) => c.is_valid).length;
-        if (validCount > 0) {
-          const savedProvider = localStorage.getItem(PROVIDER_KEY);
-          const savedModel = localStorage.getItem(MODEL_KEY);
-          if (savedProvider) setProvider(savedProvider);
-          if (savedModel) setModel(savedModel);
-        }
-      } finally {
-        if (!cancelled) setIsChecking(false);
-      }
-    };
-
-    restore();
-    return () => {
-      cancelled = true;
-    };
-  }, [isGuest]);
+    const savedProvider = localStorage.getItem(PROVIDER_KEY);
+    const savedModel = localStorage.getItem(MODEL_KEY);
+    if (savedProvider) setProvider(savedProvider);
+    if (savedModel) setModel(savedModel);
+    setIsChecking(false);
+  }, []);
 
   // Close the dropdown on any click outside it.
   useEffect(() => {

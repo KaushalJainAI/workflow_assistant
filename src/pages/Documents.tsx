@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   FileText,
   Upload,
@@ -27,10 +28,10 @@ import { useAssistant } from '../contexts/AssistantContext';
 import { MediaPreview } from '../components/chat/MediaPreview';
 
 export default function Documents() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'personal' | 'public'>('personal');
+  const [searchQuery, setSearchQuery] = usePersistedState('documents.search', '', { storage: 'session' });
+  const [activeTab, setActiveTab] = usePersistedState<'personal' | 'public'>('documents.tab', 'personal');
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = usePersistedState<'grid' | 'list'>('documents.view', 'grid');
   const [localUploadingDocs, setLocalUploadingDocs] = useState<Document[]>([]);
   const [showCreateKb, setShowCreateKb] = useState(false);
   const [newKbName, setNewKbName] = useState('');

@@ -1,4 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
+import {
+  RUN_STATUS_EVENT,
+  abortChatRun,
+  getChatRun,
+  startChatRun,
+  subscribeChatRun,
+  useRunningChatKeys,
+  type RunFrame,
+  type RunMeta,
+} from '../../lib/chatRuns';
+import { usePersistedState } from '../../hooks/usePersistedState';
 import { 
   Bot, 
   User, 
@@ -78,11 +89,17 @@ export default function StandaloneChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [conversationId, setConversationId] = useState<string | undefined>();
+  // Persisted so returning to the chat lands on the conversation the user
+  // left, rather than on whichever session happens to be newest.
+  const [conversationId, setConversationId] = usePersistedState<string | undefined>(
+    'chat.lastSessionId',
+    undefined,
+  );
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  /** Session ids whose turn is still streaming, including backgrounded ones. */
+  const runningKeys = useRunningChatKeys();
 
   const queryClient = useQueryClient();
   const { data: conversations = [], refetch: loadHistory } = useQuery({
@@ -217,17 +234,23 @@ export default function StandaloneChat() {
     if (showHistory) loadHistory();
   }, [showHistory, loadHistory]);
 
+  // Reopen where the user left off: the persisted session if there is one,
+  // otherwise the newest. Either way the transcript is refetched, so a turn
+  // that finished in the background is present on arrival.
   useEffect(() => {
     if (isGuest) return; // Guests start with a fresh session each visit
-    if (!conversationId) {
-      // Small delay to let useQuery fetch initial data if empty
-      setTimeout(() => {
-        const sessions = queryClient.getQueryData<ChatSession[]>(['chatSessions']);
-        if (sessions && sessions.length > 0) {
-          loadConversation(sessions[0].id);
-        }
-      }, 100);
+    if (conversationId) {
+      loadConversation(conversationId);
+      return;
     }
+    // Small delay to let useQuery fetch initial data if empty
+    const timer = setTimeout(() => {
+      const sessions = queryClient.getQueryData<ChatSession[]>(['chatSessions']);
+      if (sessions && sessions.length > 0) {
+        loadConversation(sessions[0].id);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   const saveLLMSettings = async (provider: string, model: string) => {
@@ -451,26 +474,25 @@ export default function StandaloneChat() {
     
     clearPendingToolCall();
     setIsLoading(true);
-    
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
 
-    try {
-      await chatService.sendMessageStream(
-        conversationId,
-        "Approve",
-        activeIntent,
-        (event) => handleStreamEvent(event),
-        undefined,
-        controller.signal,
-        llmProvider,
-        llmModel,
-        callId
-      );
-    } catch (err) {
-      console.error("Failed to approve tool", err);
-      setIsLoading(false);
-    }
+    // Same background-run treatment as a normal send: approving a tool starts
+    // another streamed turn, and it must survive leaving the page too.
+    startChatRun(
+      conversationId,
+      (onEvent, signal) =>
+        chatService.sendMessageStream(
+          conversationId,
+          "Approve",
+          activeIntent,
+          onEvent,
+          undefined,
+          signal,
+          llmProvider,
+          llmModel,
+          callId
+        ),
+      { intent: activeIntent },
+    );
   };
 
   const handleSaveSessionSettings = async (patch: Partial<ChatSession>) => {
@@ -499,7 +521,8 @@ export default function StandaloneChat() {
    * Applies one SSE frame. Live turn state is folded by `useChatStream`; only
    * the effects that reach outside the turn are handled here.
    */
-  const handleStreamEvent = (event: any, optimisticId?: number, intentToSend?: string) => {
+  const handleStreamEvent = (event: any, meta: RunMeta = {}, replayed = false) => {
+    const { optimisticId, intentToSend } = { optimisticId: meta.optimisticId, intentToSend: meta.intent };
     applyStreamEvent(event);
 
     switch (event.type) {
@@ -518,6 +541,11 @@ export default function StandaloneChat() {
 
       case 'done':
         setMessages(prev => {
+          // A replayed frame may be re-applied after the transcript was
+          // reloaded from the server, which already contains this answer.
+          if (event.ai_response?.id && prev.some(m => m.id === event.ai_response.id)) {
+            return prev;
+          }
           const reconciled = optimisticId && event.user_message
             ? prev.map(m => (
                 m.id === optimisticId || m.id === event.user_message.id
@@ -537,20 +565,58 @@ export default function StandaloneChat() {
         break;
 
       case 'error':
-        toast.error(event.message);
+        // Only the live delivery should raise a toast; replaying the frame
+        // when the user comes back would re-announce an old failure.
+        if (!replayed) toast.error(event.message);
         setIsLoading(false);
         break;
     }
   };
+
+  // The subscription effect below must not re-subscribe on every render, so it
+  // reads the handler through a ref that always holds the latest closure.
+  const handleStreamEventRef = useRef(handleStreamEvent);
+  handleStreamEventRef.current = handleStreamEvent;
+
+  /**
+   * Binds the view to the run for whichever conversation is open.
+   *
+   * Every buffered frame is replayed first, so a turn that streamed while the
+   * user was elsewhere paints in full on return; `resetStream` before the
+   * replay keeps the fold from being applied twice.
+   */
+  useEffect(() => {
+    if (!conversationId) return;
+    // No run: nothing to attach to. `isLoading` is left alone — a send that
+    // is still creating its session has already set it, and clearing it here
+    // would flicker the composer back to idle for a tick.
+    const run = getChatRun(conversationId);
+    if (!run) return;
+
+    resetStream();
+    setIsLoading(run.status === 'running');
+
+    return subscribeChatRun(conversationId, (frame: RunFrame, replayed) => {
+      if (frame.type === RUN_STATUS_EVENT) {
+        setIsLoading(false);
+        clearStreamStatus();
+        if (!replayed && frame.status === 'error' && frame.error) {
+          toast.error(frame.error);
+        }
+        return;
+      }
+      handleStreamEventRef.current(frame, run.meta, replayed);
+    });
+    // `runningKeys` is the signal that a run was created for this conversation
+    // after the effect first ran (a brand-new session starts its run one tick
+    // after `conversationId` is set).
+  }, [conversationId, runningKeys, resetStream, clearStreamStatus]);
 
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput ?? input;
     if (!textToSend.trim() || isLoading) return;
 
     const intentToSend = activeIntent;
-    
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
 
     const userMessage: ChatMessage = {
       id: Date.now(),
@@ -563,12 +629,14 @@ export default function StandaloneChat() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
-    
+
     resetStream();
     setIsReasoningExpanded(false);
     setIsLiveCodeExpanded(true);
     setIsLiveSourcesExpanded(true);
     setIsLiveMediaExpanded(true);
+
+    const meta: RunMeta = { optimisticId: userMessage.id as number, intent: intentToSend };
 
     try {
       let currentSessionId = conversationId;
@@ -580,11 +648,12 @@ export default function StandaloneChat() {
           setConversationId(newSession.id);
           setCurrentSession(newSession);
         }
-        await chatService.guest.sendMessageStream(
-          currentSessionId,
-          textToSend,
-          (event) => handleStreamEvent(event, userMessage.id as number, intentToSend),
-          controller.signal,
+        const sessionId = currentSessionId;
+        startChatRun(
+          sessionId,
+          (onEvent, signal) =>
+            chatService.guest.sendMessageStream(sessionId, textToSend, onEvent, signal),
+          meta,
         );
       } else {
         if (!currentSessionId) {
@@ -602,43 +671,47 @@ export default function StandaloneChat() {
         }
 
         const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
+        const sessionId = currentSessionId;
 
-        await chatService.sendMessageStream(
-          currentSessionId,
-          textToSend,
-          intentToSend,
-          (event) => handleStreamEvent(event, userMessage.id as number, intentToSend),
-          reference,
-          controller.signal,
-          llmProvider,
-          llmModel
+        // Started, not awaited: the run owns the stream from here. Frames reach
+        // this component through the subscription effect, which is also what
+        // re-attaches after a page switch.
+        startChatRun(
+          sessionId,
+          (onEvent, signal) =>
+            chatService.sendMessageStream(
+              sessionId,
+              textToSend,
+              intentToSend,
+              onEvent,
+              reference,
+              signal,
+              llmProvider,
+              llmModel
+            ),
+          meta,
         );
       }
     } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        return;
-      }
+      // Only session creation can throw here; stream failures surface as a
+      // run status frame instead.
+      setIsLoading(false);
+      clearStreamStatus();
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `Error: ${err instanceof Error ? err.message : 'Failed to get response'}`,
+        content: `Error: ${err instanceof Error ? err.message : 'Failed to start this chat'}`,
         created_at: new Date().toISOString(),
         metadata: {}
       } as ChatMessage]);
-    } finally {
-      setIsLoading(false);
-      clearStreamStatus();
-      abortControllerRef.current = null;
     }
   };
 
   const stopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      setIsLoading(false);
-      clearStreamStatus();
-      toast.info('Generation stopped');
-    }
+    if (!conversationId) return;
+    abortChatRun(conversationId);
+    setIsLoading(false);
+    clearStreamStatus();
+    toast.info('Generation stopped');
   };
 
   const isInitialState = messages.length === 0;
@@ -742,10 +815,21 @@ export default function StandaloneChat() {
                 }}
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <MessageSquare className="w-4 h-4 opacity-60 shrink-0" />
+                  {/* A conversation still streaming in the background says so
+                      here — otherwise leaving it looks like cancelling it. */}
+                  {runningKeys.includes(conv.id) ? (
+                    <Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
+                  ) : (
+                    <MessageSquare className="w-4 h-4 opacity-60 shrink-0" />
+                  )}
                   <span className="truncate font-mono flex-1">
                     {conv.title || conv.id.slice(0, 18)}
                   </span>
+                  {runningKeys.includes(conv.id) && conversationId !== conv.id && (
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-primary/80">
+                      working
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={(e) => handleDeleteConversation(e, conv.id)}
@@ -933,7 +1017,10 @@ export default function StandaloneChat() {
             "flex-1 overflow-y-auto px-4 md:px-6 transition-all duration-1000 ease-in-out relative",
             // Initial state: truly center the hero (no asymmetric padding that
             // shoves it upward and leaves a dead zone above the composer).
-            isInitialState ? "flex items-center justify-center py-4" : "pt-8 pb-24"
+            // Transcript: only enough head room to clear the sticky header —
+            // the previous pt-8 sat on top of the 3rem turn rhythm below and
+            // read as an unexplained empty band above the first message.
+            isInitialState ? "flex items-center justify-center py-4" : "pt-3 pb-24"
           )}
           onMouseUp={syncSelection}
           onKeyUp={syncSelection}
@@ -952,7 +1039,7 @@ export default function StandaloneChat() {
 
           <div className={cn(
             "max-w-6xl mx-auto w-full relative",
-            isInitialState ? "flex flex-col items-center" : "space-y-12"
+            isInitialState ? "flex flex-col items-center" : "space-y-6"
           )}>
             {isInitialState ? (
               <div className="text-center space-y-6 mb-4 md:mb-12 animate-in fade-in duration-150">

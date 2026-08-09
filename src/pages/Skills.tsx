@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { 
   Zap, 
   Search, 
@@ -31,8 +32,8 @@ interface Skill {
 
 export default function Skills() {
     const queryClient = useQueryClient();
-    const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState<'mine' | 'public'>('mine');
+    const [searchQuery, setSearchQuery] = usePersistedState('skills.search', '', { storage: 'session' });
+    const [activeTab, setActiveTab] = usePersistedState<'mine' | 'public'>('skills.tab', 'mine');
     
     // Skills Data from React Query
     const { data: skillsData, isLoading } = useQuery({
@@ -64,7 +65,7 @@ export default function Skills() {
     const [editTitle, setEditTitle] = useState('');
     const [editDescription, setEditDescription] = useState('');
     const [editCategory, setEditCategory] = useState('General');
-    const [editorMode, setEditorMode] = useState<'split' | 'edit' | 'preview'>('split');
+    const [editorMode, setEditorMode] = usePersistedState<'split' | 'edit' | 'preview'>('skills.editorMode', 'split');
 
 
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { 
   Settings as SettingsIcon,
@@ -30,7 +31,7 @@ type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appea
 
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [activeTab, setActiveTab] = usePersistedState<SettingsTab>('settings.tab', 'general');
   const { theme, setTheme, colorTheme, setColorTheme } = useTheme();
   const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();

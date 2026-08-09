@@ -37,6 +37,8 @@ import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AssistantProvider, useAssistant } from './contexts/AssistantContext';
 import GlobalAssistantPanel from './components/layout/GlobalAssistantPanel';
+import RouteTransition from './components/layout/RouteTransition';
+import { AppLoader } from './components/ui/Loading';
 import { Sparkles } from 'lucide-react';
 
 // Protected route wrapper
@@ -44,11 +46,7 @@ function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <AppLoader label="Checking your session" />;
   }
 
   if (!isAuthenticated) {
@@ -81,7 +79,9 @@ const Layout = () => {
       <div className="flex-1 flex h-full overflow-hidden relative">
         <main className="flex-1 h-full overflow-hidden relative">
           <ErrorBoundary>
-            <Outlet />
+            <RouteTransition>
+              <Outlet />
+            </RouteTransition>
           </ErrorBoundary>
 
           {/* Global Help Button — only for authenticated users (the assistant hits authed endpoints) */}
@@ -115,11 +115,7 @@ const Layout = () => {
 const LandingRoute = () => {
   const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <AppLoader label="Checking your session" />;
   }
   if (isAuthenticated) return <Navigate to="/ai-chat" replace />;
   return (

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { Search, Loader2, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import templatesService from '../api/templates';
@@ -17,11 +18,11 @@ const CATEGORIES = [
 ];
 
 export default function TemplatesPage() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = usePersistedState('templates.search', '', { storage: 'session' });
   
   // Filters
-  const [category, setCategory] = useState('all');
-  const [sort, setSort] = useState('usage_count');
+  const [category, setCategory] = usePersistedState('templates.category', 'all');
+  const [sort, setSort] = usePersistedState('templates.sort', 'usage_count');
   const [page, setPage] = useState(1);
 
   const { data, isLoading: loading, isFetching: searching } = useQuery({

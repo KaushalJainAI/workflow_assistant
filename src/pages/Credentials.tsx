@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -39,8 +40,8 @@ const IconMap: Record<string, any> = {
 };
 
 export default function Credentials() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'verified' | 'unverified'>('verified');
+  const [searchQuery, setSearchQuery] = usePersistedState('credentials.search', '', { storage: 'session' });
+  const [activeTab, setActiveTab] = usePersistedState<'verified' | 'unverified'>('credentials.tab', 'verified');
   const [showModal, setShowModal] = useState(false);
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
   const [viewingCredential, setViewingCredential] = useState<Credential | null>(null);

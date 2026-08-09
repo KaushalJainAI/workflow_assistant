@@ -194,6 +194,21 @@
     animation: scanning-beam 2s ease-in-out infinite;
   }
 
+  /* ── Route transition ──
+     Applied by `RouteTransition` to the element keyed on the pathname, so it
+     replays on every navigation. Deliberately short and translate-only: a
+     page switch should feel continuous, not staged, and anything longer than
+     ~200ms reads as latency on a fast route. */
+  .page-enter {
+    animation: page-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Skeleton block for content that has not arrived yet. */
+  .skeleton {
+    @apply rounded-md bg-muted/60;
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
+  }
+
 
   /* ── Acrylic ──
      Fluent's acrylic, not glassmorphism: heavier blur, a saturation boost so
@@ -319,6 +334,16 @@
   50% { transform: translateY(120%); opacity: 1; }
 }
 
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 @keyframes indeterminate-slide {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(200%); }
@@ -425,3 +450,18 @@
   background-color: hsl(var(--muted-foreground) / 0.35);
 }
 
+
+
+/* Honour the OS setting: every decorative animation above collapses to a
+   near-instant state change rather than being removed, so nothing that
+   depends on `animationend` stops firing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

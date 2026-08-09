@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus,
@@ -17,9 +18,9 @@ import { cn } from '../lib/utils';
 
 export default function WorkflowsDashboard() {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = usePersistedState('workflows.search', '', { storage: 'session' });
   const [isCreating, setIsCreating] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = usePersistedState<string>('workflows.status', '');
   const queryClient = useQueryClient();
 
   const {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { 
   Plus, 
   MoreVertical,
@@ -22,7 +23,7 @@ import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 
 export default function MCPServers() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = usePersistedState('mcp.search', '', { storage: 'session' });
   const [showModal, setShowModal] = useState(false);
   const [editingServer, setEditingServer] = useState<MCPServer | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);

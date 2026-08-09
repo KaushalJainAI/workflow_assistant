@@ -6,6 +6,7 @@
  * `/executions` used to redirect to `/workflows`, so none of this was reachable.
  */
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -86,7 +87,9 @@ function Trace({ nodes }: { nodes: NodeLog[] }) {
 }
 
 export default function Runs() {
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>('all');
+  const [filter, setFilter] = usePersistedState<(typeof FILTERS)[number]>('runs.filter', 'all', {
+    validate: (v): v is (typeof FILTERS)[number] => FILTERS.includes(v as never),
+  });
   const [openId, setOpenId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({

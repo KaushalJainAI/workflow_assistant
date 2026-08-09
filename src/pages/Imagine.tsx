@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { 
   Sparkles, 
   ImageIcon, 
@@ -45,20 +46,20 @@ interface Result {
 type ViewMode = 'agent' | 'advanced';
 
 export default function Imagine() {
-  const [viewMode, setViewMode] = useState<ViewMode>('agent');
+  const [viewMode, setViewMode] = usePersistedState<ViewMode>('imagine.viewMode', 'agent');
   const [latestAgentResult, setLatestAgentResult] = useState<{ url: string; type: 'image' | 'video' | 'audio'; prompt: string } | null>(null);
   const [agentLightbox, setAgentLightbox] = useState(false);
-  const [mode, setMode] = useState<Mode>('image');
-  const [prompt, setPrompt] = useState('');
+  const [mode, setMode] = usePersistedState<Mode>('imagine.mode', 'image');
+  const [prompt, setPrompt] = usePersistedState('imagine.prompt', '', { storage: 'session' });
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<Result[]>([]);
 
   // Settings
   const [model, setModel] = useState('');
-  const [selectedStyle, setSelectedStyle] = useState('none');
+  const [selectedStyle, setSelectedStyle] = usePersistedState('imagine.style', 'none');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [seed, setSeed] = useState<number | string>('');
-  const [resolution, setResolution] = useState('1K');
+  const [resolution, setResolution] = usePersistedState('imagine.resolution', '1K');
   const [selectedResult, setSelectedResult] = useState<Result | null>(null);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
