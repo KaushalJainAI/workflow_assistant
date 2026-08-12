@@ -27,12 +27,14 @@ import Agents from './pages/Agents';
 import AgentBuilder from './pages/AgentBuilder';
 import Extract from './pages/Extract';
 import ExtractionSchemaDetail from './pages/ExtractionSchemaDetail';
-import Evals from './pages/Evals';
-import EvalSuiteDetail from './pages/EvalSuiteDetail';
+// MVP: Evals/Tuning pages are routed out below; imports stay commented so the
+// pages remain in the tree and the feature is one uncomment away.
+// import Evals from './pages/Evals';
+// import EvalSuiteDetail from './pages/EvalSuiteDetail';
 import Datasets from './pages/Datasets';
 import DatasetDetail from './pages/DatasetDetail';
-import Tuning from './pages/Tuning';
-import TuningJobDetail from './pages/TuningJobDetail';
+// import Tuning from './pages/Tuning';
+// import TuningJobDetail from './pages/TuningJobDetail';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AssistantProvider, useAssistant } from './contexts/AssistantContext';
@@ -56,17 +58,18 @@ function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   return children ? <>{children}</> : <Outlet />;
 }
 
-import { useCanvasAgent } from './hooks/useCanvasAgent';
-import { CanvasAgentProvider } from './contexts/CanvasAgentContext';
-
-function GlobalCanvasAgentWrapper({ children }: { children: React.ReactNode }) {
-  const canvasAgent = useCanvasAgent();
-  return (
-    <CanvasAgentProvider value={{ sendInstruction: canvasAgent.sendInstruction, isConnected: canvasAgent.isConnected, isProcessing: canvasAgent.isProcessing }}>
-      {children}
-    </CanvasAgentProvider>
-  );
-}
+// DISABLED — Canvas Agent (Platform Copilot) parked; hook and context files kept in place.
+// import { useCanvasAgent } from './hooks/useCanvasAgent';
+// import { CanvasAgentProvider } from './contexts/CanvasAgentContext';
+//
+// function GlobalCanvasAgentWrapper({ children }: { children: React.ReactNode }) {
+//   const canvasAgent = useCanvasAgent();
+//   return (
+//     <CanvasAgentProvider value={{ sendInstruction: canvasAgent.sendInstruction, isConnected: canvasAgent.isConnected, isProcessing: canvasAgent.isProcessing }}>
+//       {children}
+//     </CanvasAgentProvider>
+//   );
+// }
 
 // Layout with sidebar
 const Layout = () => {
@@ -150,7 +153,8 @@ const AppContent = () => {
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
-            <Route element={<GlobalCanvasAgentWrapper><Layout /></GlobalCanvasAgentWrapper>}>
+            {/* Canvas Agent disabled: was <Route element={<GlobalCanvasAgentWrapper><Layout /></GlobalCanvasAgentWrapper>}> */}
+            <Route element={<Layout />}>
               <Route path="/ai-chat" element={<AIChat />} />
               <Route path="/workflows" element={<WorkflowsDashboard />} />
               <Route path="/workflow/:id" element={<WorkflowEditor />} />
@@ -180,12 +184,15 @@ const AppContent = () => {
               {/* Improve: corrections become datasets, datasets grade agents
                   and tune models. Each list has a detail page because the rows
                   are the point and there are too many to inline. */}
-              <Route path="/evals" element={<Evals />} />
-              <Route path="/evals/:id" element={<EvalSuiteDetail />} />
+              {/* MVP: /evals and /tuning are commented out along with their
+                  sidebar entries — neither has an executor, so a run queued
+                  from these pages never starts. Re-enable with the workers. */}
+              {/* <Route path="/evals" element={<Evals />} /> */}
+              {/* <Route path="/evals/:id" element={<EvalSuiteDetail />} /> */}
               <Route path="/datasets" element={<Datasets />} />
               <Route path="/datasets/:id" element={<DatasetDetail />} />
-              <Route path="/tuning" element={<Tuning />} />
-              <Route path="/tuning/:id" element={<TuningJobDetail />} />
+              {/* <Route path="/tuning" element={<Tuning />} /> */}
+              {/* <Route path="/tuning/:id" element={<TuningJobDetail />} /> */}
               {/* Runs replaced the old dead-end redirect. */}
               <Route path="/executions" element={<Navigate to="/runs" replace />} />
             </Route>

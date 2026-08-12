@@ -5,7 +5,7 @@ import {
   Settings as SettingsIcon,
   User,
   Bell,
-  Shield,
+  // Shield,  // MVP: unused while the Security tab is hidden
   Palette,
   Code,
   ChevronRight,
@@ -189,7 +189,12 @@ export default function Settings() {
     { id: 'insights' as const, label: 'Insights', icon: BarChart3 },
     { id: 'billing' as const, label: 'Billing', icon: CreditCard },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
-    { id: 'security' as const, label: 'Security', icon: Shield },
+    // MVP: Security is the only tab with no `case` in renderContent(), so it
+    // fell through to the "coming soon" default. Hidden rather than built out.
+    // The 'security' member stays on SettingsTab and the default branch stays
+    // below, so a persisted `settings.tab` of 'security' still lands somewhere
+    // instead of crashing.
+    // { id: 'security' as const, label: 'Security', icon: Shield },
     { id: 'appearance' as const, label: 'Appearance', icon: Palette },
     { id: 'api' as const, label: 'API', icon: Code },
   ];

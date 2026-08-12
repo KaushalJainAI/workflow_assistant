@@ -18,9 +18,9 @@ import {
   Bot,
   ScanText,
   Clapperboard,
-  LineChart,
+  // LineChart,  // MVP: unused while Evals is hidden
   Database,
-  SlidersHorizontal,
+  // SlidersHorizontal,  // MVP: unused while Tuning is hidden
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -146,12 +146,17 @@ const Sidebar = () => {
                 { icon: Layout, label: "Templates", path: "/templates" },
             ],
         },
+        // MVP: Evals and Tuning are hidden until their executors exist.
+        // Both backends record a 'queued' row that nothing ever picks up, so
+        // the pages render a job that never starts — the worst thing to put in
+        // front of a stakeholder. Datasets is complete and stays.
+        // Restore the two entries below once the workers land.
         {
             title: "Improve",
             items: [
-                { icon: LineChart, label: "Evals", path: "/evals" },
+                // { icon: LineChart, label: "Evals", path: "/evals" },
                 { icon: Database, label: "Datasets", path: "/datasets" },
-                { icon: SlidersHorizontal, label: "Tuning", path: "/tuning" },
+                // { icon: SlidersHorizontal, label: "Tuning", path: "/tuning" },
             ],
         },
         {
