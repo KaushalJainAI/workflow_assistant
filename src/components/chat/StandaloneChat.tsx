@@ -11,8 +11,6 @@ import {
 } from '../../lib/chatRuns';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import { 
-  Bot, 
-  User, 
   Copy,
   Check,
   Loader2,
@@ -730,10 +728,10 @@ export default function StandaloneChat() {
 
   return (
     <div className="flex h-full w-full bg-background overflow-hidden relative">
-      {/* Premium Background Elements */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(var(--primary-rgb),0.05),transparent_50%)] pointer-events-none" />
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-500/5 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
+      {/* No decorative wash. The three blurred orbs that used to sit here were
+          off-palette (raw `purple-500`, not the `--agent` violet) and pushed a
+          glassmorphic look the Fluent tokens do not have. An answer surface
+          reads better on a flat canvas — the content is the ornament. */}
 
       {/* Guest banner — encourage login without blocking chat. On mobile it's a
           56px band that visually contains the floating hamburger (fixed top-3
@@ -1038,7 +1036,7 @@ export default function StandaloneChat() {
           />
 
           <div className={cn(
-            "max-w-6xl mx-auto w-full relative",
+            "max-w-4xl mx-auto w-full relative",
             isInitialState ? "flex flex-col items-center" : "space-y-6"
           )}>
             {isInitialState ? (
@@ -1087,38 +1085,38 @@ export default function StandaloneChat() {
               // Message List
               <div className="space-y-12">
                 {messages.map((message, index) => (
+                  /* Perplexity turn: the question is a heading, the answer is
+                     the page under it. No avatars, no bubbles, no alternating
+                     sides — an answer you are meant to read is not a chat
+                     bubble. The rule between turns is what separates them. */
                   <div
                     key={index}
                     data-message-id={message.id}
                     className={cn(
-                      "flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 group",
-                      message.role === 'user' ? "flex-row-reverse" : ""
+                      "animate-in fade-in slide-in-from-bottom-2 duration-300 group",
+                      message.role === 'user' && index > 0 && "border-t border-border pt-10"
                     )}
                   >
-                    <div className={cn(
-                      "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-border/40 shadow-md",
-                      message.role === 'assistant' 
-                        ? "bg-primary text-primary-foreground shadow-primary/20" 
-                        : message.role === 'system'
-                        ? "bg-muted text-muted-foreground"
-                        : "bg-card glass"
-                    )}>
-                      {message.role === 'assistant' ? <Bot className="w-6 h-6" /> : message.role === 'system' ? <Settings2 className="w-5 h-5"/> : <User className="w-6 h-6 text-muted-foreground" />}
-                    </div>
+                    {/* Section label. Violet for the agent, per the token rule
+                        that colour encodes agency; the user's own question does
+                        not need one because it reads as the heading. */}
+                    {message.role === 'assistant' && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <BrainCircuit className="w-4 h-4 text-agent" />
+                        <span className="text-[13px] font-semibold text-foreground">Answer</span>
+                      </div>
+                    )}
 
-                    <div className={cn(
-                      "max-w-[92%] md:max-w-[85%] space-y-3",
-                      message.role === 'user' ? "text-right" : ""
-                    )}>
+                    <div className="w-full space-y-3">
 
-                      {/* Main Content Bubble */}
+                      {/* Query as heading / answer as body */}
                       <div className={cn(
-                        "text-[17px] leading-[1.8] tracking-[-0.01em] prose prose-base dark:prose-invert max-w-none ai-chat-prose",
-                        message.role === 'user' 
-                          ? "text-foreground font-semibold bg-primary/5 border border-primary/10 p-4 md:p-5 rounded-3xl rounded-tr-none shadow-sm inline-block text-left" 
+                        "prose prose-base dark:prose-invert max-w-none ai-chat-prose",
+                        message.role === 'user'
+                          ? "text-[22px] md:text-[26px] leading-[1.35] font-semibold tracking-[-0.02em] text-foreground"
                           : message.role === 'system'
                           ? "w-full"
-                          : "text-foreground font-[450] bg-card/60 p-5 md:p-7 rounded-3xl rounded-tl-none shadow-sm glass border border-border/40 inline-block text-left"
+                          : "text-[16px] leading-[1.75] text-foreground"
                       )}>
 
                         {message.role === 'system' ? (
@@ -1396,12 +1394,12 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => togglePanel('sources', message.id as number)}
                               className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
-                                isPanelOpen('sources', message.id) ? "bg-primary/10 border-primary/30 text-primary shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
+                                isPanelOpen('sources', message.id) ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                               )}
                             >
-                              <Globe2 className={cn("w-3.5 h-3.5", isPanelOpen('sources', message.id) ? "text-primary" : "text-muted-foreground/60 group-hover:text-primary")} />
-                              <span className="text-[12px] font-bold">{message.metadata.sources.length} Sources</span>
+                              <Globe2 className="w-3.5 h-3.5" />
+                              <span className="text-[12px] font-medium">{message.metadata.sources.length} Sources</span>
                             </button>
                           )}
 
@@ -1409,12 +1407,12 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => togglePanel('images', message.id as number)}
                               className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
-                                isPanelOpen('images', message.id) ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
+                                isPanelOpen('images', message.id) ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                               )}
                             >
-                              <ImageIcon className={cn("w-3.5 h-3.5", isPanelOpen('images', message.id) ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
-                              <span className="text-[12px] font-bold">{message.metadata.images.length} Images</span>
+                              <ImageIcon className="w-3.5 h-3.5" />
+                              <span className="text-[12px] font-medium">{message.metadata.images.length} Images</span>
                             </button>
                           )}
 
@@ -1422,12 +1420,12 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => togglePanel('videos', message.id as number)}
                               className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
-                                isPanelOpen('videos', message.id) ? "bg-purple-500/10 border-purple-500/30 text-purple-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
+                                isPanelOpen('videos', message.id) ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                               )}
                             >
-                              <Video className={cn("w-3.5 h-3.5", isPanelOpen('videos', message.id) ? "text-purple-600" : "text-muted-foreground/60 group-hover:text-purple-500")} />
-                              <span className="text-[12px] font-bold">{message.metadata.videos.length} Videos</span>
+                              <Video className="w-3.5 h-3.5" />
+                              <span className="text-[12px] font-medium">{message.metadata.videos.length} Videos</span>
                             </button>
                           )}
                         </div>
@@ -1488,11 +1486,12 @@ export default function StandaloneChat() {
                         ))}
 
                       
+                      {/* Both roles now start at the same left edge, so the
+                          actions do too. The old `justify-end` belonged to the
+                          right-aligned user bubble and would strand these
+                          controls on the far side of the column. */}
                       {message.role !== 'system' && (
-                        <div className={cn(
-                          "flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-1",
-                          message.role === 'user' ? "justify-end mr-2" : "ml-2"
-                        )}>
+                        <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-1 -ml-1.5">
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(message.content);
@@ -1576,26 +1575,36 @@ export default function StandaloneChat() {
             )}
 
             {isLoading && (() => {
+              /* One colour, not six. Every phase here is the agent working
+                 unattended, and the token rule says that is violet — a
+                 different hue per phase was decoration that implied a
+                 distinction the states do not have. The icon shape already
+                 says which phase it is. Sized to match the settled
+                 "Answer" label so the row does not resize mid-stream. */
               const phaseIcons: Record<string, React.ReactNode> = {
-                thinking: <Sparkles className="w-5 h-5 text-primary" />,
-                searching: <Search className="w-5 h-5 text-blue-400" />,
-                planning: <BrainCircuit className="w-5 h-5 text-purple-400" />,
-                reading: <Globe2 className="w-5 h-5 text-emerald-400" />,
-                analyzing: <Globe2 className="w-5 h-5 text-purple-400" />,
-                generating: <Sparkles className="w-5 h-5 text-amber-400" />,
-                visualizing: <Wand2 className="w-5 h-5 text-emerald-400" />,
-                motion_generating: <Video className="w-5 h-5 text-amber-400" />,
+                thinking: <Sparkles className="w-4 h-4 text-agent" />,
+                searching: <Search className="w-4 h-4 text-agent" />,
+                planning: <BrainCircuit className="w-4 h-4 text-agent" />,
+                reading: <Globe2 className="w-4 h-4 text-agent" />,
+                analyzing: <Globe2 className="w-4 h-4 text-agent" />,
+                generating: <Sparkles className="w-4 h-4 text-agent" />,
+                visualizing: <Wand2 className="w-4 h-4 text-agent" />,
+                motion_generating: <Video className="w-4 h-4 text-agent" />,
               };
 
               const statusMessage = live.status?.message || 'Thinking...';
               const statusIcon = phaseIcons[live.status?.phase || 'thinking'] || phaseIcons.thinking;
 
               return (
-                <div className="flex gap-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20 shadow-inner">
-                    <div className="animate-pulse">{statusIcon}</div>
+                /* The in-flight turn has to occupy the same column as the
+                   settled one, or the answer visibly jumps left when streaming
+                   ends. Same "Answer" label, same left edge, no avatar. */
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="animate-pulse flex items-center">{statusIcon}</span>
+                    <span className="text-[13px] font-semibold text-foreground">Answer</span>
                   </div>
-                  <div className="flex-1 space-y-3 pt-1 max-w-[92%] md:max-w-[85%]">
+                  <div className="w-full space-y-3">
                     {/* Live Status */}
                     <div className="flex items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2">
@@ -1800,12 +1809,12 @@ export default function StandaloneChat() {
                           <button
                             onClick={() => setIsLiveSourcesExpanded(!isLiveSourcesExpanded)}
                             className={cn(
-                              "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
-                              isLiveSourcesExpanded ? "bg-primary/10 border-primary/30 text-primary shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                              "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
+                              isLiveSourcesExpanded ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                             )}
                           >
-                            <Globe2 className={cn("w-3.5 h-3.5", isLiveSourcesExpanded ? "text-primary" : "text-muted-foreground/60 group-hover:text-primary")} />
-                            <span className="text-[12px] font-bold">{live.sources.length} Sources</span>
+                            <Globe2 className="w-3.5 h-3.5" />
+                            <span className="text-[12px] font-medium">{live.sources.length} Sources</span>
                             <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveSourcesExpanded && "rotate-180")} />
                           </button>
                         )}
@@ -1814,12 +1823,12 @@ export default function StandaloneChat() {
                           <button
                             onClick={() => setIsLiveMediaExpanded(!isLiveMediaExpanded)}
                             className={cn(
-                              "flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border group",
+                              "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
                               isLiveMediaExpanded ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                             )}
                           >
                             <Sparkles className={cn("w-3.5 h-3.5", isLiveMediaExpanded ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
-                            <span className="text-[12px] font-bold">{live.images.length + live.videos.length} Media</span>
+                            <span className="text-[12px] font-medium">{live.images.length + live.videos.length} Media</span>
                             <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveMediaExpanded && "rotate-180")} />
                           </button>
                         )}
@@ -1955,7 +1964,7 @@ export default function StandaloneChat() {
             ? "pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-16"
             : "pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-6 pt-2"
         )}>
-          <div className="max-w-5xl mx-auto space-y-4">
+          <div className="max-w-4xl mx-auto space-y-4">
             
             <div className="relative group/input">
 
@@ -2055,8 +2064,12 @@ export default function StandaloneChat() {
                  )}
 
 
-                <div className="absolute inset-x-0 inset-y-0 bg-primary/10 rounded-3xl blur-3xl opacity-0 group-focus-within/input:opacity-100 transition-opacity duration-700 pointer-events-none" />
-                <div className="relative flex flex-col bg-card/80 border border-border/80 rounded-3xl glass shadow-2xl focus-within:border-primary/40 transition-all duration-300">
+                {/* Flat card, not a glowing capsule. The blurred primary wash
+                    that used to bloom behind this on focus was the loudest
+                    thing on the page; a border that turns primary plus the
+                    standard focus ring says "focused" in the same language as
+                    every other input in the app. */}
+                <div className="relative flex flex-col bg-card border border-border-strong rounded-3xl shadow-sm transition-colors duration-150 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring">
                   
                   {/* Textarea row */}
                   <div className="p-4 pb-0">
