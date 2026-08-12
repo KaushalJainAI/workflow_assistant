@@ -38,6 +38,9 @@ export interface AgentConfig {
     scrape: boolean;
     fileOps: boolean;
     rag: boolean;
+    /** The user's own configured MCP servers. Off by default: these reach
+     *  real systems under the user's credentials. */
+    mcp: boolean;
   };
 
   // Context the agent is given
@@ -94,6 +97,7 @@ export const DEFAULT_AGENT: AgentConfig = {
     scrape: false,
     fileOps: false,
     rag: true,
+    mcp: false,
   },
 
   connectors: [],

@@ -28,7 +28,8 @@ import { toast } from 'sonner';
 import { orchestratorService, type ChatMessage } from '../../api';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../contexts/AssistantContext';
-import { useCanvasAgentContext } from '../../contexts/CanvasAgentContext';
+// DISABLED — Canvas Agent parked.
+// import { useCanvasAgentContext } from '../../contexts/CanvasAgentContext';
 import { TextSelectionMenu } from '../chat/TextSelectionMenu';
 import MarkdownMessage from '../chat/MarkdownMessage';
 import { useAIModels } from '../../hooks/useAIModels';
@@ -75,7 +76,7 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
   const [conversations, setConversations] = useState<{conversation_id: string}[]>([]);
   
   const { hasCredentials, llmProvider, setLlmProvider, llmModel, setLlmModel } = useAssistant();
-  const canvasAgent = useCanvasAgentContext();
+  // const canvasAgent = useCanvasAgentContext();  // DISABLED — Canvas Agent parked
   const { providers: dynamicProviders } = useAIModels();
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
@@ -231,20 +232,21 @@ export default function ChatPanel({ initialConversationId, onClose, isDocked }: 
     setIsLoading(true);
 
     try {
-      // If user explicitly asks Copilot or we're in the Workflow Editor, route to Platform Copilot
-      const isCopilotMode = textToSend.startsWith('/copilot ');
-      const copilotText = isCopilotMode ? textToSend.replace('/copilot ', '') : textToSend;
-
-      // Use Copilot for Canvas/Platform actions if specifically requested
-      if (canvasAgent && isCopilotMode) {
-        const result = await canvasAgent.sendInstruction(copilotText);
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: result ? result.message : 'No actions applied.',
-          created_at: new Date().toISOString(),
-        }]);
-        return;
-      }
+      // DISABLED — Canvas Agent parked. The `/copilot ` prefix no longer routes to the
+      // Platform Copilot; such messages now fall through to the normal chat agent below.
+      // const isCopilotMode = textToSend.startsWith('/copilot ');
+      // const copilotText = isCopilotMode ? textToSend.replace('/copilot ', '') : textToSend;
+      //
+      // // Use Copilot for Canvas/Platform actions if specifically requested
+      // if (canvasAgent && isCopilotMode) {
+      //   const result = await canvasAgent.sendInstruction(copilotText);
+      //   setMessages(prev => [...prev, {
+      //     role: 'assistant',
+      //     content: result ? result.message : 'No actions applied.',
+      //     created_at: new Date().toISOString(),
+      //   }]);
+      //   return;
+      // }
 
       const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
       const screenContext = screenContextEnabled ? captureContext() : undefined;

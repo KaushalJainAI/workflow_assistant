@@ -458,6 +458,7 @@ export default function AgentBuilder() {
                 ['scrape', 'Read web pages', 'Fetch and extract from a URL.'],
                 ['fileOps', 'Read and write files', 'Within the file access scope above.'],
                 ['rag', 'Knowledge base search', 'Retrieve from your indexed documents.'],
+                ['mcp', 'MCP servers', 'The tools from your connected MCP servers, using your credentials.'],
               ] as const).map(([k, label, hint]) => (
                 <Knob key={k} path={`tools.${k}`} touched={touched} label="">
                   <Toggle on={cfg.tools[k]} onChange={(v) => setTool(k, v)} label={label} hint={hint} />
