@@ -12,7 +12,8 @@ import {
   Edit3,
   Eye,
   Check,
-  Download
+  Download,
+  ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -334,34 +335,37 @@ export default function Skills() {
                                 <div className="p-2 bg-primary/10 rounded-lg">
                                     <Edit3 className="w-5 h-5 text-primary" />
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <input 
                                         value={editTitle}
                                         onChange={(e) => setEditTitle(e.target.value)}
                                         className="bg-transparent border-none p-0 text-xl font-bold focus:ring-0 w-full placeholder:text-muted-foreground"
                                         placeholder="Skill Title"
                                     />
-                                    <div className="flex items-center gap-4 mt-1">
+                                    <div className="flex items-center gap-3 mt-1 min-w-0">
                                         <input 
                                             value={editDescription}
                                             onChange={(e) => setEditDescription(e.target.value)}
-                                            className="bg-transparent border-none p-0 text-sm text-muted-foreground focus:ring-0 flex-1"
+                                            className="bg-transparent border-none p-0 text-sm text-muted-foreground focus:ring-0 flex-1 min-w-0"
                                             placeholder="Short description..."
                                         />
-                                        <select
-                                            value={editCategory}
-                                            onChange={(e) => setEditCategory(e.target.value)}
-                                            className="bg-muted text-[11px] font-semibold px-2 py-1 rounded-md border-none focus:ring-1 focus:ring-primary/20 cursor-pointer"
-                                        >
-                                            <option value="General">General</option>
-                                            <option value="Data Science">Data science</option>
-                                            <option value="Automation">Automation</option>
-                                            <option value="Development">Development</option>
-                                            <option value="Marketing">Marketing</option>
-                                            <option value="Security">Security</option>
-                                            <option value="Finance">Finance</option>
-                                            <option value="Communication">Communication</option>
-                                        </select>
+                                        <div className="relative shrink-0">
+                                            <select
+                                                value={editCategory}
+                                                onChange={(e) => setEditCategory(e.target.value)}
+                                                className="appearance-none bg-secondary text-secondary-foreground text-xs font-semibold pl-3 pr-8 py-1.5 rounded-full border border-border/50 hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 cursor-pointer transition-colors leading-none h-7"
+                                            >
+                                                <option value="General">General</option>
+                                                <option value="Data Science">Data science</option>
+                                                <option value="Automation">Automation</option>
+                                                <option value="Development">Development</option>
+                                                <option value="Marketing">Marketing</option>
+                                                <option value="Security">Security</option>
+                                                <option value="Finance">Finance</option>
+                                                <option value="Communication">Communication</option>
+                                            </select>
+                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
