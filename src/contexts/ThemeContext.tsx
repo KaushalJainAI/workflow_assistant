@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 
 export type Theme = 'light' | 'dark' | 'system';
 export type ColorTheme = 'blue' | 'magenta';
@@ -97,14 +97,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setTheme(newTheme);
   }, [resolvedTheme, setTheme]);
 
-  const value = {
-    theme,
-    resolvedTheme,
-    colorTheme,
-    setTheme,
-    setColorTheme,
-    toggleTheme,
-  };
+  // A fresh object here meant every consumer of the theme re-rendered whenever
+  // this provider rendered for any reason at all — and the theme provider wraps
+  // the entire app.
+  const value = useMemo(
+    () => ({
+      theme,
+      resolvedTheme,
+      colorTheme,
+      setTheme,
+      setColorTheme,
+      toggleTheme,
+    }),
+    [theme, resolvedTheme, colorTheme, setTheme, setColorTheme, toggleTheme],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

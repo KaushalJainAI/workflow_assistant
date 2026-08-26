@@ -1,8 +1,8 @@
-# ✨ Nexus Frontend Capabilities
+# Nexus Frontend Capabilities
 
 This document provides a comprehensive list of all features and capabilities currently implemented in the **Nexus (Better n8n)** frontend.
 
-## 🧠 Core Workflow Editor
+## Core Workflow Editor
 The heart of the application, built with **ReactFlow**.
 
 - **Visual Canvas**: Drag-and-drop interface with infinite panning and zooming.
@@ -14,7 +14,7 @@ The heart of the application, built with **ReactFlow**.
     - **Dynamic Properties**: Forms automatically generated based on node type.
     - **Expression Editor**: Support for dynamic JavaScript expressions `{{ $json.id }}`.
     - **Data Viewer**: Inspect input/output JSON data for each node.
-- **Node Builder (New!)** 🛠️:
+- **Node Builder (New!)** :
     - **Create Custom Types**: Define new node types from scratch.
     - **Schema Editor**: Visually build the input form (Text, Number, Select, Secrets, etc.).
     - **Code Definition**: Write the Python/JS execution logic directly in the browser.
@@ -23,13 +23,13 @@ The heart of the application, built with **ReactFlow**.
     - **Test Run**: Execute the workflow and visualize data flow.
     - **Validation**: Real-time validation of connections and required fields.
 
-## 🤖 AI Features
+## AI Features
 Integrated AI capabilities to accelerate workflow building.
 
 - **AI Chat Assistant**: A sidebar assistant to answer questions about n8n or help debug.
 - **AI Workflow Builder**: Describe your goal in plain English (e.g., "Scrape this site and email me"), and the AI generates the graph for you.
 
-## 📊 Management & Dashboard
+## Management & Dashboard
 Tools to manage your automation infrastructure.
 
 - **Workflows Dashboard**:
@@ -42,11 +42,11 @@ Tools to manage your automation infrastructure.
 - **Insights Dashboard**:
     - Visual charts (bar/line) showing execution trends, credit usage, and success rates.
 
-## 🔐 Credentials & Security
+## Credentials & Security
 - **Credential Manager**: Securely store API keys, OAuth tokens, and database passwords.
 - **RBAC**: (UI foundations) User roles and permissions structure.
 
-## ⚙️ Utilities & DX (Developer Experience)
+## Utilities & DX (Developer Experience)
 - **Theme Support**: Fully functioning **Dark/Light mode** toggles.
 - **Keyboard Shortcuts**:
     - `Ctrl+S`: Save
@@ -56,5 +56,5 @@ Tools to manage your automation infrastructure.
 - **Undo/Redo Stack**: deeply integrated history management for canvas operations.
 - **Import/Export**: detailed JSON import/export compatibility.
 
-## 📝 Documentation
+## Documentation
 - **Integrated Docs**: `Documents` page for reading internal guides.

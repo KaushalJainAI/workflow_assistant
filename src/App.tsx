@@ -1,47 +1,47 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { ThemeProvider, useThemeContext } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Sidebar from './components/layout/Sidebar';
-import WorkflowsDashboard from './pages/WorkflowsDashboard';
-import WorkflowEditor from './pages/WorkflowEditor';
-import Credentials from './pages/Credentials';
-import Settings from './pages/Settings';
-import Documents from './pages/Documents';
-import MCPServers from './pages/MCPServers';
-import Connectors from './pages/Connectors';
-import Profile from './pages/Profile';
+import { useHITLReminders } from './hooks/useHITLReminders';
 
-import AIChat from './pages/AIChat';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import Signup from './pages/Signup';
 import GoogleCallback from './pages/GoogleCallback';
-import Orchestrator from './pages/Orchestrator';
-import Templates from './pages/Templates';
-import Skills from './pages/Skills';
-import Imagine from './pages/Imagine';
-import TemplateDetail from './pages/templates/TemplateDetail';
-import Inbox from './pages/Inbox';
-import Runs from './pages/Runs';
-import Agents from './pages/Agents';
-import AgentBuilder from './pages/AgentBuilder';
-import Extract from './pages/Extract';
-import ExtractionSchemaDetail from './pages/ExtractionSchemaDetail';
-// MVP: Evals/Tuning pages are routed out below; imports stay commented so the
-// pages remain in the tree and the feature is one uncomment away.
-// import Evals from './pages/Evals';
-// import EvalSuiteDetail from './pages/EvalSuiteDetail';
-import Datasets from './pages/Datasets';
-import DatasetDetail from './pages/DatasetDetail';
-// import Tuning from './pages/Tuning';
-// import TuningJobDetail from './pages/TuningJobDetail';
+
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { AssistantProvider, useAssistant } from './contexts/AssistantContext';
-import GlobalAssistantPanel from './components/layout/GlobalAssistantPanel';
+import { AssistantProvider } from './contexts/AssistantContext';
 import RouteTransition from './components/layout/RouteTransition';
 import { AppLoader } from './components/ui/Loading';
-import { Sparkles } from 'lucide-react';
+
+// Route-level code splitting.
+//
+// Everything below is reached by navigation, not by first paint, and some of
+// it is expensive: the chat surfaces pull in the markdown stack. Loaded
+// eagerly they all landed in one bundle behind a login screen that needs none
+// of them. The auth pages stay static imports because they *are* the first
+// paint.
+const lazyPage = <T extends { default: React.ComponentType<any> }>(
+  load: () => Promise<T>,
+) => lazy(load);
+
+const AIChat = lazyPage(() => import('./pages/AIChat'));
+const AgentBuilder = lazyPage(() => import('./pages/AgentBuilder'));
+const Agents = lazyPage(() => import('./pages/Agents'));
+const Connections = lazyPage(() => import('./pages/Connections'));
+const Credentials = lazyPage(() => import('./pages/Credentials'));
+const Documents = lazyPage(() => import('./pages/Documents'));
+const Imagine = lazyPage(() => import('./pages/Imagine'));
+const Inbox = lazyPage(() => import('./pages/Inbox'));
+const OAuthCallback = lazyPage(() => import('./pages/OAuthCallback'));
+const Overview = lazyPage(() => import('./pages/Overview'));
+const Profile = lazyPage(() => import('./pages/Profile'));
+const Runs = lazyPage(() => import('./pages/Runs'));
+const Schedules = lazyPage(() => import('./pages/Schedules'));
+const Settings = lazyPage(() => import('./pages/Settings'));
+const Skills = lazyPage(() => import('./pages/Skills'));
 
 // Protected route wrapper
 function ProtectedRoute({ children }: { children?: React.ReactNode }) {
@@ -58,23 +58,14 @@ function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   return children ? <>{children}</> : <Outlet />;
 }
 
-// DISABLED — Canvas Agent (Platform Copilot) parked; hook and context files kept in place.
-// import { useCanvasAgent } from './hooks/useCanvasAgent';
-// import { CanvasAgentProvider } from './contexts/CanvasAgentContext';
-//
-// function GlobalCanvasAgentWrapper({ children }: { children: React.ReactNode }) {
-//   const canvasAgent = useCanvasAgent();
-//   return (
-//     <CanvasAgentProvider value={{ sendInstruction: canvasAgent.sendInstruction, isConnected: canvasAgent.isConnected, isProcessing: canvasAgent.isProcessing }}>
-//       {children}
-//     </CanvasAgentProvider>
-//   );
-// }
-
 // Layout with sidebar
 const Layout = () => {
-  const { toggleAssistant, isAssistantOpen } = useAssistant();
   const { isAuthenticated } = useAuth();
+
+  // One per-user HITL socket for the whole authenticated shell: raises OS
+  // notifications for escalation/hourly/digest nudges and keeps the ['hitl']
+  // cache (Sidebar badge, Inbox, Overview) fresh.
+  useHITLReminders(isAuthenticated);
 
   return (
     <div className="flex h-viewport w-full bg-background text-foreground overflow-hidden">
@@ -86,26 +77,7 @@ const Layout = () => {
               <Outlet />
             </RouteTransition>
           </ErrorBoundary>
-
-          {/* Global Help Button — only for authenticated users (the assistant hits authed endpoints) */}
-          {isAuthenticated && (
-            <div className="hidden md:block fixed bottom-4 right-8 z-[110]">
-              <button
-                onClick={toggleAssistant}
-                className={`flex items-center gap-2 p-3 px-5 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 border backdrop-blur-md active:scale-95 ${
-                  isAssistantOpen
-                    ? 'bg-primary text-primary-foreground border-primary scale-110 shadow-primary/20'
-                    : 'bg-card/40 text-muted-foreground border-border/50 hover:border-primary/50 hover:text-primary hover:shadow-primary/10 hover:bg-card/60'
-                }`}
-              >
-                <Sparkles className={`w-5 h-5 ${isAssistantOpen ? 'animate-pulse' : ''}`} />
-                <span className="text-sm font-bold tracking-tight">Help</span>
-              </button>
-            </div>
-          )}
         </main>
-
-        {isAuthenticated && <GlobalAssistantPanel />}
       </div>
     </div>
   );
@@ -141,6 +113,7 @@ const AppContent = () => {
   return (
     <>
       <Router>
+        <Suspense fallback={<AppLoader />}>
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<Login />} />
@@ -151,53 +124,64 @@ const AppContent = () => {
           {/* Landing — guests get a dedicated minimal page; authed users go to /ai-chat */}
           <Route path="/" element={<LandingRoute />} />
 
+          {/* Credential OAuth popup. Protected because it completes the exchange
+              as the signed-in user, but deliberately outside <Layout /> — it is a
+              600px window that reports back to its opener and closes. Distinct
+              from /auth/google/callback, which logs a user in. */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/oauth/callback" element={<OAuthCallback />} />
+          </Route>
+
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
-            {/* Canvas Agent disabled: was <Route element={<GlobalCanvasAgentWrapper><Layout /></GlobalCanvasAgentWrapper>}> */}
             <Route element={<Layout />}>
               <Route path="/ai-chat" element={<AIChat />} />
-              <Route path="/workflows" element={<WorkflowsDashboard />} />
-              <Route path="/workflow/:id" element={<WorkflowEditor />} />
-              <Route path="/workflows/new" element={<WorkflowEditor />} />
-              <Route path="/templates" element={<Templates />} />
-              <Route path="/templates/:id" element={<TemplateDetail />} />
+              {/* The workflow *list* is retired: automations are listed on
+                  /agents, and a workflow canvas is opened from an agent, a
+                  template or a run — never browsed as its own catalogue. The
+                  editor routes stay so every existing deep link still opens. */}
+              <Route path="/workflows" element={<Navigate to="/agents" replace />} />
+              {/* The DAG editor is gone (AGENT_BLOCKS_PLAN.md §6). Old links land on agents. */}
+              <Route path="/workflow/:id" element={<Navigate to="/agents" replace />} />
+              <Route path="/workflows/new" element={<Navigate to="/agents" replace />} />
               <Route path="/documents" element={<Documents />} />
-              <Route path="/connectors" element={<Connectors />} />
-              <Route path="/mcp-servers" element={<MCPServers />} />
+              {/* Connections merges the former "Data sources" (/connectors) and
+                  "Tools" (/mcp-servers), which were two views of the same two
+                  tables. Both paths redirect so existing links keep working. */}
+              <Route path="/connections" element={<Connections />} />
+              <Route path="/connectors" element={<Navigate to="/connections" replace />} />
+              <Route path="/mcp-servers" element={<Navigate to="/connections" replace />} />
               <Route path="/credentials" element={<Credentials />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/billing" element={<Navigate to="/settings" replace />} />
               <Route path="/insights" element={<Navigate to="/settings" replace />} />
-              <Route path="/orchestrator" element={<Orchestrator />} />
+              <Route path="/overview" element={<Overview />} />
+              {/* The live monitor is superseded by Overview (broad posture),
+                  Inbox (what needs you) and Runs (what happened). */}
+              <Route path="/orchestrator" element={<Navigate to="/overview" replace />} />
               <Route path="/skills" element={<Skills />} />
               <Route path="/imagine" element={<Imagine />} />
               <Route path="/profile" element={<Profile />} />
               {/* Work */}
               <Route path="/inbox" element={<Inbox />} />
               <Route path="/runs" element={<Runs />} />
+              <Route path="/schedules" element={<Schedules />} />
               {/* Build */}
               <Route path="/agents" element={<Agents />} />
               <Route path="/agents/new" element={<AgentBuilder />} />
               <Route path="/agents/:id" element={<AgentBuilder />} />
-              <Route path="/extract" element={<Extract />} />
-              <Route path="/extract/:id" element={<ExtractionSchemaDetail />} />
-              {/* Improve: corrections become datasets, datasets grade agents
-                  and tune models. Each list has a detail page because the rows
-                  are the point and there are too many to inline. */}
-              {/* MVP: /evals and /tuning are commented out along with their
-                  sidebar entries — neither has an executor, so a run queued
-                  from these pages never starts. Re-enable with the workers. */}
-              {/* <Route path="/evals" element={<Evals />} /> */}
-              {/* <Route path="/evals/:id" element={<EvalSuiteDetail />} /> */}
-              <Route path="/datasets" element={<Datasets />} />
-              <Route path="/datasets/:id" element={<DatasetDetail />} />
-              {/* <Route path="/tuning" element={<Tuning />} /> */}
-              {/* <Route path="/tuning/:id" element={<TuningJobDetail />} /> */}
+              {/* The agent canvas was retired 2026-08-24: a run is read on
+                  /runs and in the Inbox, not projected onto a graph. */}
+              <Route path="/agents/:id/canvas" element={<Navigate to="/agents" replace />} />
+              {/* Extraction lives inside Documents now (schema admin) and Inbox
+                  (the review queue); /extract routes were removed 2026-08-18. */}
+              <Route path="/extract/*" element={<Navigate to="/documents" replace />} />
               {/* Runs replaced the old dead-end redirect. */}
               <Route path="/executions" element={<Navigate to="/runs" replace />} />
             </Route>
           </Route>
         </Routes>
+        </Suspense>
       </Router>
       <Toaster richColors position="bottom-left" theme={resolvedTheme} duration={1500} />
     </>

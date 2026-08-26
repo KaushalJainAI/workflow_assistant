@@ -84,10 +84,10 @@ export function useImagineAgent() {
     });
   }, []);
 
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, model?: string | null) => {
     setState(s => ({ ...s, isSending: true }));
     try {
-      const res = await imagineAgent.chat(message, state.conversationId ?? undefined);
+      const res = await imagineAgent.chat(message, state.conversationId ?? undefined, model);
       _applyResponse(res, message);
     } catch (e: any) {
       setState(s => ({

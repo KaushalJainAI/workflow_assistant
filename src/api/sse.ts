@@ -8,9 +8,7 @@
  * `response.ok` check, so a 500 surfaced as an empty stream instead of an error.
  */
 
-import { tokenManager } from './client';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+import { API_URL, tokenManager } from './client';
 
 export interface SseEvent {
   type: string;

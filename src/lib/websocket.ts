@@ -1,7 +1,7 @@
 /**
  * Shared WebSocket connection primitive.
  *
- * Every real-time feature (execution stream, HITL, Buddy, canvas agent,
+ * Every real-time feature (execution stream, HITL, canvas agent,
  * imagine agent) previously carried its own copy of the connect/reconnect/
  * cleanup dance. They drifted: three different backoff policies, two of which
  * were fixed intervals, and only one implemented the stale-socket guard needed
@@ -18,9 +18,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tokenManager } from '../api/client';
 
-/** Base URL for all socket paths, e.g. `wss://host/ws`. */
+/**
+ * Base URL for all socket paths, e.g. `wss://host/ws`.
+ *
+ * Always same-origin: nginx proxies /ws/ in the image and vite.config.ts proxies
+ * it in dev, so there is no environment in which this needs overriding. It was
+ * VITE_WS_URL, which the production env file already set to empty precisely to
+ * force this branch.
+ */
 export const WS_BASE: string =
-  import.meta.env.VITE_WS_URL ||
   `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 /** Builds a fully-qualified socket URL, appending the auth token as a query param. */
@@ -49,7 +55,7 @@ export interface ReconnectPolicy {
 
 export interface UseSocketOptions<TMessage = unknown> {
   /**
-   * Socket path relative to WS_BASE, e.g. `/buddy/`. Pass `null` to stay
+   * Socket path relative to WS_BASE, e.g. `/hitl/`. Pass `null` to stay
    * disconnected — used by callers whose target id is not known yet.
    */
   path: string | null;

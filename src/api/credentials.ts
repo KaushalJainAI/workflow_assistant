@@ -54,7 +54,8 @@ export interface Credential {
 
 export interface CreateCredentialData {
   name: string;
-  credential_type: number;
+  /** Primary key or slug — the backend resolves either. */
+  credential_type: number | string;
   data: Record<string, string>;
 }
 
@@ -117,18 +118,41 @@ export const credentialsService = {
   },
 
   /**
-   * Create new credential type
+   * Start the Google OAuth flow. Returns the provider URL to open in a popup.
+   * (Credential types themselves are read-only server side — they are seeded by
+   * `manage.py seed_connector_credentials`, not created over the API.)
    */
-  async createType(data: Partial<CredentialType>): Promise<CredentialType> {
-    const response = await apiClient.post<CredentialType>('/credentials/types/', data);
+  async initGoogleOAuth(
+    redirectUri: string,
+    scopes?: string[]
+  ): Promise<{ url: string }> {
+    /* The backend reads scopes with `QueryDict.getlist('scopes')`, so it needs
+       `scopes=a&scopes=b`. Axios's default array encoding produces `scopes[]=a`,
+       which that lookup does not see — the parameter was silently dropped and
+       every connection got the default Sheets+Drive scopes. Building the query
+       explicitly is what makes per-connector scopes take effect. */
+    const params = new URLSearchParams({ redirect_uri: redirectUri });
+    (scopes ?? []).forEach((scope) => params.append('scopes', scope));
+    const response = await apiClient.get<{ url: string }>(
+      `/credentials/oauth/google/init/?${params.toString()}`
+    );
     return response.data;
   },
 
   /**
-   * Delete credential type
+   * Exchange the OAuth code for tokens and persist the credential.
    */
-  async deleteType(id: number): Promise<void> {
-    await apiClient.delete(`/credentials/types/${id}/`);
+  async completeGoogleOAuth(payload: {
+    code: string;
+    redirect_uri: string;
+    state?: string;
+    name?: string;
+  }): Promise<Credential> {
+    const response = await apiClient.post<Credential>(
+      '/credentials/oauth/google/callback/',
+      payload
+    );
+    return response.data;
   },
 };
 

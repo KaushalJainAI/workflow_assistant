@@ -126,7 +126,7 @@ Perplexity cites where a fact came from; we cite what the agent *did* to get it.
 │                                                            │
 │  ⟨ ▦ Gmail · 34 results ⟩ ⟨ ⬡ Parse · 34 ⟩ ⟨ ▤ Sheet ⟩     │
 │                                                            │
-│  ⚠ I need approval before emailing 3 vendors.  [ Review ]  │
+│  I need approval before emailing 3 vendors.  [ Review ]  │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -145,20 +145,20 @@ legible at 200 steps, and they don't reflow the canvas every time a node appears
 │  Invoice summary       ● Running │  Step detail            │
 │  00:12 · 4 steps · 1 pending     │  ─────────────────────  │
 │  ────────────────────────────────│  ⬡ Parse PDF            │
-│  ✓ ▦ Fetch Gmail        0.8s ▏   │                         │
-│  ✓ ⬡ Parse PDF          3.2s ▏▏▏ │  Input                  │
+│  ▦ Fetch Gmail  0.8s ▏  │  │
+│  ⬡ Parse PDF  3.2s ▏▏▏ │  Input  │
 │    └ ↻ retry ×1         1.1s  ▏  │  { "file": "inv_08…" }  │
-│  ✓ ▤ Append to Sheet    0.4s ▏   │                         │
-│  ◐ ✉ Draft emails       …        │  Output                 │
-│    └ ⚠ awaiting approval         │  { "vendor": "Acme",    │
+│  ▤ Append to Sheet  0.4s ▏  │  │
+│  ◐  Draft emails  …  │  Output  │
+│  └  awaiting approval  │  { "vendor": "Acme",  │
 │                                  │    "amount": 48200 }    │
 │  ────────────────────────────────│                         │
-│  [ ⛶ Graph ]  [ ⏸ Pause ]        │  ⚠ Retried: timeout     │
+│  [  Graph ]  [ ⏸ Pause ]  │  Retried: timeout  │
 └──────────────────────────────────┴─────────────────────────┘
 ```
 
 Rows stream in and never reorder. Bars show duration. Retries nest under their
-parent. `[ ⛶ Graph ]` toggles the secondary view for run *shape* — same data,
+parent. `[  Graph ]` toggles the secondary view for run *shape* — same data,
 laid out as a graph, for when structure is the question.
 
 ### 3. Inbox — HITL
@@ -175,7 +175,7 @@ agent wants to do, why, what it's based on, and what happens if you ignore it.
 │  Inbox                                       3 pending     │
 ├────────────────────────────────────────────────────────────┤
 │  ╭──────────────────────────────────────────────────────╮  │
-│  │ ⚠  Send 3 payment reminder emails                    │  │
+│  │  Send 3 payment reminder emails  │  │
 │  │    Invoice summary · 2 min ago · expires in 58 min   │  │
 │  │                                                      │  │
 │  │    To:  Acme ₹48,200 · Baxter ₹12,000 · Cole ₹9,400  │  │
@@ -209,7 +209,7 @@ which already has `Generation`, an agent graph, and an `hitl_gate`.
 │  └──────────────────────────────────────────────────────┘  │
 │  ├──────●───────────────────────────────────────┤  00:14   │
 │                                                            │
-│  ⊹ Crop   ✂ Trim   T Text                                  │
+│  ⊹ Crop  Trim  T Text  │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │ Make it 30 seconds and add captions…            ↑    │  │
 │  └──────────────────────────────────────────────────────┘  │
@@ -236,12 +236,12 @@ verifying an extraction is slower than doing it by hand.
 ├────────────────────────────────────────────────────────────┤
 │  Review                          31 confident · 3 to check │
 │  ┌──────────────────┬─────────────────────────────────────┐│
-│  │                  │  vendor      Acme Supplies      ✓   ││
-│  │   [ page 1/2 ]   │  invoice_no  4471               ✓   ││
-│  │                  │  date        2026-05-12         ✓   ││
-│  │   ░░░░░░░░░░░░   │  amount      48,200         ⚠ 61%   ││
+│  │  │  vendor  Acme Supplies  ││
+│  │  [ page 1/2 ]  │  invoice_no  4471  ││
+│  │  │  date  2026-05-12  ││
+│  │  ░░░░░░░░░░░░  │  amount  48,200  61%  ││
 │  │   ░░░▓▓▓▓░░░░░ ←─┼──            ↳ "4B,2OO" unclear     ││
-│  │   ░░░░░░░░░░░░   │  due_date    2026-06-11         ✓   ││
+│  │  ░░░░░░░░░░░░  │  due_date  2026-06-11  ││
 │  └──────────────────┴─────────────────────────────────────┘│
 │                     [ Confirm ]  [ Fix ]  [ Skip ]    1/3  │
 └────────────────────────────────────────────────────────────┘
@@ -314,9 +314,9 @@ turning into training data:
 ├────────────────────────────────────────────────────────────┤
 │  Source                             Count   Label          │
 │  ────────────────────────────────────────────────────────  │
-│  ✓ Inbox · approved                   67    positive       │
-│  ✎ Inbox · edited before approving    22    correction     │
-│  ✗ Inbox · rejected                    9    negative       │
+│  Inbox · approved  67  positive  │
+│  Inbox · edited before approving  22  correction  │
+│  Inbox · rejected  9  negative  │
 │  ⤒ Uploaded manually                  22    mixed          │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -330,7 +330,7 @@ confusion:
 ┌────────────────────────────────────────────────────────────┐
 │  Tuning                                                    │
 │  ╭────────────────╮ ╭────────────────╮ ╭────────────────╮  │
-│  │ ⬡ Extraction   │ │ ▤ Classify     │ │ ✎ House style  │  │
+│  │ ⬡ Extraction  │ │ ▤ Classify  │ │  House style  │  │
 │  │ Docs → fields  │ │ Route & tag    │ │ Tone & format  │  │
 │  │ 120 ex. ready  │ │ 40 ex. needed  │ │ 8 ex. needed   │  │
 │  │ [ Start ]      │ │ [ Collect ]    │ │ [ Collect ]    │  │
@@ -355,9 +355,9 @@ one glance away.
    Trigger    ◷ Every Monday, 09:00 IST
    Next run   Mon 3 Aug, 09:00  ·  in 4 days
    ────────────────────────────────────────────────────────
-   Mon 27 Jul  09:00   ✓ 34 invoices · 3 approvals   [trace]
-   Mon 20 Jul  09:00   ✓ 28 invoices · 0 approvals   [trace]
-   Mon 13 Jul  09:00   ⚠ failed · Drive auth expired [trace]
+  Mon 27 Jul  09:00  34 invoices · 3 approvals  [trace]
+  Mon 20 Jul  09:00  28 invoices · 0 approvals  [trace]
+  Mon 13 Jul  09:00  failed · Drive auth expired [trace]
 ```
 
 ### 9. Tools — Connectors and MCP, merged
@@ -463,5 +463,5 @@ Recorded so they aren't rediscovered later. None block interface design.
   Inside a 600 MB-capped service on a 912 MB box, that's an OOM risk — move to a
   Celery worker or a hosted embedding API.
 - Fine-tuning cannot run on this box. It orchestrates OpenAI/Gemini tuning APIs;
-  all local value is in dataset prep and evals.
+  the datasets and evals that would feed it are gone from the product.
 - Deploy currently builds the untracked `AIAAS/Frontend/` copy, not this repo.

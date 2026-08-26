@@ -117,15 +117,6 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
       // What streamed was a preamble to a tool call ("let me search for..."),
       // not the answer. Drop it so the real answer starts from a clean buffer.
       return { ...state, content: '' };
-    case 'tool_call':
-      // Legacy shape, still emitted by older backend versions.
-      return {
-        ...state,
-        activity: [
-          ...state.activity,
-          { type: 'tool', tool: event.tool, args: event.args, iteration: event.iteration },
-        ],
-      };
     case 'agent_trace':
       return { ...state, activity: appendActivity(state.activity, event) };
     case 'sources_update':

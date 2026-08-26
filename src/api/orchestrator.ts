@@ -1,28 +1,17 @@
 /**
  * Orchestrator Service
- * 
- * Execution control, HITL, and AI features.
+ *
+ * HITL and the builder chat transcript.
+ *
+ * This used to also carry execution control (execute / status / pause / resume
+ * / stop), deploy / undeploy, partial "test step" runs, AI authoring
+ * (generate / modify / suggest), thought history and background tasks. Those
+ * endpoints were deleted with the workflow canvas that was their only caller,
+ * so the methods went with them rather than being left to 404. Agent execution
+ * lives in `./agents`.
  */
 
 import apiClient from './client';
-
-// Execution types
-export interface ExecutionStatus {
-  execution_id: string;
-  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
-  current_node: string | null;
-  progress: number;
-  started_at: string;
-  completed_at: string | null;
-  error: string | null;
-  results: Record<string, unknown>;
-}
-
-export interface ExecuteWorkflowResponse {
-  execution_id: string;
-  status: string;
-  message: string;
-}
 
 // HITL types
 export interface HITLRequest {
@@ -43,27 +32,6 @@ export interface HITLResponse {
   data?: Record<string, unknown>;
 }
 
-// AI Generation types
-export interface GenerateWorkflowRequest {
-  description: string;
-  credential_id?: string;
-  save?: boolean;
-  conversation_id?: string;
-  provider?: string;
-  model?: string;
-}
-
-export interface GenerateWorkflowResponse {
-  name: string;
-  description: string;
-  nodes: unknown[];
-  edges: unknown[];
-  saved?: boolean;
-  workflow_id?: number;
-  error?: string;
-  conversation_id?: string;
-}
-
 // Chat types
 export interface ChatMessage {
   id?: number;
@@ -79,106 +47,7 @@ export interface ConversationResponse {
   conversations?: { conversation_id: string }[];
 }
 
-export interface ThoughtEntry {
-  node_id: string;
-  thought: string;
-  reasoning: string;
-  timestamp: string;
-  data?: Record<string, unknown>;
-}
-
 export const orchestratorService = {
-  // ========== Execution Control ==========
-  
-  /**
-   * Execute a workflow
-   */
-  async executeWorkflow(workflowId: number): Promise<ExecuteWorkflowResponse> {
-    // Pass the user's orchestrator LLM settings so the King uses the right provider/model
-    const llmProvider = localStorage.getItem('orchestrator_llm_provider');
-    const llmModel = localStorage.getItem('orchestrator_llm_model');
-    const response = await apiClient.post<ExecuteWorkflowResponse>(
-      `/orchestrator/workflows/${workflowId}/execute/`,
-      {
-        ...(llmProvider && { llm_provider: llmProvider }),
-        ...(llmModel && { llm_model: llmModel }),
-      }
-    );
-    return response.data;
-  },
-
-  /**
-   * Deploy (activate) a workflow
-   */
-  async deployWorkflow(workflowId: number): Promise<{ status: string; message: string }> {
-    const response = await apiClient.post<{ status: string; message: string }>(
-      `/orchestrator/workflows/${workflowId}/deploy/`
-    );
-    return response.data;
-  },
-
-  /**
-   * Undeploy (deactivate) a workflow
-   */
-  async undeployWorkflow(workflowId: number): Promise<{ status: string; message: string }> {
-    const response = await apiClient.post<{ status: string; message: string }>(
-      `/orchestrator/workflows/${workflowId}/undeploy/`
-    );
-    return response.data;
-  },
-
-  /**
-   * Get execution status
-   */
-  async getExecutionStatus(executionId: string): Promise<ExecutionStatus> {
-    const response = await apiClient.get<ExecutionStatus>(
-      `/orchestrator/executions/${executionId}/status/`
-    );
-    return response.data;
-  },
-
-  /**
-   * Pause execution
-   */
-  async pauseExecution(executionId: string): Promise<void> {
-    await apiClient.post(`/orchestrator/executions/${executionId}/pause/`);
-  },
-
-  /**
-   * Resume execution
-   */
-  async resumeExecution(executionId: string): Promise<void> {
-    await apiClient.post(`/orchestrator/executions/${executionId}/resume/`);
-  },
-
-  /**
-   * Stop execution
-   */
-  async stopExecution(executionId: string): Promise<void> {
-    await apiClient.post(`/orchestrator/executions/${executionId}/stop/`);
-  },
-
-  /**
-   * Execute partial workflow (single node)
-   */
-  async executePartial(
-    workflowId: number | null, 
-    nodeId: string, 
-    nodeType: string, 
-    inputs: Record<string, unknown>, 
-    config: Record<string, unknown> | null,
-    signal?: AbortSignal
-  ): Promise<Record<string, unknown>> {
-    const response = await apiClient.post('/orchestrator/workflows/execute_partial/', {
-      workflow_id: workflowId,
-      node_id: nodeId,
-      node_type: nodeType,
-      input_data: inputs,
-      config
-    }, { signal });
-    return response.data;
-  },
-
   // ========== HITL ==========
 
   /**
@@ -196,57 +65,13 @@ export const orchestratorService = {
     await apiClient.post(`/orchestrator/hitl/${requestId}/respond/`, response);
   },
 
-  // ========== AI Features ==========
-
-  /**
-   * Generate workflow from description
-   */
-  async generateWorkflow(request: GenerateWorkflowRequest): Promise<GenerateWorkflowResponse> {
-    const response = await apiClient.post<GenerateWorkflowResponse>(
-      '/orchestrator/ai/generate/',
-      request
-    );
-    return response.data;
-  },
-
-  /**
-   * Modify workflow with AI
-   */
-  /**
-   * Modify workflow with AI
-   */
-  async modifyWorkflow(
-    workflowId: number,
-    modification: string,
-    apply?: boolean,
-    conversationId?: string,
-    provider?: string,
-    model?: string
-  ): Promise<GenerateWorkflowResponse> {
-    const response = await apiClient.post<GenerateWorkflowResponse>(
-      `/orchestrator/workflows/${workflowId}/ai/modify/`,
-      { modification, apply, conversation_id: conversationId, provider, model }
-    );
-    return response.data;
-  },
-
-  /**
-   * Get AI suggestions
-   */
-  async getSuggestions(workflowId: number): Promise<{ suggestions: string[] }> {
-    const response = await apiClient.get<{ suggestions: string[] }>(
-      `/orchestrator/workflows/${workflowId}/ai/suggest/`
-    );
-    return response.data;
-  },
-
   // ========== Chat ==========
 
   /**
    * Get conversation messages
    */
   async getMessages(conversationId?: string): Promise<ConversationResponse> {
-    const url = conversationId 
+    const url = conversationId
       ? `/orchestrator/chat/${conversationId}/`
       : '/orchestrator/chat/';
     const response = await apiClient.get<ConversationResponse>(url);
@@ -266,8 +91,8 @@ export const orchestratorService = {
   async deleteMessage(conversationId: string, messageId: number, rewind: boolean = false, rewindAfter: boolean = false): Promise<void> {
     const url = rewindAfter
       ? `/orchestrator/chat/${conversationId}/messages/${messageId}/?rewind_after=true`
-      : rewind 
-      ? `/orchestrator/chat/${conversationId}/messages/${messageId}/?rewind=true` 
+      : rewind
+      ? `/orchestrator/chat/${conversationId}/messages/${messageId}/?rewind=true`
       : `/orchestrator/chat/${conversationId}/messages/${messageId}/`;
     await apiClient.delete(url);
   },
@@ -281,8 +106,7 @@ export const orchestratorService = {
     conversationId?: string,
     provider?: string,
     model?: string,
-    reference?: { message_id: number; snippet: string },
-    screenContext?: { url: string; title: string; interactables: any[] }
+    reference?: { message_id: number; snippet: string }
   ): Promise<{ conversation_id: string; user_message: ChatMessage; ai_response: ChatMessage }> {
     const response = await apiClient.post('/orchestrator/chat/', {
       content,
@@ -291,49 +115,7 @@ export const orchestratorService = {
       provider,
       model,
       reference,
-      ...(screenContext ? { screen_context: screenContext } : {}),
     });
-    return response.data;
-  },
-
-  /**
-   * Send context-aware message
-   */
-  async sendContextAwareMessage(
-    message: string,
-    workflowId?: number,
-    nodeId?: string,
-    conversationId?: string,
-    provider?: string
-  ): Promise<{ response: string; tokens_used: number }> {
-    const response = await apiClient.post('/orchestrator/chat/context-aware/', {
-      message,
-      workflow_id: workflowId,
-      node_id: nodeId,
-      conversation_id: conversationId,
-      provider,
-    });
-    return response.data;
-  },
-
-  // ========== Thought History ==========
-
-  /**
-   * Get thought history for execution
-   */
-  async getThoughtHistory(executionId: string): Promise<{
-    thoughts: ThoughtEntry[];
-    summary: string;
-  }> {
-    const response = await apiClient.get(`/orchestrator/executions/${executionId}/thoughts/`);
-    return response.data;
-  },
-
-  /**
-   * Get active background tasks
-   */
-  async getBackgroundTasks(): Promise<{ tasks: any[]; history?: any[]; count: number }> {
-    const response = await apiClient.get('/orchestrator/background-tasks/');
     return response.data;
   },
 };

@@ -97,14 +97,24 @@ This document lists all the APIs required by the frontend application to support
 | **Delete** | `/inference/documents/:id/` | `DELETE` | Remove file and associated vector embeddings. |
 | **Search** | `/inference/rag/search/` | `POST` | Test vector search retrieval. |
 
-## 10. Logs & Audit
+## 10. Logs & insights
+
+A run is a loop of **turns**, each carrying the model's reasoning and the tool
+calls it issued. `workflow_id` / `workflow_name` are frozen wire names — they
+identify a `SubAgent`.
 
 | UI Action | Endpoint | Method | Working |
 | :--- | :--- | :--- | :--- |
-| **List Executions** | `/logs/executions/` | `GET` | Historical run data (status, time, trigger). |
-| **Log Details** | `/logs/executions/:id/details/` | `GET` | Step-by-step logs, inputs/outputs per node. |
-| **Audit Trail** | `/logs/audit/` | `GET` | Security logs (who accessed what). |
-| **Stats** | `/logs/insights/stats/` | `GET` | Dashboard charts (success rate, daily executions). |
+| **Stats** | `/logs/insights/stats/` | `GET` | Dashboard charts (success rate, daily executions, by caller). |
+| **Per-agent metrics** | `/logs/insights/workflow/:id/` | `GET` | Per-tool success rates and error hotspots for one agent. |
+| **Cost breakdown** | `/logs/insights/costs/` | `GET` | Tokens/credits split by agent and tool. |
+| **List Executions** | `/logs/executions/` | `GET` | Historical runs, keyset-paginated; filter by `status`, `workflow_id`, `caller`. |
+| **Run Details** | `/logs/executions/:id/` | `GET` | One run as turns (full reasoning) nesting their steps; the revision it ran under; who delegated it / what it delegated. |
+| **Revision timeline** | `/logs/agents/:id/revisions/` | `GET` | Every config change, newest first, with diffs and per-revision run counts. |
+| **Revision detail** | `/logs/agents/:id/revisions/:n/` | `GET` | One revision's full config snapshot. |
+
+The audit-trail and narrative routes were retired 2026-08-19; they read
+DAG-era tables with no writer.
 
 ## 11. Templates
 

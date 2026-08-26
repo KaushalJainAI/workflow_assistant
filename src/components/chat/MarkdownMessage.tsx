@@ -8,7 +8,7 @@
  * differences; everything else is shared.
  */
 
-import { useMemo, type ReactNode } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, ExternalLink, Globe2 } from 'lucide-react';
@@ -153,7 +153,7 @@ function CodeBlock({
   );
 }
 
-export default function MarkdownMessage({
+function MarkdownMessage({
   content,
   sources,
   variant = 'full',
@@ -230,3 +230,14 @@ export default function MarkdownMessage({
     </div>
   );
 }
+
+/**
+ * Memoised because parsing markdown is not cheap and a transcript re-renders
+ * for reasons that have nothing to do with its messages — a status string, a
+ * scroll position, a streaming token appended to the *last* bubble. Without
+ * this, every already-finished message re-parsed its markdown on each of those.
+ *
+ * `sources` is compared by identity on purpose: callers pass the array straight
+ * off a message object, so a new array means a genuinely different message.
+ */
+export default memo(MarkdownMessage);

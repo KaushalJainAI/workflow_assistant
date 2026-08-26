@@ -24,6 +24,13 @@ export interface Agent extends AgentConfig {
   updated_at: string;
 }
 
+/** What starting a run returns now: an id to watch, not an answer. */
+export interface AgentRunStarted {
+  execution_id: string;
+  status: string;
+  unserved_grants: string[];
+}
+
 /** What the server accepts. Everything read-only is stripped by the caller. */
 export type AgentInput = Partial<AgentConfig> & Pick<AgentConfig, 'name'>;
 
@@ -50,6 +57,27 @@ const agentsService = {
    */
   update: async (id: number | string, config: Partial<AgentConfig>): Promise<Agent> => {
     const { data } = await apiClient.patch<Agent>(`/orchestrator/agents/${id}/`, config);
+    return data;
+  },
+
+  /**
+   * Start a run. Resolves as soon as the backend has an execution id — the run
+   * itself streams to `ws/execution/{execution_id}/`, which is what lets the
+   * canvas draw it. Waiting for the answer here would defeat that.
+   */
+  execute: async (id: number | string, goal: string, threadId?: string): Promise<AgentRunStarted> => {
+    const { data } = await apiClient.post<AgentRunStarted>(
+      `/orchestrator/agents/${id}/execute/`,
+      { goal, ...(threadId ? { thread_id: threadId } : {}) },
+    );
+    return data;
+  },
+
+  /** Approve a paused tool call. The backend also resumes the run. */
+  approve: async (id: number | string, threadId: string, callId: string) => {
+    const { data } = await apiClient.post(`/orchestrator/agents/${id}/approve/`, {
+      thread_id: threadId, call_id: callId,
+    });
     return data;
   },
 

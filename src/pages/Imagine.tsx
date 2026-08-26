@@ -1,709 +1,466 @@
+/**
+ * Imagine — media generation.
+ *
+ * Two views over the same backend: **Agent** (describe it in chat, the router
+ * picks parameters, HITL confirms) and **Studio** (pick the model and every
+ * parameter yourself).
+ *
+ * Studio's layout follows what mainstream generators converged on. Model tiles
+ * sit on the page above the prompt, selectable in one click without opening
+ * anything — Leonardo keeps a model card on the canvas, Krea a row of tiles —
+ * because a picker hidden behind a dialog cannot tell you which models exist.
+ * The prompt bar carries the two settings people change constantly (ratio and
+ * size) as inline pills; the long tail lives in a drawer. A style gallery sits
+ * beneath the prompt, giving a vocabulary for looks that are easy to picture
+ * and hard to phrase.
+ */
 import { useState } from 'react';
-import { usePersistedState } from '../hooks/usePersistedState';
-import { 
-  Sparkles, 
-  ImageIcon, 
-  Video, 
-  Headphones, 
-  Wand2, 
-  Download,
-  Share2,
-  Trash2,
+import {
+  Headphones,
+  ImageIcon,
+  Info,
+  Loader2,
   Settings2,
-  History,
-  Zap
+  Palette,
+  Video,
+  X,
 } from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '../lib/utils';
-import { StylePresetCard } from '../components/imagine/StylePresetCard';
-import { Lightbox } from '../components/imagine/Lightbox';
+import { usePersistedState } from '../hooks/usePersistedState';
+import { useImagineStudio } from '../hooks/useImagineStudio';
+import type { Generation, MediaKind } from '../api/imagine';
+import { GenerationControls } from '../components/imagine/GenerationControls';
 import { ImagineChat } from '../components/imagine/ImagineChat';
+import { Lightbox, type LightboxItem } from '../components/imagine/Lightbox';
 import { MissingCredentialBanner } from '../components/imagine/MissingCredentialBanner';
-import apiClient from '../api/client';
-import { useEffect } from 'react';
+import { ModelPicker } from '../components/imagine/ModelPicker';
+import { ModelRail } from '../components/imagine/ModelRail';
+import { PillSelect } from '../components/imagine/PillSelect';
+import { ResultCard } from '../components/imagine/ResultCard';
+import { StyleGallery } from '../components/imagine/StyleGallery';
+import { SendButton } from '../components/ui/SendButton';
+import { cn } from '../lib/utils';
 
-const STYLE_PRESETS = [
-  { id: 'none', name: 'Original', image: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?q=80&w=200&auto=format&fit=crop' },
-  { id: 'cinematic', name: 'Cinematic', image: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=200&auto=format&fit=crop' },
-  { id: 'anime', name: 'Anime', image: 'https://images.unsplash.com/photo-1578632292335-df3abbb0d586?q=80&w=200&auto=format&fit=crop' },
-  { id: 'digital-art', name: 'Digital Art', image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=200&auto=format&fit=crop' },
-  { id: '3d-render', name: '3D Render', image: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?q=80&w=200&auto=format&fit=crop' },
+type ViewMode = 'agent' | 'studio';
+
+const MODES: Array<{ id: MediaKind; icon: typeof ImageIcon; label: string }> = [
+  { id: 'image', icon: ImageIcon, label: 'Image' },
+  { id: 'video', icon: Video, label: 'Video' },
+  { id: 'audio', icon: Headphones, label: 'Audio' },
 ];
 
-type Mode = 'image' | 'video' | 'audio';
-type Status = 'pending' | 'processing' | 'completed' | 'failed';
+const PLACEHOLDERS: Record<MediaKind, string> = {
+  image: 'A neon-lit Tokyo street after rain, reflections on wet asphalt…',
+  video: 'Slow aerial push over a misty pine forest at sunrise…',
+  audio: 'Welcome to the future of media. Everything you imagine, generated on demand.',
+};
 
-interface Result {
-  id: string;
-  url: string;
-  type: Mode;
-  prompt: string;
-  status: Status;
-  error?: string;
-  timestamp: Date;
+const STARTERS: Record<MediaKind, string[]> = {
+  image: [
+    'A fox curled asleep in a birch forest, soft morning light',
+    'Isometric cutaway of a cosy attic studio',
+    'Matte black espresso machine on raw concrete',
+  ],
+  video: [
+    'Drone skimming a turquoise coastline at golden hour',
+    'Storm clouds rolling over a wheat field',
+    'Ink diffusing through water, macro',
+  ],
+  audio: [
+    'Calm narrator: "The results are in, and they are remarkable."',
+    'Upbeat host: "Welcome back — let us dive straight in."',
+  ],
+};
+
+function toLightboxItem(generation: Generation): LightboxItem {
+  return {
+    id: generation.id,
+    url: generation.output_url!,
+    prompt: generation.prompt,
+    type: generation.type,
+    model: generation.model,
+    timestamp: new Date(generation.created_at),
+  };
 }
 
-type ViewMode = 'agent' | 'advanced';
+function SectionLabel({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 px-0.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+        {children}
+      </span>
+      {aside}
+    </div>
+  );
+}
 
 export default function Imagine() {
-  const [viewMode, setViewMode] = usePersistedState<ViewMode>('imagine.viewMode', 'agent');
-  const [latestAgentResult, setLatestAgentResult] = useState<{ url: string; type: 'image' | 'video' | 'audio'; prompt: string } | null>(null);
-  const [agentLightbox, setAgentLightbox] = useState(false);
-  const [mode, setMode] = usePersistedState<Mode>('imagine.mode', 'image');
-  const [prompt, setPrompt] = usePersistedState('imagine.prompt', '', { storage: 'session' });
-  const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<Result[]>([]);
+  const [viewMode, setViewMode] = usePersistedState<ViewMode>('imagine.view', 'agent');
+  const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
 
-  // Settings
-  const [model, setModel] = useState('');
-  const [selectedStyle, setSelectedStyle] = usePersistedState('imagine.style', 'none');
-  const [negativePrompt, setNegativePrompt] = useState('');
-  const [seed, setSeed] = useState<number | string>('');
-  const [resolution, setResolution] = usePersistedState('imagine.resolution', '1K');
-  const [selectedResult, setSelectedResult] = useState<Result | null>(null);
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const {
+    capabilities,
+    credentialMissing,
+    isLoadingCatalog,
+    isRefreshing,
+    refreshCatalog,
+    mode,
+    setMode,
+    prompt,
+    setPrompt,
+    model,
+    setModel,
+    activeModel,
+    params,
+    setParams,
+    styleId,
+    setStyleId,
+    results,
+    isGenerating,
+    generate,
+    remove,
+  } = useImagineStudio({ enabled: viewMode === 'studio' });
 
-  // Mode Specific Settings — duration is integer seconds (OpenRouter expects int)
-  const [duration, setDuration] = useState<number>(5);
-  const [motionIntensity, setMotionIntensity] = useState(5);
-  const [fps, setFps] = useState(24);
-  const [voice, setVoice] = useState('alloy');
-  const [speed, setSpeed] = useState(1.0);
+  const patch = (next: Partial<typeof params>) => setParams(prev => ({ ...prev, ...next }));
 
-  // Backend Capabilities State
-  const [capabilities, setCapabilities] = useState<any>(null);
-  const [credentialMissing, setCredentialMissing] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      // Capabilities call returns 400 with `detail` if the user has no
-      // OpenRouter credential in the encrypted vault — surface that as a
-      // banner instead of silently breaking the page.
-      try {
-        const capsRes = await apiClient.get('/imagine/capabilities/');
-        setCapabilities(capsRes.data);
-        setCredentialMissing(null);
-      } catch (err: any) {
-        if (err?.response?.status === 400) {
-          setCredentialMissing(
-            err.response.data?.detail ||
-              'No OpenRouter credential configured for this account.'
-          );
-          setCapabilities(err.response.data || { image: [], video: [], audio: [] });
-        } else {
-          console.error('Failed to fetch imagine capabilities:', err);
-        }
-      }
-
-      try {
-        const histRes = await apiClient.get('/imagine/');
-        const transformedResults = (histRes.data.results || []).map((r: any) => ({
-          id: r.id.toString(),
-          url: r.output_url,
-          type: r.type,
-          prompt: r.prompt,
-          status: r.status,
-          error: r.error_message,
-          timestamp: new Date(r.created_at),
-        }));
-        setResults(transformedResults);
-      } catch (err) {
-        console.error('Failed to fetch imagine history:', err);
-      }
-    };
-    fetchData();
-  }, []);
-
-  // When mode or capabilities change: pick a valid model, resolution, and
-  // duration from the capabilities response so we never send stale defaults
-  // (e.g. '1024x1024' or '5s') the new OpenRouter API rejects.
-  useEffect(() => {
-    const list = capabilities?.[mode];
-    if (!list || list.length === 0) return;
-
-    const activeModel =
-      list.find((m: any) => m.id === model) || list[0];
-    if (activeModel.id !== model) setModel(activeModel.id);
-
-    if (mode !== 'audio') {
-      const resOptions: string[] = activeModel.resolutions || [];
-      if (resOptions.length && !resOptions.includes(resolution)) {
-        setResolution(resOptions[0]);
-      }
-    }
-    if (mode === 'video') {
-      const dOptions: number[] = activeModel.durations || [];
-      if (dOptions.length && !dOptions.includes(duration)) {
-        setDuration(dOptions[0]);
-      }
-    }
-    if (mode === 'audio') {
-      const voices: string[] = activeModel.voices || [];
-      if (voices.length && !voices.includes(voice)) {
-        setVoice(voices[0]);
-      }
-    }
-  }, [mode, capabilities]);
-
-  // Polling for pending results
-  useEffect(() => {
-    const pendingResults = results.filter(r => r.status === 'pending' || r.status === 'processing');
-    if (pendingResults.length === 0) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const updatedResults = [...results];
-        let hasChanges = false;
-
-        await Promise.all(pendingResults.map(async (pending) => {
-          const res = await apiClient.get(`/imagine/${pending.id}/`);
-          if (res.data.status !== pending.status) {
-            const index = updatedResults.findIndex(r => r.id === pending.id);
-            if (index !== -1) {
-              updatedResults[index] = {
-                ...updatedResults[index],
-                status: res.data.status,
-                url: res.data.output_url,
-                error: res.data.error_message
-              };
-              hasChanges = true;
-            }
-          }
-        }));
-
-        if (hasChanges) {
-          setResults(updatedResults);
-        }
-      } catch (err) {
-        console.error('Polling failed:', err);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [results]);
-
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
-    if (credentialMissing) {
-      toast.error('Add an OpenRouter credential first.');
-      return;
-    }
-    if (!model) {
-      toast.error('No model available for this mode.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const response = await apiClient.post('/imagine/', {
-        type: mode,
-        prompt,
-        negative_prompt: negativePrompt || undefined,
-        model,
-        resolution,
-        duration: mode === 'video' ? duration : undefined,
-        seed: seed || undefined,
-        voice: mode === 'audio' ? voice : undefined,
-        speed: mode === 'audio' ? speed : undefined,
-      });
-
-      const newResult: Result = {
-        id: response.data.id.toString(),
-        url: response.data.output_url,
-        type: response.data.type,
-        prompt: response.data.prompt,
-        status: response.data.status,
-        error: response.data.error_message,
-        timestamp: new Date(response.data.created_at),
-      };
-
-      setResults(prev => [newResult, ...prev]);
-      setPrompt('');
-      if (newResult.status === 'completed') {
-        toast.success('Generation complete');
-      } else if (newResult.status === 'failed') {
-        toast.error(newResult.error || 'Generation failed');
-      } else {
-        toast.info('Generation started…');
-      }
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.error ||
-        err?.message ||
-        'Failed to generate. Please try again.';
-      console.error('Generation failed:', err);
-      toast.error(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const header = (
+    <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-border/40">
+      <div className="flex items-center gap-2 min-w-0">
+        <Palette size={18} className="text-primary shrink-0" />
+        <h1 className="text-lg font-semibold truncate">Imagine</h1>
+      </div>
+      <div className="flex p-1 bg-muted/40 rounded-full border border-border/50 shrink-0">
+        {(['agent', 'studio'] as const).map(view => (
+          <button
+            key={view}
+            onClick={() => setViewMode(view)}
+            className={cn(
+              'px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors',
+              viewMode === view
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {view}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   if (viewMode === 'agent') {
     return (
-      <div className="flex h-full bg-background text-foreground font-sans overflow-hidden">
-        <div className="flex-1 flex flex-col min-w-0 border-r border-border/40">
-          <div className="flex items-center justify-between px-6 pt-6 pb-3 border-b border-border/10">
-            <div className="flex items-center gap-2">
-              <Sparkles size={18} className="text-primary" />
-              <h1 className="text-lg font-semibold">Imagine</h1>
-            </div>
-            <div className="flex p-1 bg-muted/30 rounded-full border border-border/40">
-              <button
-                onClick={() => setViewMode('agent')}
-                className={cn(
-                  'px-4 py-1.5 rounded-full text-xs font-bold transition-all',
-                  'bg-primary text-primary-foreground'
-                )}
-              >
-                Agent
-              </button>
-              <button
-                onClick={() => setViewMode('advanced')}
-                className="px-4 py-1.5 rounded-full text-xs font-bold text-muted-foreground hover:text-foreground transition-all"
-              >
-                Advanced
-              </button>
-            </div>
-          </div>
-          {credentialMissing && <MissingCredentialBanner detail={credentialMissing} />}
-          <div className="flex-1 min-h-0">
-            <ImagineChat onLatestGeneration={setLatestAgentResult} />
-          </div>
+      <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
+        {header}
+        {credentialMissing && <MissingCredentialBanner detail={credentialMissing} />}
+        <div className="flex-1 min-h-0">
+          <ImagineChat
+            capabilities={capabilities}
+            onRefreshCatalog={refreshCatalog}
+            isRefreshingCatalog={isRefreshing}
+          />
         </div>
-
-        <div className="hidden lg:flex w-[420px] flex-col bg-card/30">
-          <div className="px-6 py-4 border-b border-border/40">
-            <h2 className="text-xs font-semibold  text-muted-foreground">
-              Latest result
-            </h2>
-          </div>
-          <div className="flex-1 overflow-y-auto p-6 flex items-start justify-center">
-            {latestAgentResult ? (
-              <button
-                onClick={() => setAgentLightbox(true)}
-                className="w-full rounded-2xl overflow-hidden border border-border/50 bg-black/5"
-              >
-                {latestAgentResult.type === 'image' && (
-                  <img src={latestAgentResult.url} alt={latestAgentResult.prompt} className="w-full" />
-                )}
-                {latestAgentResult.type === 'video' && (
-                  <video src={latestAgentResult.url} controls className="w-full" />
-                )}
-                {latestAgentResult.type === 'audio' && (
-                  <div className="p-6">
-                    <audio src={latestAgentResult.url} controls className="w-full" />
-                  </div>
-                )}
-              </button>
-            ) : (
-              <div className="text-sm text-muted-foreground text-center py-16">
-                Your generations will appear here.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <Lightbox
-          isOpen={agentLightbox}
-          onClose={() => setAgentLightbox(false)}
-          result={latestAgentResult ? { ...latestAgentResult, timestamp: new Date() } : null}
-        />
       </div>
     );
   }
 
+  const controls = (
+    <GenerationControls kind={mode} model={activeModel} params={params} onChange={patch} />
+  );
+
   return (
-    <div className="flex h-full bg-background text-foreground font-sans selection:bg-primary/20 overflow-hidden">
-      {/* Mode toggle (Advanced view) */}
-      <div className="absolute top-6 right-6 z-10 flex p-1 bg-muted/30 rounded-full border border-border/40">
-        <button
-          onClick={() => setViewMode('agent')}
-          className="px-4 py-1.5 rounded-full text-xs font-bold text-muted-foreground hover:text-foreground transition-all"
-        >
-          Agent
-        </button>
-        <button
-          onClick={() => setViewMode('advanced')}
-          className="px-4 py-1.5 rounded-full text-xs font-bold bg-primary text-primary-foreground transition-all"
-        >
-          Advanced
-        </button>
-      </div>
-      {/* Left Sidebar - Style Presets */}
-      <div className="w-64 border-r border-border/40 bg-card/30 hidden lg:flex flex-col">
-        <div className="p-6 border-b border-border/40">
-          <h2 className="text-xs font-semibold  text-muted-foreground flex items-center gap-2">
-            <Zap size={14} className="text-primary" />
-            Style Library
-          </h2>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-          <div className="grid grid-cols-2 gap-3">
-            {STYLE_PRESETS.map(preset => (
-              <StylePresetCard 
-                key={preset.id}
-                preset={preset}
-                isActive={selectedStyle === preset.id}
-                onClick={() => setSelectedStyle(preset.id)}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
+      {header}
+      {credentialMissing && <MissingCredentialBanner detail={credentialMissing} />}
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {credentialMissing && (
-          <div className="px-2 pt-2">
-            <MissingCredentialBanner detail={credentialMissing} />
-          </div>
-        )}
-        {/* Top Navigation - Minimalist Tabs */}
-        <div className="flex items-center justify-center pt-8 pb-4 border-b border-border/10">
-          <div className="flex p-1 bg-muted/30 rounded-full border border-border/40">
-            {[
-              { id: 'image', icon: ImageIcon, label: 'Images' },
-              { id: 'video', icon: Video, label: 'Video' },
-              { id: 'audio', icon: Headphones, label: 'Audio' },
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => setMode(t.id as Mode)}
-                className={cn(
-                  "flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all",
-                  mode === t.id 
-                    ? "bg-background text-foreground shadow-sm border border-border/50" 
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <t.icon size={14} />
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="max-w-4xl mx-auto px-6 py-12 space-y-12">
-            
-            {/* Hero Prompt Box */}
-            <div className="space-y-6">
-              <div className="relative group">
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={`Describe the ${mode} you want to create...`}
-                  className="w-full min-h-[160px] p-8 text-xl bg-card border-2 border-border/40 rounded-lg outline-none focus:border-primary/40 transition-all resize-none shadow-sm placeholder:text-muted-foreground/20 leading-relaxed"
-                />
-                <div className="absolute bottom-6 right-6 flex items-center gap-3">
-                  <button 
-                    onClick={() => toast.info('Prompt refinement logic would go here')}
-                    title="Improve Prompt"
-                    className="p-3.5 rounded-2xl bg-muted/50 hover:bg-muted border border-border/50 text-muted-foreground hover:text-primary transition-all"
-                  >
-                    <Wand2 size={20} />
-                  </button>
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
+          <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-5 space-y-6">
+            {/* Modality */}
+            <div className="flex items-center justify-center">
+              <div className="flex p-1 bg-muted/40 rounded-full border border-border/50">
+                {MODES.map(tab => (
                   <button
-                    disabled={isLoading || !prompt.trim()}
-                    onClick={handleGenerate}
-                    className="flex items-center gap-3 px-10 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-sm  hover:shadow-2xl hover:shadow-primary/20 disabled:opacity-50 transition-all active:scale-[0.98]"
-                  >
-                    {isLoading ? (
-                      <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Sparkles size={18} />
+                    key={tab.id}
+                    onClick={() => setMode(tab.id)}
+                    className={cn(
+                      'flex items-center gap-2 px-5 sm:px-7 py-2 rounded-full text-xs font-semibold transition-colors',
+                      mode === tab.id
+                        ? 'bg-background text-foreground shadow-sm border border-border/50'
+                        : 'text-muted-foreground hover:text-foreground',
                     )}
-                    {isLoading ? 'Generating…' : 'Imagine'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Resolution Quick Toggle - Hidden for Audio */}
-              {mode !== 'audio' && capabilities?.[mode] && (
-                <div className="flex items-center gap-2 px-4">
-                  <span className="text-[10px] font-semibold  text-muted-foreground/50">Size:</span>
-                  {(capabilities[mode].find((m: any) => m.id === model)?.resolutions || ['1024x1024']).map((res: string) => (
-                    <button
-                      key={res}
-                      onClick={() => setResolution(res)}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-bold transition-all border",
-                        resolution === res ? "bg-primary/10 border-primary/40 text-primary" : "border-border/40 text-muted-foreground hover:bg-muted"
-                      )}
-                    >
-                      {res}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Length/Duration Toggle - Video only (audio TTS has no fixed durations) */}
-              {mode === 'video' && capabilities?.[mode] && (
-                <div className="flex items-center gap-2 px-4">
-                  <span className="text-[10px] font-semibold  text-muted-foreground/50">Length:</span>
-                  {(capabilities[mode].find((m: any) => m.id === model)?.durations || [5, 10]).map((d: number) => (
-                    <button
-                      key={d}
-                      onClick={() => setDuration(d)}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-bold transition-all border",
-                        duration === d ? "bg-primary/10 border-primary/40 text-primary" : "border-border/40 text-muted-foreground hover:bg-muted"
-                      )}
-                    >
-                      {d}s
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Results Gallery */}
-            <div className="space-y-8">
-              <div className="flex items-center justify-between border-b border-border/40 pb-4">
-                <div className="flex items-center gap-3">
-                  <History size={16} className="text-muted-foreground" />
-                  <h3 className="text-xs font-semibold  text-muted-foreground">Recent images</h3>
-                </div>
-                <span className="text-[10px] font-bold text-muted-foreground/50">{results.length} results</span>
-              </div>
-
-              {results.length === 0 && !isLoading && (
-                <div className="flex flex-col items-center justify-center py-20 opacity-20 grayscale">
-                  <ImageIcon size={64} strokeWidth={1} />
-                  <p className="mt-4 text-sm font-medium tracking-tight">Nothing generated yet. Describe an image above.</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-20">
-                {isLoading && (
-                  <div className="aspect-square rounded-lg bg-muted/30 border-2 border-dashed border-border/60 flex flex-col items-center justify-center gap-4 animate-pulse">
-                    <div className="h-12 w-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                    <span className="text-xs font-bold  text-muted-foreground">Generating...</span>
-                  </div>
-                )}
-                
-                {results.map((res) => (
-                  <div 
-                    key={res.id} 
-                    className="group relative bg-card border border-border/40 rounded-lg overflow-hidden hover:shadow-2xl transition-all duration-500"
                   >
-                    <div className="aspect-square overflow-hidden bg-black/5 cursor-zoom-in relative" onClick={() => {
-                      if (res.status === 'completed') {
-                        setSelectedResult(res);
-                        setIsLightboxOpen(true);
-                      }
-                    }}>
-                      {res.status === 'completed' ? (
-                        res.type === 'image' ? (
-                          <img src={res.url} alt={res.prompt} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                        ) : (
-                          <video src={res.url} autoPlay loop muted className="w-full h-full object-cover" />
-                        )
-                      ) : res.status === 'failed' ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-destructive/5 text-destructive p-8 text-center">
-                          <Trash2 size={48} strokeWidth={1} className="mb-4" />
-                          <p className="text-xs font-bold  mb-2">Generation failed</p>
-                          <p className="text-[10px] opacity-70 line-clamp-3">{res.error || 'Unknown error occurred'}</p>
-                        </div>
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-muted/20 animate-pulse">
-                          <div className="h-12 w-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
-                          <p className="text-[10px] font-semibold  text-muted-foreground animate-bounce">Generating…</p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Hover Actions */}
-                    <div className="absolute top-6 right-6 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0 duration-300">
-                      {res.status === 'completed' && (
-                        <>
-                          <button className="p-3 bg-background/90 backdrop-blur rounded-2xl border border-border/50 text-foreground hover:bg-primary hover:text-primary-foreground transition-colors shadow-lg">
-                            <Download size={18} />
-                          </button>
-                          <button className="p-3 bg-background/90 backdrop-blur rounded-2xl border border-border/50 text-foreground hover:bg-primary hover:text-primary-foreground transition-colors shadow-lg">
-                            <Share2 size={18} />
-                          </button>
-                        </>
-                      )}
-                      <button className="p-3 bg-background/90 backdrop-blur rounded-2xl border border-border/50 text-foreground hover:bg-destructive hover:text-white transition-colors shadow-lg">
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-
-                    <div className="p-8 space-y-4">
-                      <p className="text-sm font-medium leading-relaxed line-clamp-2 text-foreground/80 italic">"{res.prompt}"</p>
-                      <div className="flex items-center justify-between pt-4 border-t border-border/40">
-                        <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground ">
-                          <span className="px-2 py-0.5 bg-muted rounded">{res.type}</span>
-                          <span>•</span>
-                          <span>{res.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        <button 
-                          onClick={() => {
-                            setSelectedResult(res);
-                            setIsLightboxOpen(true);
-                          }}
-                          className="text-primary hover:underline text-[10px] font-semibold "
-                        >
-                          View Details
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                    <tab.icon size={14} />
+                    {tab.label}
+                  </button>
                 ))}
               </div>
             </div>
+
+            {/* Model — on the page, one click, no dialog required. */}
+            <section className="space-y-2">
+              <SectionLabel
+                aside={
+                  activeModel && (
+                    <span className="text-[11px] text-muted-foreground/60 truncate max-w-[220px]">
+                      {activeModel.provider}
+                    </span>
+                  )
+                }
+              >
+                Model
+              </SectionLabel>
+              <ModelRail
+                kind={mode}
+                capabilities={capabilities}
+                value={model}
+                onChange={setModel}
+                onBrowseAll={() => setBrowseOpen(true)}
+                onRefresh={refreshCatalog}
+                isRefreshing={isRefreshing}
+                isLoading={isLoadingCatalog}
+              />
+            </section>
+
+            {/* Prompt */}
+            <section className="space-y-2.5">
+              <div className="rounded-2xl border border-border/60 bg-card focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/5 transition-all">
+                <textarea
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  onKeyDown={e => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      void generate();
+                    }
+                  }}
+                  placeholder={PLACEHOLDERS[mode]}
+                  className="w-full min-h-[104px] p-4 text-[15px] bg-transparent outline-none resize-none leading-relaxed placeholder:text-muted-foreground/35"
+                />
+                <div className="flex items-center gap-1.5 px-3 py-2.5 border-t border-border/40 flex-wrap">
+                  {mode !== 'audio' && (
+                    <PillSelect
+                      label="Ratio"
+                      options={activeModel?.aspect_ratios ?? []}
+                      value={params.aspectRatio}
+                      onChange={aspectRatio => patch({ aspectRatio })}
+                    />
+                  )}
+                  {mode !== 'audio' && (
+                    <PillSelect
+                      label={mode === 'video' ? 'Resolution' : 'Size'}
+                      options={activeModel?.resolutions ?? []}
+                      value={params.resolution}
+                      onChange={resolution => patch({ resolution })}
+                    />
+                  )}
+                  {mode === 'video' && (
+                    <PillSelect
+                      label="Length"
+                      options={activeModel?.durations ?? []}
+                      value={params.duration}
+                      onChange={duration => patch({ duration })}
+                      format={d => `${d}s`}
+                    />
+                  )}
+                  {mode === 'audio' && (
+                    <PillSelect
+                      label="Voice"
+                      options={activeModel?.voices ?? []}
+                      value={params.voice}
+                      onChange={voice => patch({ voice })}
+                    />
+                  )}
+                  <button
+                    onClick={() => setOptionsOpen(true)}
+                    title="All options"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-border/60 text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
+                  >
+                    <Settings2 size={11} />
+                    More
+                  </button>
+
+                  <div className="ml-auto flex items-center gap-2 shrink-0 pl-2">
+                    <span className="hidden sm:block text-[11px] text-muted-foreground/50">⌘↵</span>
+                    <SendButton
+                      onClick={() => void generate()}
+                      busy={isGenerating}
+                      disabled={!prompt.trim() || !model}
+                      title="Generate"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {!prompt.trim() && (
+                <div className="flex flex-wrap gap-1.5">
+                  {STARTERS[mode].map(starter => (
+                    <button
+                      key={starter}
+                      onClick={() => setPrompt(starter)}
+                      className="text-[11px] px-2.5 py-1.5 rounded-lg border border-border/50 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                    >
+                      {starter}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Style */}
+            {mode !== 'audio' && (
+              <section className="space-y-2">
+                <SectionLabel>Style</SectionLabel>
+                <StyleGallery kind={mode} value={styleId} onChange={setStyleId} />
+              </section>
+            )}
+
+            {/* Results */}
+            <section className="space-y-3">
+              <SectionLabel
+                aside={
+                  <span className="text-[11px] text-muted-foreground/60">
+                    {results.length} {results.length === 1 ? 'result' : 'results'}
+                  </span>
+                }
+              >
+                Your creations
+              </SectionLabel>
+
+              {results.length === 0 && !isGenerating ? (
+                <div className="flex flex-col items-center justify-center py-14 text-center rounded-2xl border border-dashed border-border/50">
+                  <div className="h-12 w-12 rounded-2xl bg-muted/50 flex items-center justify-center">
+                    <ImageIcon size={20} className="text-muted-foreground/40" />
+                  </div>
+                  <p className="mt-3.5 text-sm font-medium">Nothing generated yet</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                    Pick a model, describe what you want, and your results collect here.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {isGenerating && (
+                    <div className="rounded-2xl border border-dashed border-primary/40 bg-primary/5 aspect-square flex flex-col items-center justify-center gap-3 p-6">
+                      <Loader2 size={24} className="animate-spin text-primary" />
+                      <p className="text-xs font-semibold text-primary">Generating {mode}…</p>
+                      <p className="text-[11px] text-muted-foreground text-center line-clamp-2">
+                        {prompt || activeModel?.name}
+                      </p>
+                    </div>
+                  )}
+                  {results.map(result => (
+                    <ResultCard
+                      key={result.id}
+                      generation={result}
+                      onOpen={g => setLightbox(toLightboxItem(g))}
+                      onDelete={id => void remove(id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         </div>
+
+        {/* Options rail */}
+        <aside className="hidden xl:flex w-[310px] shrink-0 border-l border-border/40 bg-card/30 flex-col">
+          <div className="px-5 py-4 border-b border-border/40 flex items-center gap-2">
+            <Settings2 size={14} className="text-primary" />
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Options
+            </h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+            {activeModel ? (
+              <>
+                <div className="mb-5 pb-5 border-b border-border/40">
+                  <div className="text-sm font-semibold">{activeModel.name}</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    {activeModel.provider}
+                  </div>
+                  {activeModel.description && (
+                    <p className="text-[11px] text-muted-foreground/80 leading-relaxed mt-2 line-clamp-4">
+                      {activeModel.description}
+                    </p>
+                  )}
+                </div>
+                {controls}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground flex items-start gap-2">
+                <Info size={13} className="shrink-0 mt-0.5" />
+                Select a model to see the options it supports.
+              </p>
+            )}
+          </div>
+        </aside>
       </div>
 
-      {/* Right Sidebar - Advanced Controls */}
-      <div className="w-80 border-l border-border/40 bg-card/30 hidden xl:flex flex-col">
-        <div className="p-6 border-b border-border/40">
-          <h2 className="text-xs font-semibold  text-muted-foreground flex items-center gap-2">
-            <Settings2 size={14} className="text-primary" />
-            Advanced
-          </h2>
-        </div>
-        <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
-          {/* Engine Selection */}
-          <div className="space-y-4">
-            <label className="text-[10px] font-semibold  text-muted-foreground/60">Generation engine</label>
-            <div className="grid grid-cols-1 gap-2">
-              {(capabilities?.[mode] || []).map((m: any) => (
-                <button 
-                  key={m.id}
-                  onClick={() => setModel(m.id)}
-                  className={cn(
-                    "w-full px-4 py-3 rounded-2xl text-xs font-bold border text-left transition-all flex items-center justify-between",
-                    model === m.id ? "bg-primary/10 border-primary/40 text-primary shadow-sm" : "border-border/60 text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  <div className="flex flex-col">
-                    <span>{m.name}</span>
-                    <span className="text-[8px] opacity-50 font-medium tracking-tight">{m.provider}</span>
-                  </div>
-                  {model === m.id && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Mode Specific Advanced Controls */}
-          {mode === 'video' && (
-            <>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-semibold  text-muted-foreground/60">Motion intensity</label>
-                  <span className="text-xs font-bold text-primary">{motionIntensity}</span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={motionIntensity}
-                  onChange={(e) => setMotionIntensity(parseInt(e.target.value))}
-                  className="w-full accent-primary"
-                />
+      {/* Options drawer — the only route below `xl`, and the "More" target above it */}
+      {optionsOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end"
+          onClick={() => setOptionsOpen(false)}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Generation options"
+            onClick={e => e.stopPropagation()}
+            className="w-[88vw] max-w-sm h-full bg-card border-l border-border flex flex-col"
+          >
+            <div className="px-5 py-4 border-b border-border/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings2 size={14} className="text-primary" />
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Options
+                </h2>
               </div>
-              <div className="space-y-4">
-                <label className="text-[10px] font-semibold  text-muted-foreground/60">FPS</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[24, 30, 60].map(f => (
-                    <button
-                      key={f}
-                      onClick={() => setFps(f)}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-[10px] font-bold border transition-all",
-                        fps === f ? "bg-primary/10 border-primary/40 text-primary" : "border-border/40 text-muted-foreground hover:bg-muted"
-                      )}
-                    >
-                      {f} FPS
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {mode === 'audio' && (
-            <>
-              <div className="space-y-4">
-                <label className="text-[10px] font-semibold  text-muted-foreground/60">Voice profile</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(capabilities?.[mode]?.find((m: any) => m.id === model)?.voices || []).map((v: string) => (
-                    <button
-                      key={v}
-                      onClick={() => setVoice(v)}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-[11px] font-semibold border transition-all",
-                        voice === v ? "bg-primary/10 border-primary/40 text-primary" : "border-border/40 text-muted-foreground hover:bg-muted"
-                      )}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-semibold  text-muted-foreground/60">Playback speed</label>
-                  <span className="text-xs font-bold text-primary">{speed}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.1"
-                  value={speed}
-                  onChange={(e) => setSpeed(parseFloat(e.target.value))}
-                  className="w-full accent-primary"
-                />
-              </div>
-            </>
-          )}
-
-          {/* Negative Prompt - Hidden for Audio */}
-          {mode !== 'audio' && (
-            <div className="space-y-4">
-              <label className="text-[10px] font-semibold  text-muted-foreground/60">Negative prompt</label>
-              <textarea
-                value={negativePrompt}
-                onChange={(e) => setNegativePrompt(e.target.value)}
-                placeholder="What to exclude (e.g. text, blurry, low quality)..."
-                className="w-full min-h-[100px] p-4 text-xs bg-muted/30 border border-border/40 rounded-2xl outline-none focus:border-primary/40 transition-all resize-none placeholder:text-muted-foreground/30 leading-relaxed"
-              />
-            </div>
-          )}
-
-          {/* Seed */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-semibold  text-muted-foreground/60">Seed</label>
-              <button 
-                onClick={() => setSeed(Math.floor(Math.random() * 1000000))}
-                className="text-[10px] font-bold text-primary hover:underline"
+              <button
+                onClick={() => setOptionsOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground"
+                aria-label="Close options"
               >
-                Randomize
+                <X size={16} />
               </button>
             </div>
-            <input
-              type="text"
-              value={seed}
-              onChange={(e) => setSeed(e.target.value)}
-              placeholder="Auto-generated"
-              className="w-full px-4 py-3 text-xs bg-muted/30 border border-border/40 rounded-2xl outline-none focus:border-primary/40 transition-all"
-            />
+            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">{controls}</div>
+            <div className="p-4 border-t border-border/40">
+              <button
+                onClick={() => setOptionsOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <Lightbox 
-        isOpen={isLightboxOpen} 
-        onClose={() => setIsLightboxOpen(false)} 
-        result={selectedResult} 
+      {/* Full-catalog search, opened from the rail's "Browse all" tile. Rendered
+          headless: the rail is the trigger, so the picker's own button is not
+          wanted here. */}
+      {browseOpen && (
+        <ModelPicker
+          kind={mode}
+          capabilities={capabilities}
+          value={model}
+          onChange={setModel}
+          onRefresh={refreshCatalog}
+          isRefreshing={isRefreshing}
+          openOnMount
+          hideTrigger
+          onClose={() => setBrowseOpen(false)}
+        />
+      )}
+
+      <Lightbox
+        isOpen={!!lightbox}
+        onClose={() => setLightbox(null)}
+        result={lightbox}
+        onDelete={id => void remove(id)}
       />
     </div>
   );

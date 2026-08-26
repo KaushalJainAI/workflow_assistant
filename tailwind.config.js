@@ -103,6 +103,11 @@ export default {
           subtle: "hsl(var(--agent-subtle))",
           line: "hsl(var(--agent-line))",
         },
+        /* chart marks — validated per-mode steps, see note in index.css */
+        chart: {
+          work: "hsl(var(--chart-work))",
+          fail: "hsl(var(--chart-fail))",
+        },
         success: {
           DEFAULT: "hsl(var(--success))",
           subtle: "hsl(var(--success-subtle))",
@@ -172,5 +177,10 @@ export default {
   },
   plugins: [
     require('@tailwindcss/typography'),
+    /* Supplies animate-in / fade-in / slide-in-from-* / zoom-in-*. The app used
+       ~106 of these classes for a year with the plugin absent, so every one of
+       them compiled to nothing and the elements they decorated simply popped
+       into place. Registering it is what makes those existing call sites real. */
+    require('tailwindcss-animate'),
   ],
 }

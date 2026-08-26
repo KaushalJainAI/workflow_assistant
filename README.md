@@ -2,18 +2,18 @@
 
 Nexus is a modern, AI-powered n8n clone built with React, TypeScript, and ReactFlow.
 
-## 📖 Documentation
+## Documentation
 
 For a detailed explanation of the project structure, components, and architecture, please refer to:
-👉 **[documentation.md](./documentation.md)**
+ **[documentation.md](./documentation.md)**
 
-## ✨ Features & Capabilities
+## Features & Capabilities
 Want to see everything this frontend can do? Check out the full feature list:
-👉 **[FEATURES.md](./FEATURES.md)**
+ **[FEATURES.md](./FEATURES.md)**
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 1. **Install Dependencies**:
    ```bash
@@ -25,7 +25,7 @@ Want to see everything this frontend can do? Check out the full feature list:
    npm run dev
    ```
 
-## 🛠️ Tech Stack
+## Tech Stack
 - **Frontend**: React 19, TypeScript, Vite
 - **Flow Engine**: ReactFlow
 - **Styling**: TailwindCSS

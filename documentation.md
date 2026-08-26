@@ -10,13 +10,13 @@ Nexus is a React-based visual workflow editor inspired by n8n. It leverages **Re
 
 The `src/` directory is organized into logical modules:
 
-### 📂 `components/`
+### `components/`
 Reusable UI components categorized by function:
 - **`layout/`**: Core application structure including `Sidebar.tsx` and `AIChatPanel.tsx`.
 - **`workflow/`**: Components specific to the workflow editor, such as `NodeConfigPanel.tsx`, `NodePanel.tsx`, and `GenericNode.tsx`.
 - **`execution/`**: Components for visualizing execution data, including `TableView.tsx` and `ExecutionControls.tsx`.
 
-### 📂 `pages/`
+### `pages/`
 The main application views (routes):
 - `WorkflowEditor.tsx`: The primary canvas for building and editing workflows.
 - `WorkflowsDashboard.tsx`: List of all saved workflows.
@@ -25,7 +25,7 @@ The main application views (routes):
 - `Settings.tsx`: User preferences and theme management.
 - `AIChat.tsx` & `Documents.tsx`: Unique AI-driven features.
 
-### 📂 `hooks/`
+### `hooks/`
 Custom React hooks for global functionality:
 - `useKeyboardShortcuts.ts`: Manages application-wide hotkeys (e.g., Save, Execute).
 - `useTheme.ts`: Handles dark/light mode switching.
@@ -43,21 +43,21 @@ Page-level state extracted from the two largest components lives here too:
 - `useWorkflowValidation.ts`, `useWorkflowDeployment.ts`: validation results and deploy /
   undeploy for the workflow editor.
 
-### 📂 `lib/`
+### `lib/`
 Configuration and logic for workflow nodes:
 - `nodeConfigs.ts`: Definitions for all available node types, including parameters and icons.
 - `nodeRegistry.ts`: Logic for mapping node types to their visual components.
 - `utils.ts`: Miscellaneous utility functions.
 
-### 📂 `stores/`
+### `stores/`
 State management logic:
 - `useGraphStore.ts`: The central Zustand store managing nodes, edges, and workflow metadata.
 
-### 📂 `nodes/`
+### `nodes/`
 Custom ReactFlow node implementations:
 - `definitions/`: Individual node logic (e.g., `manualTrigger.ts`).
 
-### 📂 `types/`
+### `types/`
 TypeScript interface and type definitions:
 - `node.ts`: Types for node data and properties.
 

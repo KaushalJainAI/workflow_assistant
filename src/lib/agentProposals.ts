@@ -57,6 +57,14 @@ export function propose(input: string, cfg: AgentConfig): Proposal {
       : has(t, 'weekly', 'every week') ? '0 9 * * 1'
       : '0 9 * * *';
     if (cfg.schedule !== cron) add('schedule', 'Schedule', cron, 'Derived from the cadence you described.');
+    // Proposed together with the schedule, never separately: a scheduled agent
+    // without this is refused at every firing, and the save is rejected for
+    // exactly that reason — so proposing one without the other would hand the
+    // user a configuration they cannot save.
+    if (!cfg.allowUnattended) {
+      add('allowUnattended', 'Unattended', true,
+          'A schedule only fires if the agent may run with nobody watching.');
+    }
   }
 
   // --- tools ----------------------------------------------------------------

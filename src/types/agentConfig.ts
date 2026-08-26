@@ -54,6 +54,13 @@ export interface AgentConfig {
   // Invocation
   trigger: TriggerMode;
   schedule: string;          // only meaningful for maintenance
+  /**
+   * Whether anything other than the user may start a run — a schedule, a
+   * webhook, or a parent agent delegating. Off by default, and the runtime
+   * checks it again on every unattended call, so a schedule set without this
+   * is refused at every firing rather than merely ignored.
+   */
+  allowUnattended: boolean;
 
   // Guardrails
   autonomy: Autonomy;
@@ -108,6 +115,7 @@ export const DEFAULT_AGENT: AgentConfig = {
 
   trigger: 'goal',
   schedule: '',
+  allowUnattended: false,
 
   autonomy: 'ask',
   notifyOnHitl: true,

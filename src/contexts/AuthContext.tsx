@@ -4,7 +4,7 @@
  * Global authentication state and methods.
  */
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { authService } from '../api/auth';
 import type { User } from '../api/auth';
@@ -109,18 +109,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
-  const value = {
-    user,
-    isAuthenticated,
-    isLoading,
-    error,
-    login,
-    register,
-    googleLogin,
-    logout,
-    refreshUser,
-    clearError,
-  };
+  // Memoised: this provider sits above every route, so an unstable value made
+  // each of its renders a re-render of every screen that reads auth.
+  const value = useMemo(
+    () => ({
+      user,
+      isAuthenticated,
+      isLoading,
+      error,
+      login,
+      register,
+      googleLogin,
+      logout,
+      refreshUser,
+      clearError,
+    }),
+    [user, isAuthenticated, isLoading, error, login, register, googleLogin,
+     logout, refreshUser, clearError],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

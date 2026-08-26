@@ -1,32 +1,31 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import {
+  CalendarClock,
   GitGraph,
   Key,
+  KeyRound,
   Menu,
   Plus,
   FileText,
-  Sparkles,
-  Layout,
-  Loader2,
-  Code2,
+  MessageCircle,
   Plug,
   Wrench,
   User,
   Inbox,
   Activity,
+  Radar,
   Bot,
-  ScanText,
   Clapperboard,
   // LineChart,  // MVP: unused while Evals is hidden
-  Database,
   // SlidersHorizontal,  // MVP: unused while Tuning is hidden
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useHitlPending } from "../../hooks/useHitlPending";
 import { useAuth } from "../../contexts/AuthContext";
-import { workflowsService, orchestratorService, logsService } from "../../api";
+import { logsService } from "../../api";
 import { toast } from "sonner";
 
 
@@ -37,7 +36,6 @@ const Sidebar = () => {
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
     // On mobile: collapsed = fully hidden drawer. On desktop: collapsed = icon rail.
     const [collapsed, setCollapsed] = useState(() => window.innerWidth < 768);
-    const [isCreating, setIsCreating] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
@@ -73,16 +71,17 @@ const Sidebar = () => {
     // Badge counts: what is waiting on you (blue count) and what the agent is
     // doing unattended (violet dot). Polled, because the nav outlives any one
     // execution WebSocket.
-    const { data: pendingCount = 0 } = useQuery({
-        queryKey: ['nav', 'hitl-pending'],
-        enabled: isAuthenticated,
-        refetchInterval: 30_000,
-        queryFn: async () => (await orchestratorService.getPendingHITL()).requests.length,
-    });
+    // The pending query lives in useHitlPending so that Inbox and Overview,
+    // which want the same URL and the same data, share one timer instead of
+    // each declaring their own interval over the shared key.
+    const { data: pending = [] } = useHitlPending(isAuthenticated);
+    const pendingCount = pending.length;
+    // No global "something is running" push exists (the execution socket is
+    // per-run), so this one genuinely has to poll. A minute is enough for a dot.
     const { data: runningCount = 0 } = useQuery({
         queryKey: ['nav', 'running'],
         enabled: isAuthenticated,
-        refetchInterval: 30_000,
+        refetchInterval: 60_000,
         queryFn: async () => {
             const page = await logsService.listExecutions({ status: 'running', limit: 1 });
             return page.results.length;
@@ -125,12 +124,17 @@ const Sidebar = () => {
         guestOk?: boolean;   // reachable without logging in
         agent?: boolean;     // show the violet "running unattended" dot
         pending?: boolean;   // show the blue "waiting on you" count
+        /** Extra path prefixes this entry should light up for. One entry can
+         *  own several routes — Automations covers the agent list, the builder
+         *  and both canvases. */
+        match?: string[];
     };
     const navGroups: { title: string; items: NavItem[] }[] = [
         {
             title: "Work",
             items: [
-                { icon: Sparkles, label: "Ask", path: "/ai-chat", guestOk: true },
+                { icon: MessageCircle, label: "Ask", path: "/ai-chat", guestOk: true },
+                { icon: Radar, label: "Overview", path: "/overview" },
                 { icon: Activity, label: "Runs", path: "/runs", agent: true },
                 { icon: Inbox, label: "Inbox", path: "/inbox", pending: true },
             ],
@@ -138,34 +142,36 @@ const Sidebar = () => {
         {
             title: "Build",
             items: [
-                { icon: Bot, label: "Agents", path: "/agents" },
-                { icon: GitGraph, label: "Workflows", path: "/workflows" },
-                { icon: ScanText, label: "Extract", path: "/extract" },
+                // Agents and workflows are the same table (`Workflow.kind`)
+                // and the same product — an agent decides *whether*, a
+                // workflow decides *how*. Automations is the agent list; a
+                // workflow canvas is somewhere you open from an agent, not a
+                // separate destination. `/workflows` redirects here so old
+                // links keep working.
+                { icon: Bot, label: "Automations", path: "/agents", match: ["/agents", "/workflow"] },
+                // Separate from Automations on purpose: an agent is a
+                // configuration, a schedule is a standing commitment to
+                // spend on it. The second is worth being able to audit in
+                // one place without opening every agent to find it.
+                { icon: CalendarClock, label: "Schedules", path: "/schedules" },
                 { icon: Wrench, label: "Skills", path: "/skills" },
                 { icon: Clapperboard, label: "Studio", path: "/imagine" },
-                { icon: Layout, label: "Templates", path: "/templates" },
             ],
         },
-        // MVP: Evals and Tuning are hidden until their executors exist.
-        // Both backends record a 'queued' row that nothing ever picks up, so
-        // the pages render a job that never starts — the worst thing to put in
-        // front of a stakeholder. Datasets is complete and stays.
-        // Restore the two entries below once the workers land.
-        {
-            title: "Improve",
-            items: [
-                // { icon: LineChart, label: "Evals", path: "/evals" },
-                { icon: Database, label: "Datasets", path: "/datasets" },
-                // { icon: SlidersHorizontal, label: "Tuning", path: "/tuning" },
-            ],
-        },
+        // "Tools" (/mcp-servers) and "Data sources" (/connectors) were two views
+        // of the same two tables, and neither ingested data — the second one only
+        // created credentials. They are now one Connections page, with the raw MCP
+        // config behind its Advanced disclosure. Credentials sits beside it: most
+        // keys are reached through the connection that uses them, but a stored key
+        // outlives any one connection and needs somewhere to be audited, rotated,
+        // or deleted — with no nav entry that page was reachable only by typing
+        // the URL, so a key you had saved looked like a key you had lost.
         {
             title: "Data",
             items: [
-                { icon: Code2, label: "Tools", path: "/mcp-servers" },
+                { icon: Plug, label: "Connections", path: "/connections" },
+                { icon: KeyRound, label: "Credentials", path: "/credentials" },
                 { icon: FileText, label: "Documents", path: "/documents" },
-                { icon: Plug, label: "Data sources", path: "/connectors" },
-                { icon: Key, label: "Credentials", path: "/credentials" },
             ],
         },
     ];
@@ -235,47 +241,31 @@ const Sidebar = () => {
             </div>
 
             <div className="p-3">
+                {/* The primary action is "make a new automation", and an
+                    automation is an agent — the deterministic workflow canvas is
+                    now something you drop into from an agent, not the thing you
+                    start from. */}
                 <button
-                    onClick={async () => {
+                    onClick={() => {
                         if (isGuest) {
-                            toast.info('Log in to create workflows');
+                            toast.info('Log in to create automations');
                             navigate('/login');
                             return;
                         }
-                        try {
-                            setIsCreating(true);
-                            const newWorkflow = await workflowsService.create({
-                                name: 'Untitled workflow',
-                                description: 'A new empty workflow',
-                                status: 'draft',
-                                nodes: [],
-                                edges: []
-                            });
-                            navigate(`/workflow/${newWorkflow.id}`);
-                        } catch (error) {
-                            console.error('Failed to create workflow:', error);
-                            toast.error('Failed to create new workflow');
-                        } finally {
-                            setIsCreating(false);
-                        }
+                        navigate('/agents/new');
                     }}
-                    disabled={isCreating}
                     className={cn(
                         "flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-all duration-200 font-semibold shadow-sm active:scale-[0.98] overflow-hidden whitespace-nowrap mx-auto",
                         collapsed ? "w-10 h-10 p-0" : "w-full py-2.5 px-4 gap-2"
                     )}
-                    title={collapsed ? "New Workflow" : undefined}
+                    title={collapsed ? "New automation" : undefined}
                 >
-                    {isCreating ? (
-                        <Loader2 className="w-5 h-5 animate-spin shrink-0" />
-                    ) : (
-                        <Plus className="w-5 h-5 shrink-0" />
-                    )}
+                    <Plus className="w-5 h-5 shrink-0" />
                     <span className={cn(
                         "transition-all duration-300 overflow-hidden",
                         collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-2"
                     )}>
-                        {isCreating ? 'Creating...' : 'New workflow'}
+                        New automation
                     </span>
                 </button>
             </div>
@@ -291,7 +281,11 @@ const Sidebar = () => {
                         </h4>
                         <div className="space-y-0.5">
                             {group.items.map((item) => {
-                                const active = location.pathname.startsWith(item.path);
+                                // `match` lets one entry own several routes —
+                                // Automations covers /agents and the workflow
+                                // canvas, so it stays lit inside either.
+                                const prefixes = item.match ?? [item.path];
+                                const active = prefixes.some((p) => location.pathname.startsWith(p));
                                 return (
                                     <Link
                                         key={item.path}

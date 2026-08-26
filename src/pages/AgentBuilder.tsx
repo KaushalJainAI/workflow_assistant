@@ -13,22 +13,25 @@ import { useMemo, useRef, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Bot, Send, Sparkles, Cpu, MemoryStick, FolderLock, Wrench, Plug,
+  Bot, Brain, Cpu, MemoryStick, FolderLock, Wrench, Plug,
   ShieldCheck, Clock, Layers, Save, RotateCcw, Check, Globe, Loader2, Trash2,
+  History,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import nodeService from '../api/nodeService';
-import { kbService } from '../api/documents';
 import skillsService from '../api/skills';
 import agentsService from '../api/agents';
+import { logsService } from '../api';
 import { cn } from '../lib/utils';
 import MultiSelect from '../components/ui/MultiSelect';
+import Select from '../components/ui/Select';
 import {
   DEFAULT_AGENT, CONNECTOR_OPTIONS, TRIGGER_COPY, AUTONOMY_COPY, FILE_ACCESS_COPY,
   EGRESS_COPY,
   type AgentConfig, type TriggerMode, type Autonomy, type FileAccess, type Egress,
 } from '../types/agentConfig';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
+import { SendButton } from '../components/ui/SendButton';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
 
@@ -41,19 +44,110 @@ const STARTERS = [
 
 /* ---------- small building blocks ---------- */
 
-function Section({ icon: Icon, title, hint, children }: {
-  icon: typeof Cpu; title: string; hint?: string; children: React.ReactNode;
+function Section({ icon: Icon, title, hint, notEnforced, children }: {
+  icon: typeof Cpu; title: string; hint?: string;
+  /** Why this section's settings are saved but do not yet change a run. */
+  notEnforced?: string;
+  children: React.ReactNode;
 }) {
   return (
     <section className="border border-border rounded bg-card mb-4 break-inside-avoid">
       <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
         <Icon className="w-4 h-4 text-muted-foreground" />
         <h3 className="text-[13px] font-semibold">{title}</h3>
+        {notEnforced && (
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-warning border border-warning/40 rounded px-1.5 py-0.5">
+            Not yet applied
+          </span>
+        )}
         {hint && <span className="text-[12px] text-muted-foreground ml-auto">{hint}</span>}
       </header>
+      {notEnforced && (
+        <p className="px-4 pt-3 text-[12px] text-muted-foreground">{notEnforced}</p>
+      )}
       <div className="p-4 space-y-3">{children}</div>
     </section>
   );
+}
+
+/** Every configuration change to this agent, newest first.
+ *
+ *  The point is correlation, not nostalgia: a run records the revision it
+ *  executed under, so "it got worse on Tuesday" becomes "it got worse at rev 4,
+ *  which changed the model and the autonomy". `run_count` says whether a
+ *  revision has been exercised enough to judge at all.
+ */
+function RevisionHistory({ agentId }: { agentId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['agent-revisions', agentId],
+    queryFn: () => logsService.listRevisions(agentId),
+  });
+
+  if (isLoading) {
+    return <p className="text-[12px] text-muted-foreground">Loading history…</p>;
+  }
+
+  const revisions = data?.results ?? [];
+  if (revisions.length === 0) {
+    return (
+      <p className="text-[12px] text-muted-foreground">
+        No changes recorded yet. Every save from here on is versioned.
+      </p>
+    );
+  }
+
+  return (
+    <ol className="space-y-2">
+      {revisions.map((rev) => (
+        <li key={rev.id} className="border-l-2 border-border pl-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold">rev {rev.number}</span>
+            <span className="text-[12px] text-muted-foreground truncate flex-1">
+              {rev.summary}
+            </span>
+            <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
+              {rev.run_count} {rev.run_count === 1 ? 'run' : 'runs'}
+            </span>
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            {rev.changed_by ?? 'system'} · {new Date(rev.created_at).toLocaleString()}
+          </div>
+          {Object.keys(rev.diff).length > 0 && (
+            <dl className="mt-1 space-y-0.5">
+              {Object.entries(rev.diff).slice(0, 6).map(([field, change]) => (
+                <div key={field} className="flex gap-2 text-[11px]">
+                  <dt className="text-muted-foreground w-28 shrink-0 truncate">{field}</dt>
+                  <dd className="truncate">
+                    <span className="text-muted-foreground line-through">
+                      {summariseValue(change.from)}
+                    </span>
+                    {' → '}
+                    <span>{summariseValue(change.to)}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** One side of a diff, shortened to fit a line. Objects are summarised rather
+ *  than stringified: a full `tools` map would swamp the row it sits in. */
+function summariseValue(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'boolean') return value ? 'on' : 'off';
+  if (Array.isArray(value)) return value.length === 0 ? 'none' : `${value.length} item(s)`;
+  if (typeof value === 'object') {
+    const on = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    return on.length === 0 ? 'none' : on.join(', ');
+  }
+  const text = String(value);
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 }
 
 /** Wraps a control so a knob the agent just moved is visibly flagged. */
@@ -67,7 +161,7 @@ function Knob({ path, touched, label, hint, children }: {
         <label className="text-[13px] font-medium text-foreground">{label}</label>
         {isNew && (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-agent">
-            <Sparkles className="w-3 h-3" />set by agent
+            <Bot className="w-3 h-3" />set by agent
           </span>
         )}
         {hint && <span className="ml-auto text-[11px] text-muted-foreground">{hint}</span>}
@@ -132,6 +226,7 @@ export default function AgentBuilder() {
   // Editing and creating are the same act, so they are the same screen.
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
+  const agentId = isNew ? null : Number(id);
 
   const [cfg, setCfg] = useState<AgentConfig>(DEFAULT_AGENT);
   const [touched, setTouched] = useState<Set<string>>(new Set());
@@ -149,11 +244,6 @@ export default function AgentBuilder() {
   const { data: providers = [] } = useQuery({
     queryKey: ['agent-builder', 'models'],
     queryFn: async () => (await nodeService.getAIModels()).providers,
-    staleTime: 5 * 60 * 1000,
-  });
-  const { data: kbs = [] } = useQuery({
-    queryKey: ['agent-builder', 'kbs'],
-    queryFn: () => kbService.list(),
     staleTime: 5 * 60 * 1000,
   });
   const { data: skills = [] } = useQuery({
@@ -306,7 +396,7 @@ export default function AgentBuilder() {
             {messages.length === 0 ? (
               <div className="pt-4">
                 <div className="w-10 h-10 rounded bg-agent-subtle border border-agent-line flex items-center justify-center mb-3">
-                  <Sparkles className="w-5 h-5 text-agent" />
+                  <Bot className="w-5 h-5 text-agent" />
                 </div>
                 <h2 className="font-semibold mb-1">What should this agent do?</h2>
                 <p className="text-[13px] text-muted-foreground leading-relaxed mb-4">
@@ -355,10 +445,7 @@ export default function AgentBuilder() {
                 placeholder="Describe what it should do…"
                 className="flex-1 h-10 px-3 rounded border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               />
-              <button onClick={() => send(input)} disabled={!input.trim()}
-                className="w-10 h-10 rounded bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40">
-                <Send className="w-4 h-4" />
-              </button>
+              <SendButton onClick={() => send(input)} disabled={!input.trim()} />
             </div>
           </div>
         </div>
@@ -381,29 +468,33 @@ export default function AgentBuilder() {
               </Knob>
             </Section>
 
-            <Section icon={Sparkles} title="Model">
+            <Section icon={Brain} title="Model">
               <div className="grid sm:grid-cols-2 gap-3">
                 <Knob path="provider" touched={touched} label="Provider">
-                  <select value={cfg.provider}
-                    onChange={(e) => {
-                      const p = providers.find((x) => x.slug === e.target.value);
-                      setCfg((c) => ({ ...c, provider: e.target.value, model: p?.models?.[0]?.value ?? '' }));
+                  <Select
+                    value={cfg.provider}
+                    onChange={(slug) => {
+                      const p = providers.find((x) => x.slug === slug);
+                      setCfg((c) => ({ ...c, provider: slug, model: p?.models?.[0]?.value ?? '' }));
                     }}
-                    className="w-full h-9 px-2 rounded border border-input bg-background text-sm">
-                    {providers.map((p) => (
-                      <option key={p.slug} value={p.slug}>{p.name}</option>
-                    ))}
-                  </select>
+                    placeholder="Choose a provider"
+                    icon={<Layers className="w-4 h-4" />}
+                    options={providers.map((p) => ({ value: p.slug, label: p.name }))}
+                  />
                 </Knob>
                 <Knob path="model" touched={touched} label="Model">
-                  <select value={effectiveModel} onChange={(e) => set('model', e.target.value)}
-                    className="w-full h-9 px-2 rounded border border-input bg-background text-sm">
-                    {(activeProvider?.models ?? []).map((mo) => (
-                      <option key={mo.value} value={mo.value}>
-                        {mo.name}{mo.is_free ? ' · free' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={effectiveModel}
+                    onChange={(v) => set('model', v)}
+                    placeholder="Choose a model"
+                    icon={<Brain className="w-4 h-4" />}
+                    showSearch={(activeProvider?.models?.length ?? 0) > 8}
+                    options={(activeProvider?.models ?? []).map((mo) => ({
+                      value: mo.value,
+                      label: mo.is_free ? `${mo.name} · free` : mo.name,
+                      is_free: mo.is_free,
+                    }))}
+                  />
                 </Knob>
               </div>
               <Knob path="temperature" touched={touched} label="Temperature"
@@ -420,7 +511,9 @@ export default function AgentBuilder() {
               </Knob>
             </Section>
 
-            <Section icon={FolderLock} title="Sandbox" hint="What it may touch, and how much it may use">
+            <Section icon={FolderLock} title="Sandbox"
+              hint="What it may touch, and how much it may use"
+              notEnforced="Saved with the agent, but the runtime has no per-agent sandbox envelope yet — Python still runs in the shared sandbox with its own fixed limits. Set these for when it lands; do not rely on them today.">
               <Knob path="fileAccess" touched={touched} label="File access">
                 <Choice<FileAccess>
                   value={cfg.fileAccess} onChange={(v) => set('fileAccess', v)}
@@ -467,7 +560,7 @@ export default function AgentBuilder() {
             </Section>
 
             <Section icon={Plug} title="Context it is given">
-              <Knob path="connectors" touched={touched} label="Connectors"
+              <Knob path="connectors" touched={touched} label="Connectors (not yet applied)"
                     hint={cfg.connectors.length ? `${cfg.connectors.length} selected` : undefined}>
                 <MultiSelect
                   options={CONNECTOR_OPTIONS.map((c) => ({ id: c.id, label: c.label }))}
@@ -475,22 +568,6 @@ export default function AgentBuilder() {
                   onChange={(v) => set('connectors', v)}
                   placeholder="No connectors — it works only with what you give it"
                   searchPlaceholder="Search connectors…"
-                />
-              </Knob>
-              <Knob path="knowledgeBases" touched={touched} label="Knowledge bases"
-                    hint={cfg.knowledgeBases.length ? `${cfg.knowledgeBases.length} selected` : undefined}>
-                {/* Ids are numeric on the wire; the control speaks strings. */}
-                <MultiSelect
-                  options={kbs.map((kb) => ({
-                    id: String(kb.id),
-                    label: kb.name,
-                    hint: `${kb.doc_count} documents`,
-                  }))}
-                  value={cfg.knowledgeBases.map(String)}
-                  onChange={(v) => set('knowledgeBases', v.map(Number))}
-                  placeholder="No knowledge bases"
-                  searchPlaceholder="Search knowledge bases…"
-                  emptyText="None yet — add documents first."
                 />
               </Knob>
               <Knob path="skills" touched={touched} label="Skills"
@@ -509,7 +586,8 @@ export default function AgentBuilder() {
                 />
               </Knob>
               <Toggle on={cfg.useOrgContext} onChange={(v) => set('useOrgContext', v)}
-                label="Organisation context" hint="House style, entity names, standing facts." />
+                label="Organisation context"
+                hint="Not yet applied — nothing reads this at run time." />
               <Knob path="useEnvironment" touched={touched} label="">
                 <Toggle on={cfg.useEnvironment} onChange={(v) => set('useEnvironment', v)}
                   label="Environment" hint="Current time and place, for anything schedule- or locale-aware." />
@@ -525,11 +603,24 @@ export default function AgentBuilder() {
                   }))} />
               </Knob>
               {cfg.trigger === 'maintenance' && (
-                <Knob path="schedule" touched={touched} label="Schedule" hint="cron">
+                <Knob path="schedule" touched={touched} label="Schedule" hint="cron, UTC">
                   <input value={cfg.schedule} onChange={(e) => set('schedule', e.target.value)}
                     placeholder="0 9 * * 1"
                     className="w-full h-9 px-3 rounded border border-input bg-background text-sm font-mono" />
                 </Knob>
+              )}
+              <Knob path="allowUnattended" touched={touched} label="">
+                <Toggle on={cfg.allowUnattended} onChange={(v) => set('allowUnattended', v)}
+                  label="May run with nobody watching"
+                  hint="Required for schedules, webhooks, and being delegated to by another agent." />
+              </Knob>
+              {cfg.schedule && !cfg.allowUnattended && (
+                <p className="flex items-start gap-1.5 text-[12px] text-destructive">
+                  <Clock className="w-3.5 h-3.5 mt-px shrink-0" />
+                  A schedule without this is refused at every firing — the runtime
+                  checks it again, and the sweep disables the trigger after five
+                  refusals. Save is blocked until one of the two changes.
+                </p>
               )}
             </Section>
 
@@ -543,6 +634,11 @@ export default function AgentBuilder() {
               </Knob>
               <Knob path="egress" touched={touched} label="Network access"
                     hint="separate from web search">
+                <p className="mb-2 text-[12px] text-muted-foreground">
+                  Partly applied: the agent is told this in its instructions, and
+                  shell-plus-open-network is refused on save — but nothing blocks
+                  traffic at the network layer yet.
+                </p>
                 <Choice<Egress>
                   value={cfg.egress} onChange={(v) => set('egress', v)}
                   options={(Object.keys(EGRESS_COPY) as Egress[]).map((id) => ({
@@ -557,10 +653,12 @@ export default function AgentBuilder() {
                 )}
               </Knob>
               <Toggle on={cfg.notifyOnHitl} onChange={(v) => set('notifyOnHitl', v)}
-                label="Notify me when it stops to ask" hint="Otherwise it waits silently in Inbox." />
+                label="Notify me when it stops to ask"
+                hint="Not yet applied — approval notifications are sent regardless of this setting." />
               <Knob path="reviewAgent" touched={touched} label="">
                 <Toggle on={cfg.reviewAgent} onChange={(v) => set('reviewAgent', v)}
-                  label="Review agent" hint="A second agent grades the output before you see it." />
+                  label="Review agent"
+                  hint="Not yet applied — grading exists in Evals, but this toggle is not wired to it." />
               </Knob>
               <Knob path="spendCapRupees" touched={touched} label="Spend cap" hint="per month">
                 <div className="flex items-center gap-2">
@@ -572,7 +670,15 @@ export default function AgentBuilder() {
               </Knob>
             </Section>
 
-            <Section icon={Layers} title="Context lifecycle" hint="For long-running agents">
+            {!isNew && agentId != null && (
+              <Section icon={History} title="Change history"
+                       hint="Which configuration produced which runs">
+                <RevisionHistory agentId={agentId} />
+              </Section>
+            )}
+
+            <Section icon={Layers} title="Context lifecycle" hint="For long-running agents"
+              notEnforced="Saved, but the turn loop does not read these yet. Long runs currently use the built-in context handling regardless of what is set here.">
               <Toggle on={cfg.recursiveContext} onChange={(v) => set('recursiveContext', v)}
                 label="Recursive context management" hint="Summarise and re-summarise as the window fills." />
               <Toggle on={cfg.compaction} onChange={(v) => set('compaction', v)}

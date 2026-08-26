@@ -54,10 +54,16 @@ export interface ImagineConversation {
 }
 
 export const imagineAgent = {
-  chat: (message: string, conversationId?: number) =>
+  /**
+   * @param model Optional model the user pinned in the composer. When it names
+   * a real catalog entry the backend uses exactly that model and takes the
+   * modality from it, so picking a video model *is* asking for a video.
+   */
+  chat: (message: string, conversationId?: number, model?: string | null) =>
     apiClient.post<ImagineChatResponse>('/imagine/agent/chat/', {
       message,
       conversation_id: conversationId,
+      model: model || undefined,
     }).then(r => r.data),
 
   resume: (

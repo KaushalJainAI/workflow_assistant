@@ -84,7 +84,10 @@ export const chatService = {
 
   /**
    * Stream a message via SSE. Calls onEvent for each parsed event.
-   * Event types: status, tool_call, sources_update, done, error
+   * Event types: the `Event` enum in `Backend/chat/events.py` — status,
+   * thinking_chunk, content_chunk, content_reset, agent_trace, sources_update,
+   * images_update, videos_update, html_artifact, attachments_blocked,
+   * ask_permission, done, error.
    */
   async sendMessageStream(
     sessionId: string,
@@ -95,7 +98,9 @@ export const chatService = {
     signal?: AbortSignal,
     llmProvider?: string,
     llmModel?: string,
-    approveToolCall?: string
+    approveToolCall?: string,
+    /** Approve *and* stop asking about this tool. Only read alongside an approval. */
+    rememberApproval?: boolean
   ): Promise<void> {
     const body: Record<string, unknown> = { content };
     if (intent && intent !== 'normal') body.intent = intent;
@@ -103,6 +108,7 @@ export const chatService = {
     if (llmProvider) body.llm_provider = llmProvider;
     if (llmModel) body.llm_model = llmModel;
     if (approveToolCall) body.approve_tool_call = approveToolCall;
+    if (approveToolCall && rememberApproval) body.remember_approval = true;
 
     return streamSse({
       path: `/chat/sessions/${sessionId}/message/stream/`,
@@ -110,6 +116,44 @@ export const chatService = {
       onEvent,
       signal,
     });
+  },
+
+  /**
+   * Re-attach to a turn that is still running on the server.
+   *
+   * The turn outlives the request that started it, so after a reload (or any
+   * navigation that killed the original `fetch`) this replays every frame it
+   * has emitted and then follows it live. A stream that closes without frames
+   * means the turn already finished and the transcript has the answer.
+   */
+  async attachStream(
+    sessionId: string,
+    onEvent: (event: { type: string; [key: string]: any }) => void,
+    signal?: AbortSignal,
+    fromIndex = 0,
+  ): Promise<void> {
+    return streamSse({
+      path: `/chat/sessions/${sessionId}/message/attach/`,
+      body: { from: fromIndex },
+      onEvent,
+      signal,
+    });
+  },
+
+  /**
+   * Stop the running turn. The only thing that cancels server-side work —
+   * dropping the connection no longer does. Whatever streamed so far is saved
+   * as an `interrupted` answer.
+   */
+  async stopStream(sessionId: string): Promise<{ stopped: boolean; ai_response: ChatMessage | null }> {
+    const response = await apiClient.post(`/chat/sessions/${sessionId}/message/stop/`);
+    return response.data;
+  },
+
+  /** Session ids whose turn is still running server-side, for re-attaching. */
+  async getActiveRuns(): Promise<string[]> {
+    const response = await apiClient.get<{ active: string[] }>('/chat/runs/');
+    return response.data.active ?? [];
   },
 
   async uploadFile(sessionId: string, file: File): Promise<any> {
@@ -124,6 +168,10 @@ export const chatService = {
   },
 
   // --- Guest (unauthenticated) chat ---
+  //
+  // The backend pins guest chat to one provider and one model
+  // (chat/guest/runtime.py), so nothing here sends one. The pair the UI shows
+  // lives in hooks/useChatModelSelection.ts.
   guest: {
     async createSession(title: string = 'New Chat'): Promise<ChatSession> {
       const response = await apiClient.post<ChatSession>('/chat/guest/sessions/', { title });

@@ -1,10 +1,14 @@
-import { Check, Pencil, X, Wand2, ImageIcon, Video, Headphones } from 'lucide-react';
+import { Check, Pencil, X, ImageIcon, Video, Headphones } from 'lucide-react';
 import { useState } from 'react';
 import type { ImagineIntent } from '../../api/imagineAgent';
+import type { Capabilities } from '../../api/imagine';
+import { ModelPicker } from './ModelPicker';
 import { cn } from '../../lib/utils';
 
 interface Props {
   intent: ImagineIntent;
+  /** Catalog for the edit-mode model picker; omit to fall back to a text field. */
+  capabilities?: Capabilities | null;
   onApprove: () => void;
   onEdit: (overrides: Partial<ImagineIntent>) => void;
   onCancel: () => void;
@@ -13,14 +17,23 @@ interface Props {
 
 const TYPE_ICON = { image: ImageIcon, video: Video, audio: Headphones } as const;
 
-export function IntentPreviewCard({ intent, onApprove, onEdit, onCancel, disabled }: Props) {
+export function IntentPreviewCard({
+  intent,
+  capabilities,
+  onApprove,
+  onEdit,
+  onCancel,
+  disabled,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [editPrompt, setEditPrompt] = useState(intent.prompt);
   const [editModel, setEditModel] = useState(intent.model || '');
-  const Icon = TYPE_ICON[intent.type] || Wand2;
+  const Icon = TYPE_ICON[intent.type] || ImageIcon;
 
   const params = intent.params || {};
-  const chips: Array<[string, any]> = Object.entries(params).filter(([, v]) => v != null && v !== '');
+  const chips: Array<[string, unknown]> = Object.entries(params).filter(
+    ([, v]) => v != null && v !== '',
+  );
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card/80 backdrop-blur p-4 my-2 shadow-sm">
@@ -46,12 +59,23 @@ export function IntentPreviewCard({ intent, onApprove, onEdit, onCancel, disable
             value={editPrompt}
             onChange={e => setEditPrompt(e.target.value)}
           />
-          <input
-            className="w-full text-sm bg-background border border-border rounded-lg px-3 py-2"
-            placeholder="model id"
-            value={editModel}
-            onChange={e => setEditModel(e.target.value)}
-          />
+          {/* A raw text field here meant correcting the model required knowing
+              its exact slug. The picker is the same one the composer uses. */}
+          {capabilities ? (
+            <ModelPicker
+              kind={intent.type}
+              capabilities={capabilities}
+              value={editModel}
+              onChange={setEditModel}
+            />
+          ) : (
+            <input
+              className="w-full text-sm bg-background border border-border rounded-lg px-3 py-2"
+              placeholder="model id"
+              value={editModel}
+              onChange={e => setEditModel(e.target.value)}
+            />
+          )}
         </div>
       )}
 

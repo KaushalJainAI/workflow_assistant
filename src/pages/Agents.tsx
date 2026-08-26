@@ -7,7 +7,7 @@
  */
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2 } from 'lucide-react';
+import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2, Sliders } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import agentsService, { type Agent } from '../api/agents';
@@ -121,10 +121,13 @@ export default function Agents() {
                 /* The whole card opens the builder, prefilled. A list you cannot
                    click into is a dead end — and editing an agent is the same act
                    as creating one, so it is the same board. */
-                <Link
+                <div
                   key={a.id}
+                  className="bg-card border border-border rounded hover:border-border-strong transition-colors"
+                >
+                <Link
                   to={`/agents/${a.id}`}
-                  className="block bg-card border border-border rounded p-4 hover:border-border-strong hover:bg-secondary/40 transition-colors"
+                  className="block p-4 hover:bg-secondary/40 transition-colors"
                 >
                   <div className="flex items-start gap-3 mb-3">
                     <span className="w-9 h-9 rounded bg-agent-subtle border border-agent-line text-agent flex items-center justify-center text-[13px] font-semibold shrink-0">
@@ -186,6 +189,20 @@ export default function Agents() {
                     </div>
                   </div>
                 </Link>
+
+                {/* One surface now: the builder. The canvas that used to sit
+                    beside it was retired 2026-08-24 — a run is read on /runs
+                    and in the Inbox, not projected onto a graph. */}
+                <div className="flex border-t border-border">
+                  <Link
+                    to={`/agents/${a.id}`}
+                    className="flex-1 px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Sliders className="w-3 h-3" />
+                    Configure
+                  </Link>
+                </div>
+                </div>
               );
             })}
           </div>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { googleAuthAvailable } from '../lib/googleAuth';
+import { googleAuthAvailable, googleAuthorizeUrl } from '../lib/googleAuth';
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -41,24 +41,7 @@ export default function Signup() {
   };
 
   const handleGoogleLogin = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    const redirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback';
-    
-    if (!clientId) {
-      console.error('Missing Google Client ID');
-      return;
-    }
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: 'openid email profile',
-      access_type: 'online', 
-      prompt: 'select_account',
-    });
-
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    window.location.href = googleAuthorizeUrl();
   };
 
   const displayError = validationError || error;

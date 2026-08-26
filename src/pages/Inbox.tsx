@@ -7,7 +7,8 @@
  * inside Orchestrator, which meant you had to already be looking to find them.
  */
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useHitlPending } from '../hooks/useHitlPending';
 import { Link } from 'react-router-dom';
 import {
   Inbox as InboxIcon,
@@ -24,6 +25,7 @@ import { toast } from 'sonner';
 import { orchestratorService, type HITLRequest } from '../api';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
+import ExtractionPanel from '../components/extraction/ExtractionPanel';
 
 const typeConfig = {
   approval: { icon: ShieldQuestion, label: 'Needs your approval' },
@@ -53,12 +55,9 @@ function timeLeft(req: HITLRequest) {
 export default function Inbox() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'approvals' | 'extraction'>('approvals');
 
-  const { data: requests = [], isLoading } = useQuery({
-    queryKey: ['hitl', 'pending'],
-    queryFn: async () => (await orchestratorService.getPendingHITL()).requests,
-    refetchInterval: 15_000,
-  });
+  const { data: requests = [], isLoading } = useHitlPending();
 
   const respond = useMutation({
     mutationFn: ({ id, action, response }: { id: string; action: 'approve' | 'reject' | 'respond'; response?: string }) =>
@@ -87,9 +86,38 @@ export default function Inbox() {
             ? `${requests.length} thing${requests.length === 1 ? '' : 's'} waiting on you`
             : 'Nothing is waiting on you'
         }
-      />
+      >
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setTab('approvals')}
+            className={cn(
+              "px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors border-b-2",
+              tab === 'approvals'
+                ? "text-primary border-primary"
+                : "text-muted-foreground border-transparent hover:text-foreground"
+            )}
+          >
+            Approvals {requests.length > 0 && `(${requests.length})`}
+          </button>
+          <button
+            onClick={() => setTab('extraction')}
+            className={cn(
+              "px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors border-b-2",
+              tab === 'extraction'
+                ? "text-primary border-primary"
+                : "text-muted-foreground border-transparent hover:text-foreground"
+            )}
+          >
+            Extraction review
+          </button>
+        </div>
+      </PageHeader>
 
-      {isLoading ? (
+      {tab === 'extraction' ? (
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <ExtractionPanel mode="review" />
+        </div>
+      ) : isLoading ? (
         <div className="flex-1 flex items-center justify-center text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin" />
         </div>

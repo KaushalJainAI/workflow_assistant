@@ -60,6 +60,14 @@
     --destructive-foreground: 0 0% 100%;
     --destructive-subtle: 355 78% 97%;
 
+    /* Chart marks. Deliberately separate from --agent/--destructive: a fill
+       sitting in a plot has to clear the OKLCH lightness band and adjacent-pair
+       CVD separation for its own surface, which the UI tokens do not in dark
+       mode. Light steps happen to equal the UI ones; dark steps are re-stepped.
+       Validated: light #6b4fbb/#af0e1c, dark #9074dc/#e0525d — all checks pass. */
+    --chart-work: 256 44% 52%;        /* #6b4fbb — a run the agent completed */
+    --chart-fail: 355 85% 37%;        /* #af0e1c — a run that did not complete */
+
     --border: 0 0% 89.8%;             /* #e5e5e5 neutralStroke2 */
     --border-strong: 0 0% 82%;        /* #d1d1d1 neutralStroke1 */
     --input: 0 0% 82%;
@@ -110,6 +118,11 @@
     --destructive: 355 75% 66%;
     --destructive-foreground: 0 0% 7.8%;
     --destructive-subtle: 355 35% 16%;
+
+    /* Re-stepped for the dark surface, not flipped from light — the UI tokens
+       (#a894e8 / #e96772) read L .717 / .676, above the .48–.67 dark band. */
+    --chart-work: 256 60% 66%;        /* #9074dc */
+    --chart-fail: 355 70% 60%;        /* #e0525d */
 
     --border: 0 0% 23.9%;             /* #3d3d3d */
     --border-strong: 0 0% 30%;

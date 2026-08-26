@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   RUN_STATUS_EVENT,
   abortChatRun,
@@ -10,6 +10,7 @@ import {
   type RunMeta,
 } from '../../lib/chatRuns';
 import { usePersistedState } from '../../hooks/usePersistedState';
+import ThinkingTimer from './ThinkingTimer';
 import { 
   Copy,
   Check,
@@ -26,9 +27,8 @@ import {
   Shield,
   ChevronDown,
   BrainCircuit,
-  ArrowUp,
   Settings2,
-  Sparkles,
+  Lightbulb,
   Zap,
   Wand2,
   Globe2,
@@ -37,11 +37,12 @@ import {
   ArrowUpFromLine,
   Pencil,
   Code,
-  Square,
   Mail,
   FolderSearch,
   LifeBuoy,
   FileText,
+  AlertTriangle,
+  Bot,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -49,9 +50,12 @@ import { chatService, type StandaloneChatMessage as ChatMessage, type ChatSessio
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 import { TextSelectionMenu } from './TextSelectionMenu';
+import { CollapsiblePanel } from './CollapsiblePanel';
 import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
 import MarkdownMessage from './MarkdownMessage';
+import TranscriptSkeleton from './TranscriptSkeleton';
+import { forgetTranscript, readTranscript, writeTranscript } from '../../lib/transcriptCache';
 import type { HtmlArtifact as HtmlArtifactData } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
@@ -59,9 +63,11 @@ import { useChatStream } from '../../hooks/useChatStream';
 import { useMessagePanels } from '../../hooks/useMessagePanels';
 import { useMessageSelection } from '../../hooks/useMessageSelection';
 import { useChatModelSelection } from '../../hooks/useChatModelSelection';
+import { prettyModel } from '../../lib/modelNames';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import GuestBanner from './GuestBanner';
+import { SendButton } from '../ui/SendButton';
 
 /** Rough size hint for a reasoning trace, so the toggle says what it will cost to open. */
 function formatWordCount(text: string): string {
@@ -84,7 +90,15 @@ export default function StandaloneChat() {
   // --- Chat State ---
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  // `isLoading` means *the agent is working on a turn*, and nothing else. It
+  // drives the live block, so fetching a transcript must never set it — doing
+  // that is what made arriving on the page claim the model was thinking.
   const [isLoading, setIsLoading] = useState(false);
+  // Fetching an existing transcript. Distinct from `isLoading` above.
+  const [isRestoring, setIsRestoring] = useState(false);
+  // The answer that just finished streaming. It is already on screen, so it
+  // mounts without the entrance animation every other message gets.
+  const [settledId, setSettledId] = useState<number | string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   // Persisted so returning to the chat lands on the conversation the user
@@ -177,7 +191,6 @@ export default function StandaloneChat() {
   const [isLiveCodeExpanded, setIsLiveCodeExpanded] = useState(true);
   const [isLiveSourcesExpanded, setIsLiveSourcesExpanded] = useState(true);
   const [isLiveMediaExpanded, setIsLiveMediaExpanded] = useState(true);
-  const [thinkingTime, setThinkingTime] = useState(0);
 
   // --- Effects ---
   useEffect(() => {
@@ -192,41 +205,86 @@ export default function StandaloneChat() {
     }
   }, [input]);
 
-  // Thinking Timer
-  useEffect(() => {
-    let timer: any;
-    if (isLoading) {
-      setThinkingTime(0);
-      timer = setInterval(() => {
-        setThinkingTime(prev => prev + 0.1);
-      }, 100);
-    } else {
-      setThinkingTime(0);
-    }
-    return () => clearInterval(timer);
-  }, [isLoading]);
+  // The thinking clock lives in <ThinkingTimer/>, which owns its own interval.
+  // Ticking it here re-rendered the whole transcript ten times a second.
 
 
 
 
 
 
+  /** Paints a fetched or cached session. The two must land identically. */
+  const applySession = (session: ChatSession) => {
+    setMessages(session.messages as unknown as ChatMessage[]);
+    setConversationId(session.id);
+    setCurrentSession(session);
+    adoptSessionModel(session.llm_provider, session.llm_model);
+  };
+
+  /**
+   * Opens a conversation, cache first.
+   *
+   * The transcript is fetched imperatively rather than through react-query, so
+   * a cache hit has to be read by hand: in-memory for a return trip within the
+   * session, localStorage for a reload. Either way the conversation is on
+   * screen before the request goes out, and the response reconciles behind it.
+   * A miss falls through to the skeleton, never to the thinking indicator —
+   * this is a GET, and saying otherwise reports work nobody is doing.
+   */
   const loadConversation = async (id: string) => {
-    setIsLoading(true);
+    const cached =
+      queryClient.getQueryData<ChatSession>(['chatSession', id]) ?? readTranscript(id);
+    if (cached?.messages) applySession(cached);
+
+    setIsRestoring(true);
     try {
       const session = await chatService.getSession(id);
       if (session && session.messages) {
-        setMessages(session.messages as unknown as ChatMessage[]);
-        setConversationId(id);
-        setCurrentSession(session);
-        adoptSessionModel(session.llm_provider, session.llm_model);
+        applySession(session);
+        queryClient.setQueryData(['chatSession', id], session);
       }
     } catch (e) {
       console.error("Failed to load conversation", e);
     } finally {
-      setIsLoading(false);
+      setIsRestoring(false);
+      // A turn still running for this conversation owns the loading state:
+      // the transcript arriving does not mean the answer is in. Clearing it
+      // unconditionally here would drop the pending state of a turn adopted
+      // moments earlier, whichever of the two happened to settle last.
+      setIsLoading(getChatRun(id)?.status === 'running');
     }
   };
+
+  /**
+   * Re-attach to turns the server is still running.
+   *
+   * A turn now outlives the request that started it, so a reload mid-answer
+   * leaves work in flight that this page knows nothing about. Adopting every
+   * active run replays the partial answer into the open conversation and
+   * lights up the "still working" marker for the others.
+   */
+  useEffect(() => {
+    if (isGuest) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const active = await chatService.getActiveRuns();
+        if (cancelled) return;
+        for (const id of active) {
+          if (getChatRun(id)?.status === 'running') continue; // already ours
+          startChatRun(
+            id,
+            (onEvent, signal) => chatService.attachStream(id, onEvent, signal),
+          );
+        }
+      } catch {
+        // Re-attaching is recovery, not a precondition for chatting.
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isGuest]);
 
   useEffect(() => {
     if (showHistory) loadHistory();
@@ -250,6 +308,27 @@ export default function StandaloneChat() {
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  /**
+   * Keeps the reload cache current.
+   *
+   * Writing it only on load would cache the transcript as it was on arrival and
+   * leave every answer since out of it — the reload after a long conversation,
+   * which is exactly when the head start is worth most, would paint the
+   * staleest possible version. Guests are skipped: their thread does not
+   * outlive the tab, so there is nothing to restore it into.
+   */
+  useEffect(() => {
+    if (isGuest || !conversationId || !currentSession || messages.length === 0) return;
+    writeTranscript({
+      ...currentSession,
+      id: conversationId,
+      // Same widening the read side does: `StandaloneChatMessage` carries the
+      // metadata this page renders, `ChatSession.messages` is the narrower API
+      // shape, and the cache round-trips whichever it was handed.
+      messages: messages as unknown as ChatSession['messages'],
+    });
+  }, [isGuest, conversationId, currentSession, messages]);
 
   const saveLLMSettings = async (provider: string, model: string) => {
     selectModel(provider, model);
@@ -310,6 +389,27 @@ export default function StandaloneChat() {
     }
   };
 
+  /**
+   * Clears the view back to an empty conversation.
+   *
+   * The live stream state has to go with it. A run belongs to a conversation,
+   * not to this component, so a turn still streaming in the old thread keeps
+   * pushing frames after the switch — without this reset its status line
+   * ("Reasoning (step 4)...") and partial answer stay painted over the new,
+   * empty chat. The subscription effect cannot do it: with no conversation
+   * open there is nothing for it to attach to and it returns early.
+   */
+  const startNewConversation = useCallback(() => {
+    setMessages([]);
+    setConversationId(undefined);
+    setCurrentSession(null);
+    setActiveIntent('normal');
+    setIsLoading(false);
+    setIsRestoring(false);
+    setSettledId(null);
+    resetStream();
+  }, [resetStream]);
+
   const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this conversation?')) return;
@@ -317,9 +417,11 @@ export default function StandaloneChat() {
     try {
       await chatService.deleteSession(id);
       queryClient.setQueryData<ChatSession[]>(['chatSessions'], (old = []) => old.filter(c => c.id !== id));
+      // Both caches too, or the deleted thread paints again on the next reload.
+      queryClient.removeQueries({ queryKey: ['chatSession', id] });
+      forgetTranscript(id);
       if (conversationId === id) {
-        setMessages([]);
-        setConversationId(undefined);
+        startNewConversation();
       }
       toast.success("Conversation deleted");
     } catch (err) {
@@ -457,7 +559,6 @@ export default function StandaloneChat() {
       // Recommendation for media generation
       if (['image', 'video', 'audio'].includes(next)) {
         toast.info("Recommended to use a new thread for media generation to avoid context pollution.", {
-          icon: '✨',
           duration: 5000
         });
       }
@@ -467,7 +568,14 @@ export default function StandaloneChat() {
     textareaRef.current?.focus();
   };
 
-  const handleApproveTool = async (callId: string) => {
+  /**
+   * `remember` stores a standing allowance for this tool, so the same
+   * connector does not prompt on every use. That matters more than it looks:
+   * an approval a user clicks through without reading launders consent rather
+   * than granting it, and the way to keep the remaining prompts meaningful is
+   * to stop re-asking the questions they have already answered.
+   */
+  const handleApproveTool = async (callId: string, remember = false) => {
     if (!conversationId || !pendingToolCall) return;
     
     clearPendingToolCall();
@@ -487,7 +595,8 @@ export default function StandaloneChat() {
           signal,
           llmProvider,
           llmModel,
-          callId
+          callId,
+          remember
         ),
       { intent: activeIntent },
     );
@@ -538,7 +647,14 @@ export default function StandaloneChat() {
         break;
 
       case 'done':
+        // Batched with the append below, so the settled answer mounts already
+        // exempt from the entrance animation — the text has been on screen for
+        // the length of the stream and must not fade in over itself.
+        setSettledId(event.ai_response?.id ?? null);
         setMessages(prev => {
+          // A stop before any text was streamed closes the turn with no
+          // answer to show; the question stands on its own.
+          if (!event.ai_response) return prev;
           // A replayed frame may be re-applied after the transcript was
           // reloaded from the server, which already contains this answer.
           if (event.ai_response?.id && prev.some(m => m.id === event.ai_response.id)) {
@@ -565,7 +681,11 @@ export default function StandaloneChat() {
       case 'error':
         // Only the live delivery should raise a toast; replaying the frame
         // when the user comes back would re-announce an old failure.
-        if (!replayed) toast.error(event.message);
+        //
+        // Held longer than a default toast because these are the failures that
+        // tell the user what to change — no credential, no credit, a model the
+        // provider retired — and each is a sentence or two, not a word.
+        if (!replayed) toast.error(event.message, { duration: 12000 });
         setIsLoading(false);
         break;
     }
@@ -704,15 +824,35 @@ export default function StandaloneChat() {
     }
   };
 
-  const stopGeneration = () => {
+  /**
+   * Stops the turn. The server owns the work now, so this has to ask it to
+   * cancel — closing the stream locally would leave the agent running. The
+   * closing `done` frame carries whatever was written, saved as a partial
+   * answer, so the stream ends itself and the transcript keeps the text.
+   */
+  const stopGeneration = async () => {
     if (!conversationId) return;
-    abortChatRun(conversationId);
     setIsLoading(false);
     clearStreamStatus();
-    toast.info('Generation stopped');
+    try {
+      await chatService.stopStream(conversationId);
+      toast.info('Generation stopped');
+    } catch (err) {
+      // Nothing running server-side (or it is unreachable) — drop the local
+      // reader so the UI does not sit on a stream that will never finish.
+      abortChatRun(conversationId);
+      console.error('Failed to stop generation', err);
+    }
   };
 
-  const isInitialState = messages.length === 0;
+  // The empty-state hero, and only the hero. It used to be "no messages yet",
+  // which was also true while a transcript was being fetched and while the
+  // first answer was streaming, so the hero rendered underneath both.
+  const isInitialState = messages.length === 0 && !isLoading && !isRestoring;
+  // Cold cache: nothing to paint but the request is out. With a cache hit the
+  // transcript is already up and this never renders.
+  // A turn already running is better news than a placeholder, so it wins.
+  const showSkeleton = isRestoring && messages.length === 0 && !isLoading;
 
   if (isCheckingCredentials) {
     return (
@@ -774,10 +914,7 @@ export default function StandaloneChat() {
           <div className="p-4 shrink-0">
             <button
               onClick={() => {
-                setMessages([]);
-                setConversationId(undefined);
-                setCurrentSession(null);
-                setActiveIntent('normal');
+                startNewConversation();
                 setShowHistory(false);
               }}
               className="w-full h-11 flex items-center gap-3 px-4 rounded-xl bg-primary/10 hover:bg-primary/20 text-sm font-semibold transition"
@@ -797,19 +934,14 @@ export default function StandaloneChat() {
                     ? "bg-primary/10 border border-primary/30"
                     : "hover:bg-muted/60"
                 )}
-                onClick={async () => {
-                  setIsLoading(true);
-                  try {
-                    const sessionDetails = await chatService.getSession(conv.id);
-                    if (sessionDetails?.messages) {
-                      setMessages(sessionDetails.messages as unknown as ChatMessage[]);
-                      setConversationId(conv.id);
-                      adoptSessionModel(sessionDetails.llm_provider, sessionDetails.llm_model);
-                      setShowHistory(false);
-                    }
-                  } finally {
-                    setIsLoading(false);
-                  }
+                // `loadConversation`, not a second copy of it. This handler
+                // used to inline the same fetch, minus `setCurrentSession` and
+                // plus the same misuse of `isLoading` — so picking a thread
+                // from history claimed the agent was thinking, and the session
+                // settings panel opened against the previous conversation.
+                onClick={() => {
+                  setShowHistory(false);
+                  loadConversation(conv.id);
                 }}
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -971,15 +1103,20 @@ export default function StandaloneChat() {
                     disabled={isSavingSettings}
                     onClick={() => handleSaveSessionSettings({ memory_enabled: !currentSession.memory_enabled })}
                     className={cn(
-                      "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors duration-300 ease-out",
+                      /* Track: flex + padding centres the knob, so the geometry holds
+                         at any root font-size (ours is 14px, not the 16px px-offsets assume). */
+                      "mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5",
+                      "transition-colors duration-300 ease-out",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                      "focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                       "disabled:opacity-50",
                       currentSession.memory_enabled ? "bg-primary" : "bg-muted-foreground/30"
                     )}
                   >
                     <span
                       className={cn(
-                        "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-300 ease-out",
-                        currentSession.memory_enabled ? "translate-x-[22px]" : "translate-x-0.5"
+                        "h-5 w-5 shrink-0 rounded-full bg-white shadow-sm transition-transform duration-300 ease-out",
+                        currentSession.memory_enabled ? "translate-x-5" : "translate-x-0"
                       )}
                     />
                   </button>
@@ -1039,7 +1176,9 @@ export default function StandaloneChat() {
             "max-w-4xl mx-auto w-full relative",
             isInitialState ? "flex flex-col items-center" : "space-y-6"
           )}>
-            {isInitialState ? (
+            {showSkeleton ? (
+              <TranscriptSkeleton />
+            ) : isInitialState ? (
               <div className="text-center space-y-6 mb-4 md:mb-12 animate-in fade-in duration-150">
                 <div className="w-12 h-12 bg-agent-subtle border border-agent-line rounded-lg flex items-center justify-center mx-auto">
                   <BrainCircuit className="w-6 h-6 text-agent" />
@@ -1090,10 +1229,16 @@ export default function StandaloneChat() {
                      sides — an answer you are meant to read is not a chat
                      bubble. The rule between turns is what separates them. */
                   <div
-                    key={index}
+                    /* Keyed by id, not index: rewind, edit and delete all
+                       splice `messages`, and index keys re-mount the whole tail
+                       — replaying the entrance animation on messages nobody
+                       touched. Optimistic rows fall back to the index until
+                       the `status` frame hands them their database id. */
+                    key={String(message.id ?? `pending-${index}`)}
                     data-message-id={message.id}
                     className={cn(
-                      "animate-in fade-in slide-in-from-bottom-2 duration-300 group",
+                      "group",
+                      message.id !== settledId && "animate-in fade-in slide-in-from-bottom-2 duration-300",
                       message.role === 'user' && index > 0 && "border-t border-border pt-10"
                     )}
                   >
@@ -1113,7 +1258,7 @@ export default function StandaloneChat() {
                       <div className={cn(
                         "prose prose-base dark:prose-invert max-w-none ai-chat-prose",
                         message.role === 'user'
-                          ? "text-[22px] md:text-[26px] leading-[1.35] font-semibold tracking-[-0.02em] text-foreground"
+                          ? "text-[17px] md:text-[19px] leading-[1.45] font-semibold tracking-[-0.01em] text-foreground"
                           : message.role === 'system'
                           ? "w-full"
                           : "text-[16px] leading-[1.75] text-foreground"
@@ -1190,7 +1335,7 @@ export default function StandaloneChat() {
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
-                                <Sparkles className={cn("w-4 h-4", isPanelOpen('summary', message.id) ? "text-primary" : "text-muted-foreground/70")} />
+                                <FileText className={cn("w-4 h-4", isPanelOpen('summary', message.id) ? "text-primary" : "text-muted-foreground/70")} />
                                 <span className="text-[12px] font-bold tracking-tight">Summary</span>
                                 <div className="flex-1" />
                                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('summary', message.id) && "rotate-180")} />
@@ -1263,21 +1408,24 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Expanded Summary Content */}
-                      {message.role === 'assistant' && isPanelOpen('summary', message.id) && message.metadata?.summary && (
+                      {message.role === 'assistant' && message.metadata?.summary && (
+                        <CollapsiblePanel open={isPanelOpen('summary', message.id)}>
                         <div className="mt-2 p-5 bg-card/40 backdrop-blur-md border border-primary/20 rounded-2xl animate-in slide-in-from-top-2 duration-300 shadow-sm relative overflow-hidden group">
                           <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40" />
                           <p className="text-[14px] font-medium text-foreground/90 leading-relaxed italic tracking-tight">
                             {message.metadata.summary}
                           </p>
                         </div>
+                        </CollapsiblePanel>
                       )}
 
                       {/* Expanded Thinking Content */}
-                      {message.role === 'assistant' && isPanelOpen('thinking', message.id) && message.metadata?.thinking && (
+                      {message.role === 'assistant' && message.metadata?.thinking && (
+                        <CollapsiblePanel open={isPanelOpen('thinking', message.id)}>
                         <div className="mt-2 overflow-hidden rounded-2xl border border-primary/20 bg-muted/20
                                         animate-in fade-in slide-in-from-top-2 duration-300 ease-out">
                           <div className="flex items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-2">
-                            <Sparkles className="h-3 w-3 text-primary/60" />
+                            <BrainCircuit className="h-3 w-3 text-primary/60" />
                             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                               How the assistant got here
                             </span>
@@ -1293,20 +1441,19 @@ export default function StandaloneChat() {
                             </div>
                           </div>
                         </div>
+                        </CollapsiblePanel>
                       )}
 
-                      {/* Fallback reasoning indicator if not present */}
-                      {message.role === 'assistant' && !message.metadata?.thinking && (!message.metadata?.tool_trace || message.metadata.tool_trace.length === 0) && (
-                        <div className="mt-4 mb-2 flex flex-col gap-2.5 px-3 py-2 rounded-xl border border-dashed border-border/30 bg-muted/5 text-muted-foreground/40 cursor-default">
-                          <div className="flex items-center gap-2">
-                              <BrainCircuit className="w-4 h-4 opacity-30" />
-                              <span className="text-[12px] font-medium italic">Model reasoning not fully captured</span>
-                          </div>
-                        </div>
-                      )}
+                      {/* No placeholder when reasoning is absent. A greeting has
+                          no chain of thought to show, so a dashed "not fully
+                          captured" box was reporting a fault on every trivial
+                          reply and taking up a row under it. Reasoning that does
+                          arrive gets its own toggle above; silence here is the
+                          honest rendering of nothing to report. */}
 
                       {/* Tool Activity Trace — shows which tools the agent called */}
-                      {message.role === 'assistant' && isPanelOpen('activity', message.id) && message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
+                      {message.role === 'assistant' && message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
+                        <CollapsiblePanel open={isPanelOpen('activity', message.id)}>
                         <div className="mt-2 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
                             <Zap className="w-3.5 h-3.5 text-amber-500/70" />
@@ -1325,10 +1472,10 @@ export default function StandaloneChat() {
                                     {trace.iteration || i + 1}
                                   </span>
                                   <span className="font-mono font-bold text-amber-600/80 text-[14px]">{trace.tool}</span>
-                                  {trace.args?.query && (
-                                    <span className="truncate max-w-[360px] text-foreground/60 italic text-[13px] pl-1">"{stripXmlTags(trace.args.query)}"</span>
+                                  {(trace.args?.query || trace.args?.question) && (
+                                    <span className="truncate max-w-[360px] text-foreground/60 italic text-[13px] pl-1">"{stripXmlTags(trace.args.query || trace.args.question)}"</span>
                                   )}
-                                  {trace.summary && !trace.args?.query && (
+                                  {trace.summary && !trace.args?.query && !trace.args?.question && (
                                     <span className="truncate max-w-[360px] text-foreground/50 italic text-[12px] pl-1">{stripXmlTags(trace.summary)}</span>
                                   )}
                                 </div>
@@ -1345,10 +1492,12 @@ export default function StandaloneChat() {
                             ))}
                           </div>
                         </div>
+                        </CollapsiblePanel>
                       )}
 
                       {/* Code Execution Log — shows sandbox results */}
-                      {message.role === 'assistant' && isPanelOpen('code', message.id) && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
+                      {message.role === 'assistant' && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
+                        <CollapsiblePanel open={isPanelOpen('code', message.id)}>
                         <div className="mt-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
                             <Code className="w-3.5 h-3.5 text-emerald-500/70" />
@@ -1384,6 +1533,7 @@ export default function StandaloneChat() {
                             ))}
                           </div>
                         </div>
+                        </CollapsiblePanel>
                       )}
 
 
@@ -1432,7 +1582,8 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Content areas below the row triggers */}
-                      {message.role === 'assistant' && isPanelOpen('sources', message.id) && message.metadata?.sources?.length > 0 && (
+                      {message.role === 'assistant' && message.metadata?.sources?.length > 0 && (
+                        <CollapsiblePanel open={isPanelOpen('sources', message.id)}>
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
                           {message.metadata.sources.map((item: any, i: number) => (
                             <MediaPreview 
@@ -1446,9 +1597,11 @@ export default function StandaloneChat() {
                             />
                           ))}
                         </div>
+                        </CollapsiblePanel>
                       )}
 
-                      {message.role === 'assistant' && isPanelOpen('images', message.id) && message.metadata?.images?.length > 0 && (
+                      {message.role === 'assistant' && message.metadata?.images?.length > 0 && (
+                        <CollapsiblePanel open={isPanelOpen('images', message.id)}>
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
                           {(message.metadata.images || []).map((item: any, i: number) => (
                             <MediaPreview 
@@ -1461,9 +1614,11 @@ export default function StandaloneChat() {
                             />
                           ))}
                         </div>
+                        </CollapsiblePanel>
                       )}
 
-                      {message.role === 'assistant' && isPanelOpen('videos', message.id) && message.metadata?.videos?.length > 0 && (
+                      {message.role === 'assistant' && message.metadata?.videos?.length > 0 && (
+                        <CollapsiblePanel open={isPanelOpen('videos', message.id)}>
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
                           {(message.metadata.videos || []).map((item: any, i: number) => (
                             <MediaPreview 
@@ -1476,6 +1631,7 @@ export default function StandaloneChat() {
                             />
                           ))}
                         </div>
+                        </CollapsiblePanel>
                       )}
 
 
@@ -1491,7 +1647,8 @@ export default function StandaloneChat() {
                           right-aligned user bubble and would strand these
                           controls on the far side of the column. */}
                       {message.role !== 'system' && (
-                        <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-1 -ml-1.5">
+                        <div className="flex items-center gap-4 mt-1 -ml-1.5">
+                        <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(message.content);
@@ -1546,10 +1703,380 @@ export default function StandaloneChat() {
                             )}
                           </button>
                         </div>
+                        {/* Which model wrote this answer. Attribution belongs to
+                            the answer, not to the picker in the composer: the
+                            model can be switched mid-thread, so reading it off
+                            the current selection would relabel old answers.
+                            Always visible — unlike the actions, this is
+                            information, and hiding it until hover means nobody
+                            finds it. */}
+                        {message.role === 'assistant' && message.metadata?.model && (
+                          <span className="ml-auto text-[11px] text-muted-foreground/70 whitespace-nowrap">
+                            Prepared with{' '}
+                            <span className="text-muted-foreground">
+                              {prettyModel(message.metadata.model)}
+                            </span>
+                          </span>
+                        )}
+                        </div>
                       )}
                     </div>
                   </div>
                 ))}
+
+                {isLoading && (() => {
+                  /* One colour, not six. Every phase here is the agent working
+                     unattended, and the token rule says that is violet — a
+                     different hue per phase was decoration that implied a
+                     distinction the states do not have. The icon shape already
+                     says which phase it is. Sized to match the settled
+                     "Answer" label so the row does not resize mid-stream. */
+                  const phaseIcons: Record<string, React.ReactNode> = {
+                    thinking: <BrainCircuit className="w-4 h-4 text-agent" />,
+                    searching: <Search className="w-4 h-4 text-agent" />,
+                    planning: <BrainCircuit className="w-4 h-4 text-agent" />,
+                    reading: <Globe2 className="w-4 h-4 text-agent" />,
+                    analyzing: <Globe2 className="w-4 h-4 text-agent" />,
+                    generating: <Wand2 className="w-4 h-4 text-agent" />,
+                    visualizing: <Wand2 className="w-4 h-4 text-agent" />,
+                    motion_generating: <Video className="w-4 h-4 text-agent" />,
+                  };
+
+                  const statusMessage = live.status?.message || 'Thinking...';
+                  /* Once the answer is coming out, the header is the answer's
+                     header — same icon, no pulse — so it survives the settle
+                     untouched. The phase icon is only useful while the phase is
+                     still the thing happening. */
+                  const answering = Boolean(live.content);
+                  const statusIcon = answering
+                    ? <BrainCircuit className="w-4 h-4 text-agent" />
+                    : phaseIcons[live.status?.phase || 'thinking'] || phaseIcons.thinking;
+
+                  /* Hoisted because it renders in one of two slots — above the
+                     answer before any text arrives, below it afterwards. */
+                  const statusPanel = (
+                    <>
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[15px] font-semibold text-foreground/80 animate-pulse">{statusMessage}</span>
+                          <ThinkingTimer active={isLoading} />
+                        </div>
+                        {live.thinking && (
+                          <button
+                            onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-all text-[10px] font-semibold  text-primary/60"
+                          >
+                            <BrainCircuit className="w-3 h-3" />
+                            {isReasoningExpanded ? 'Hide reasoning' : 'View reasoning'}
+                            <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isReasoningExpanded && "rotate-180")} />
+                          </button>
+                        )}
+                      </div>
+
+                      {live.thinking && isReasoningExpanded && (
+                        <div className="mt-2 p-4 rounded-2xl bg-muted/30 border border-border/40 animate-in fade-in slide-in-from-top-2 duration-300">
+                          <div className="flex items-center gap-2 mb-3">
+                            <BrainCircuit className="w-3.5 h-3.5 text-primary/60" />
+                            <span className="text-[10px] font-semibold  text-muted-foreground/60">Internal processing</span>
+                          </div>
+                          <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground/80 italic font-medium leading-relaxed">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {live.thinking}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+
+                  return (
+                    /* Rendered as the last child of the message list, not as
+                       a sibling of it: the list carries the 3rem turn rhythm, so
+                       a block outside it sat 24px closer and the answer visibly
+                       rose as it settled. Same "Answer" label, same left edge,
+                       no avatar — the in-flight turn now occupies exactly the
+                       slot the settled one will take. */
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className={cn("flex items-center", !answering && "animate-pulse")}>{statusIcon}</span>
+                        <span className="text-[13px] font-semibold text-foreground">Answer</span>
+                      </div>
+                      <div className="w-full space-y-3">
+                        {/* Progress belongs above the answer only while there is
+                            no answer yet. Once text is streaming it moves below,
+                            so the first line of the reply sits directly under the
+                            "Answer" label in both states — left above, it took
+                            ~36px that vanished at settle and dropped the whole
+                            answer upward at the exact moment it stopped moving. */}
+                        {!live.content && statusPanel}
+
+                        {/* Live Content Stream.
+
+                            Same component and same wrapper classes as a settled
+                            answer, deliberately. This was a bare <ReactMarkdown>
+                            under different prose classes, so the instant a turn
+                            finished the text it had spent the whole stream
+                            rendering changed size, colour and leading, and bare
+                            [1] refs turned into citation pills. Two renderers
+                            for one string can only ever agree by coincidence.
+                            No entrance animation either: this content persists
+                            across the handoff, it does not arrive at it. */}
+                        {live.content && (
+                          <div className="prose prose-base dark:prose-invert max-w-none ai-chat-prose text-[16px] leading-[1.75] text-foreground">
+                            <MarkdownMessage content={live.content} sources={live.sources} />
+                          </div>
+                        )}
+
+                        {live.content && statusPanel}
+
+                        {/* Artifacts as they arrive, before the turn is persisted. */}
+                        {live.artifacts.map((art, i) => (
+                          <HtmlArtifact key={`live-art-${i}`} artifact={art} />
+                        ))}
+
+                        {/* Live Activity Timeline */}
+                        {live.activity.length > 0 && (
+                          <div className="space-y-2 animate-in fade-in duration-300">
+                            <div className="flex items-center gap-3 px-1 mb-2">
+                              <BrainCircuit className="w-4 h-4 text-primary/60" />
+                              <span className="text-sm font-semibold  text-muted-foreground/90">Agent timeline</span>
+                              <div className="h-px flex-1 bg-border/30" />
+                            </div>
+                            <div className="space-y-2">
+                               {live.activity.map((activity, i) => {
+                                 const isThought = activity.type === 'thought';
+                                 const thought = activity.thought;
+                                 const isLongThought = thought && thought.length > 200;
+                             
+                                 return (
+                                   <div 
+                                      key={i}
+                                      className="flex flex-col gap-2 animate-in fade-in slide-in-from-left-2 py-1 border-l-2 border-primary/5 pl-4 ml-3.5 last:border-0"
+                                   >
+                                      <div className="flex items-start gap-3.5 -ml-[30px]">
+                                        {isThought ? (
+                                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20 shadow-sm">
+                                             <BrainCircuit className="w-3.5 h-3.5 text-primary/60" />
+                                          </div>
+                                        ) : (
+                                          <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/20 text-xs font-semibold text-amber-600 shrink-0 border border-amber-500/20 shadow-sm">
+                                             {activity.iteration || '?'}
+                                          </span>
+                                        )}
+                                    
+                                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                                          {isThought ? (
+                                            <div className="flex items-center gap-2 pt-1">
+                                              <span className="text-[11px] font-semibold  text-muted-foreground/50">Processing</span>
+                                              <Loader2 className="w-2.5 h-2.5 animate-spin text-muted-foreground/20" />
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center gap-3">
+                                              <span className="font-mono font-bold text-primary text-[15px]">{activity.tool}</span>
+                                              <Loader2 className="w-3 h-3 animate-spin text-primary/30" />
+                                            </div>
+                                          )}
+
+                                          {/* `question` is ask_vision: the agent interrogating a vision
+                                              model about an image it cannot see. Showing the question it
+                                              asked is legible in a way "calling ask_vision..." is not. */}
+                                          {!isThought && (activity.args?.query || activity.args?.question) && (
+                                             <span className="truncate max-w-[340px] text-foreground/60 italic text-[13px] font-medium opacity-80">"{stripXmlTags(activity.args.query || activity.args.question)}"</span>
+                                          )}
+                                      
+                                          {thought && (
+                                            <div className="mt-1.5 group/thought relative">
+                                              <div className={cn(
+                                                "text-[13.5px] text-muted-foreground/75 italic leading-relaxed border-l-2 border-primary/20 pl-3 transition-all duration-300 ai-activity-markdown pb-1",
+                                                isLongThought && openPanelId('activity') === null && "max-h-[80px] overflow-hidden mask-fade-bottom"
+                                              )}>
+                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                  {thought}
+                                                </ReactMarkdown>
+                                              </div>
+                                              {isLongThought && (
+                                                <button 
+                                                  onClick={() => togglePanel('activity', -i - 1)}
+                                                  className="text-[10px] font-bold text-primary/40 hover:text-primary transition-colors flex items-center gap-1 mt-1"
+                                                >
+                                                  {isPanelOpen('activity', -i - 1) ? 'Show less' : 'Read more reasoning...'}
+                                                </button>
+                                              )}
+                                            </div>
+                                  )}
+                                        </div>
+                                      </div>
+                                   </div>
+                                 );
+                               })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Live Code Timeline */}
+                        {live.codeExecutions.length > 0 && (
+                          <div className="space-y-3 animate-in fade-in duration-300 mt-4">
+                            <button 
+                              onClick={() => setIsLiveCodeExpanded(!isLiveCodeExpanded)}
+                              className="flex items-center gap-3 px-1 mb-2 w-full group"
+                            >
+                              <Code className="w-4 h-4 text-emerald-500/60 group-hover:text-emerald-500 transition-colors" />
+                              <span className="text-sm font-semibold  text-muted-foreground/90">Code sandbox</span>
+                              <div className="h-px flex-1 bg-border/20" />
+                              <ChevronDown className={cn("w-4 h-4 text-muted-foreground/40 transition-transform duration-300", isLiveCodeExpanded && "rotate-180")} />
+                            </button>
+                        
+                            {isLiveCodeExpanded && (
+                              <div className="space-y-3">
+                                {live.codeExecutions.map((exec, i) => (
+                                  <div key={i} className="rounded-2xl overflow-hidden border border-emerald-500/20 bg-emerald-500/5 animate-in slide-in-from-bottom-2 duration-300">
+                                    <div className="px-4 py-2 bg-emerald-500/10 flex items-center justify-between border-b border-emerald-500/10">
+                                       <div className="flex items-center gap-2">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                          <span className="text-[10px] font-semibold text-emerald-600 ">Active Execution {i+1}</span>
+                                       </div>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                       <pre className="text-[13px] text-foreground/80 font-mono bg-zinc-950/50 p-3 rounded-lg overflow-x-auto border border-white/5">
+                                          <code>{exec.code}</code>
+                                       </pre>
+                                       {(exec.output || exec.result) && (
+                                         <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2 px-1">
+                                               <div className="h-px flex-1 bg-blue-500/10" />
+                                               <span className="text-[9px] font-bold text-blue-500/60 uppercase">Console output</span>
+                                               <div className="h-px flex-1 bg-blue-500/10" />
+                                            </div>
+                                            <pre className="text-[12px] text-blue-400/80 font-mono bg-zinc-950/30 p-3 rounded-lg overflow-x-auto border border-blue-500/5 whitespace-pre-wrap">
+                                               <code>{exec.output || exec.result}</code>
+                                            </pre>
+                                         </div>
+                                       )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Media Generation Animation (Visualize/Motion) */}
+                        {(live.status?.phase === 'visualizing' || live.status?.phase === 'motion_generating') && (
+                          <div className="mt-4 relative overflow-hidden rounded-3xl border border-primary/20 bg-muted/20 aspect-video max-w-sm w-full group/media">
+                            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent animate-pulse" />
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center p-6">
+                              <div className="relative">
+                                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-ping duration-[3000ms]" />
+                                {live.status.phase === 'visualizing' ? (
+                                    <ImageIcon className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
+                                ) : (
+                                    <Video className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
+                                )}
+                              </div>
+                              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-700">
+                                 <h4 className="text-sm font-semibold  text-primary/60">
+                                    {live.status.phase === 'visualizing' ? 'Developing vision' : 'Composing motion'}
+                                 </h4>
+                                 <p className="text-xs text-muted-foreground/60 font-medium italic">
+                                    "{activeIntent === 'image' ? 'Infusing pixels with intelligence...' : 'Stitching frames through the latent space...'}"
+                                 </p>
+                              </div>
+                            </div>
+                            {/* Scanning beam effect */}
+                            <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-transparent via-primary/10 to-transparent skew-x-12 -translate-x-[200%] animate-shimmer-fast" />
+                          </div>
+                        )}
+
+                        {/* Live Discoveries Row — Sources and Media */}
+                        {(live.sources.length > 0 || live.images.length > 0 || live.videos.length > 0) && (
+                          <div className="mt-4 flex flex-wrap gap-2 animate-in fade-in duration-300">
+                            {live.sources.length > 0 && (
+                              <button
+                                onClick={() => setIsLiveSourcesExpanded(!isLiveSourcesExpanded)}
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
+                                  isLiveSourcesExpanded ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                                )}
+                              >
+                                <Globe2 className="w-3.5 h-3.5" />
+                                <span className="text-[12px] font-medium">{live.sources.length} Sources</span>
+                                <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveSourcesExpanded && "rotate-180")} />
+                              </button>
+                            )}
+
+                            {(live.images.length > 0 || live.videos.length > 0) && (
+                              <button
+                                onClick={() => setIsLiveMediaExpanded(!isLiveMediaExpanded)}
+                                className={cn(
+                                  "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
+                                  isLiveMediaExpanded ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                )}
+                              >
+                                <ImageIcon className={cn("w-3.5 h-3.5", isLiveMediaExpanded ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
+                                <span className="text-[12px] font-medium">{live.images.length + live.videos.length} Media</span>
+                                <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveMediaExpanded && "rotate-180")} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Live Expanded Areas */}
+                        {live.sources.length > 0 && isLiveSourcesExpanded && (
+                          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 px-1 animate-in slide-in-from-top-2 duration-300">
+                            {live.sources.slice(0, 3).map((source, i) => (
+                              <MediaPreview 
+                                key={i}
+                                url={source.url}
+                                type="link"
+                                title={source.title}
+                                thumbnail={source.thumbnail}
+                                className="opacity-80 hover:opacity-100 animate-in zoom-in-95 duration-300"
+                              />
+                            ))}
+                            {live.sources.length > 3 && (
+                              <div className="flex items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/20 text-[10px] font-bold text-muted-foreground/40 italic">
+                                 +{live.sources.length - 3} more...
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {(live.images.length > 0 || live.videos.length > 0) && isLiveMediaExpanded && (
+                           <div className="mt-3 flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-1 animate-in slide-in-from-top-2 duration-300">
+                             {live.images.slice(0, 4).map((img, i) => (
+                               <MediaPreview 
+                                 key={`img-${i}`}
+                                 url={img.image || img.url}
+                                 type="image"
+                                 className="w-32 h-20 shrink-0 shadow-sm"
+                               />
+                             ))}
+                             {live.videos.slice(0, 4).map((vid, i) => (
+                               <MediaPreview 
+                                 key={`vid-${i}`}
+                                 url={vid.url}
+                                 type="video"
+                                 className="w-32 h-20 shrink-0 shadow-sm"
+                               />
+                             ))}
+                             {(live.images.length > 4 || live.videos.length > 4) && (
+                               <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-semibold text-muted-foreground/30  text-center px-2">
+                                  +{live.images.length + live.videos.length - 8} more
+                               </div>
+                             )}
+                           </div>
+                        )}
+
+                        {/* Progress bar */}
+                        {!live.activity.length && (
+                          <div className="w-48 h-0.5 bg-muted/30 rounded-full overflow-hidden">
+                            <div className="h-full bg-primary/40 rounded-full animate-indeterminate-slide" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1574,325 +2101,6 @@ export default function StandaloneChat() {
               </div>
             )}
 
-            {isLoading && (() => {
-              /* One colour, not six. Every phase here is the agent working
-                 unattended, and the token rule says that is violet — a
-                 different hue per phase was decoration that implied a
-                 distinction the states do not have. The icon shape already
-                 says which phase it is. Sized to match the settled
-                 "Answer" label so the row does not resize mid-stream. */
-              const phaseIcons: Record<string, React.ReactNode> = {
-                thinking: <Sparkles className="w-4 h-4 text-agent" />,
-                searching: <Search className="w-4 h-4 text-agent" />,
-                planning: <BrainCircuit className="w-4 h-4 text-agent" />,
-                reading: <Globe2 className="w-4 h-4 text-agent" />,
-                analyzing: <Globe2 className="w-4 h-4 text-agent" />,
-                generating: <Sparkles className="w-4 h-4 text-agent" />,
-                visualizing: <Wand2 className="w-4 h-4 text-agent" />,
-                motion_generating: <Video className="w-4 h-4 text-agent" />,
-              };
-
-              const statusMessage = live.status?.message || 'Thinking...';
-              const statusIcon = phaseIcons[live.status?.phase || 'thinking'] || phaseIcons.thinking;
-
-              return (
-                /* The in-flight turn has to occupy the same column as the
-                   settled one, or the answer visibly jumps left when streaming
-                   ends. Same "Answer" label, same left edge, no avatar. */
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="animate-pulse flex items-center">{statusIcon}</span>
-                    <span className="text-[13px] font-semibold text-foreground">Answer</span>
-                  </div>
-                  <div className="w-full space-y-3">
-                    {/* Live Status */}
-                    <div className="flex items-center justify-between gap-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[15px] font-semibold text-foreground/80 animate-pulse">{statusMessage}</span>
-                        <span className="text-[11px] font-mono text-muted-foreground/40 shrink-0">({thinkingTime.toFixed(1)}s)</span>
-                      </div>
-                      {live.thinking && (
-                        <button
-                          onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
-                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-all text-[10px] font-semibold  text-primary/60"
-                        >
-                          <BrainCircuit className="w-3 h-3" />
-                          {isReasoningExpanded ? 'Hide reasoning' : 'View reasoning'}
-                          <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isReasoningExpanded && "rotate-180")} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Expandable Reasoning Process */}
-                    {live.thinking && isReasoningExpanded && (
-                      <div className="mt-2 p-4 rounded-2xl bg-muted/30 border border-border/40 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Sparkles className="w-3.5 h-3.5 text-primary/60" />
-                          <span className="text-[10px] font-semibold  text-muted-foreground/60">Internal processing</span>
-                        </div>
-                        <div className="prose prose-invert prose-sm max-w-none text-muted-foreground/80 italic font-medium leading-relaxed">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {live.thinking}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Live Content Stream */}
-                    {live.content && (
-                      <div className="prose prose-invert prose-sm max-w-none text-foreground/90 leading-relaxed animate-in fade-in duration-500">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {live.content}
-                        </ReactMarkdown>
-                      </div>
-                    )}
-
-                    {/* Artifacts as they arrive, before the turn is persisted. */}
-                    {live.artifacts.map((art, i) => (
-                      <HtmlArtifact key={`live-art-${i}`} artifact={art} />
-                    ))}
-
-                    {/* Live Activity Timeline */}
-                    {live.activity.length > 0 && (
-                      <div className="space-y-2 animate-in fade-in duration-300">
-                        <div className="flex items-center gap-3 px-1 mb-2">
-                          <BrainCircuit className="w-4 h-4 text-primary/60" />
-                          <span className="text-sm font-semibold  text-muted-foreground/90">Agent timeline</span>
-                          <div className="h-px flex-1 bg-border/30" />
-                        </div>
-                        <div className="space-y-2">
-                           {live.activity.map((activity, i) => {
-                             const isThought = activity.type === 'thought';
-                             const thought = activity.thought;
-                             const isLongThought = thought && thought.length > 200;
-                             
-                             return (
-                               <div 
-                                  key={i}
-                                  className="flex flex-col gap-2 animate-in fade-in slide-in-from-left-2 py-1 border-l-2 border-primary/5 pl-4 ml-3.5 last:border-0"
-                               >
-                                  <div className="flex items-start gap-3.5 -ml-[30px]">
-                                    {isThought ? (
-                                      <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20 shadow-sm">
-                                         <BrainCircuit className="w-3.5 h-3.5 text-primary/60" />
-                                      </div>
-                                    ) : (
-                                      <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/20 text-xs font-semibold text-amber-600 shrink-0 border border-amber-500/20 shadow-sm">
-                                         {activity.iteration || '?'}
-                                      </span>
-                                    )}
-                                    
-                                    <div className="flex flex-col gap-1 min-w-0 flex-1">
-                                      {isThought ? (
-                                        <div className="flex items-center gap-2 pt-1">
-                                          <span className="text-[11px] font-semibold  text-muted-foreground/50">Processing</span>
-                                          <Loader2 className="w-2.5 h-2.5 animate-spin text-muted-foreground/20" />
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-center gap-3">
-                                          <span className="font-mono font-bold text-primary text-[15px]">{activity.tool}</span>
-                                          <Loader2 className="w-3 h-3 animate-spin text-primary/30" />
-                                        </div>
-                                      )}
-
-                                      {!isThought && activity.args?.query && (
-                                         <span className="truncate max-w-[340px] text-foreground/60 italic text-[13px] font-medium opacity-80">"{stripXmlTags(activity.args.query)}"</span>
-                                      )}
-                                      
-                                      {thought && (
-                                        <div className="mt-1.5 group/thought relative">
-                                          <div className={cn(
-                                            "text-[13.5px] text-muted-foreground/75 italic leading-relaxed border-l-2 border-primary/20 pl-3 transition-all duration-300 ai-activity-markdown pb-1",
-                                            isLongThought && openPanelId('activity') === null && "max-h-[80px] overflow-hidden mask-fade-bottom"
-                                          )}>
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                              {thought}
-                                            </ReactMarkdown>
-                                          </div>
-                                          {isLongThought && (
-                                            <button 
-                                              onClick={() => togglePanel('activity', -i - 1)}
-                                              className="text-[10px] font-bold text-primary/40 hover:text-primary transition-colors flex items-center gap-1 mt-1"
-                                            >
-                                              {isPanelOpen('activity', -i - 1) ? 'Show less' : 'Read more reasoning...'}
-                                            </button>
-                                          )}
-                                        </div>
-                              )}
-                                    </div>
-                                  </div>
-                               </div>
-                             );
-                           })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Live Code Timeline */}
-                    {live.codeExecutions.length > 0 && (
-                      <div className="space-y-3 animate-in fade-in duration-300 mt-4">
-                        <button 
-                          onClick={() => setIsLiveCodeExpanded(!isLiveCodeExpanded)}
-                          className="flex items-center gap-3 px-1 mb-2 w-full group"
-                        >
-                          <Code className="w-4 h-4 text-emerald-500/60 group-hover:text-emerald-500 transition-colors" />
-                          <span className="text-sm font-semibold  text-muted-foreground/90">Code sandbox</span>
-                          <div className="h-px flex-1 bg-border/20" />
-                          <ChevronDown className={cn("w-4 h-4 text-muted-foreground/40 transition-transform duration-300", isLiveCodeExpanded && "rotate-180")} />
-                        </button>
-                        
-                        {isLiveCodeExpanded && (
-                          <div className="space-y-3">
-                            {live.codeExecutions.map((exec, i) => (
-                              <div key={i} className="rounded-2xl overflow-hidden border border-emerald-500/20 bg-emerald-500/5 animate-in slide-in-from-bottom-2 duration-300">
-                                <div className="px-4 py-2 bg-emerald-500/10 flex items-center justify-between border-b border-emerald-500/10">
-                                   <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                      <span className="text-[10px] font-semibold text-emerald-600 ">Active Execution {i+1}</span>
-                                   </div>
-                                </div>
-                                <div className="p-4 space-y-3">
-                                   <pre className="text-[13px] text-foreground/80 font-mono bg-zinc-950/50 p-3 rounded-lg overflow-x-auto border border-white/5">
-                                      <code>{exec.code}</code>
-                                   </pre>
-                                   {(exec.output || exec.result) && (
-                                     <div className="space-y-1.5">
-                                        <div className="flex items-center gap-2 px-1">
-                                           <div className="h-px flex-1 bg-blue-500/10" />
-                                           <span className="text-[9px] font-bold text-blue-500/60 uppercase">Console output</span>
-                                           <div className="h-px flex-1 bg-blue-500/10" />
-                                        </div>
-                                        <pre className="text-[12px] text-blue-400/80 font-mono bg-zinc-950/30 p-3 rounded-lg overflow-x-auto border border-blue-500/5 whitespace-pre-wrap">
-                                           <code>{exec.output || exec.result}</code>
-                                        </pre>
-                                     </div>
-                                   )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Media Generation Animation (Visualize/Motion) */}
-                    {(live.status?.phase === 'visualizing' || live.status?.phase === 'motion_generating') && (
-                      <div className="mt-4 relative overflow-hidden rounded-3xl border border-primary/20 bg-muted/20 aspect-video max-w-sm w-full group/media">
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent animate-pulse" />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center p-6">
-                          <div className="relative">
-                            <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-ping duration-[3000ms]" />
-                            {live.status.phase === 'visualizing' ? (
-                                <ImageIcon className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
-                            ) : (
-                                <Video className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
-                            )}
-                          </div>
-                          <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-700">
-                             <h4 className="text-sm font-semibold  text-primary/60">
-                                {live.status.phase === 'visualizing' ? 'Developing vision' : 'Composing motion'}
-                             </h4>
-                             <p className="text-xs text-muted-foreground/60 font-medium italic">
-                                "{activeIntent === 'image' ? 'Infusing pixels with intelligence...' : 'Stitching frames through the latent space...'}"
-                             </p>
-                          </div>
-                        </div>
-                        {/* Scanning beam effect */}
-                        <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-transparent via-primary/10 to-transparent skew-x-12 -translate-x-[200%] animate-shimmer-fast" />
-                      </div>
-                    )}
-
-                    {/* Live Discoveries Row — Sources and Media */}
-                    {(live.sources.length > 0 || live.images.length > 0 || live.videos.length > 0) && (
-                      <div className="mt-4 flex flex-wrap gap-2 animate-in fade-in duration-300">
-                        {live.sources.length > 0 && (
-                          <button
-                            onClick={() => setIsLiveSourcesExpanded(!isLiveSourcesExpanded)}
-                            className={cn(
-                              "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
-                              isLiveSourcesExpanded ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-                            )}
-                          >
-                            <Globe2 className="w-3.5 h-3.5" />
-                            <span className="text-[12px] font-medium">{live.sources.length} Sources</span>
-                            <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveSourcesExpanded && "rotate-180")} />
-                          </button>
-                        )}
-
-                        {(live.images.length > 0 || live.videos.length > 0) && (
-                          <button
-                            onClick={() => setIsLiveMediaExpanded(!isLiveMediaExpanded)}
-                            className={cn(
-                              "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
-                              isLiveMediaExpanded ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
-                            )}
-                          >
-                            <Sparkles className={cn("w-3.5 h-3.5", isLiveMediaExpanded ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
-                            <span className="text-[12px] font-medium">{live.images.length + live.videos.length} Media</span>
-                            <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", isLiveMediaExpanded && "rotate-180")} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Live Expanded Areas */}
-                    {live.sources.length > 0 && isLiveSourcesExpanded && (
-                      <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 px-1 animate-in slide-in-from-top-2 duration-300">
-                        {live.sources.slice(0, 3).map((source, i) => (
-                          <MediaPreview 
-                            key={i}
-                            url={source.url}
-                            type="link"
-                            title={source.title}
-                            thumbnail={source.thumbnail}
-                            className="opacity-80 hover:opacity-100 animate-in zoom-in-95 duration-300"
-                          />
-                        ))}
-                        {live.sources.length > 3 && (
-                          <div className="flex items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/20 text-[10px] font-bold text-muted-foreground/40 italic">
-                             +{live.sources.length - 3} more...
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {(live.images.length > 0 || live.videos.length > 0) && isLiveMediaExpanded && (
-                       <div className="mt-3 flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-1 animate-in slide-in-from-top-2 duration-300">
-                         {live.images.slice(0, 4).map((img, i) => (
-                           <MediaPreview 
-                             key={`img-${i}`}
-                             url={img.image || img.url}
-                             type="image"
-                             className="w-32 h-20 shrink-0 shadow-sm"
-                           />
-                         ))}
-                         {live.videos.slice(0, 4).map((vid, i) => (
-                           <MediaPreview 
-                             key={`vid-${i}`}
-                             url={vid.url}
-                             type="video"
-                             className="w-32 h-20 shrink-0 shadow-sm"
-                           />
-                         ))}
-                         {(live.images.length > 4 || live.videos.length > 4) && (
-                           <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-semibold text-muted-foreground/30  text-center px-2">
-                              +{live.images.length + live.videos.length - 8} more
-                           </div>
-                         )}
-                       </div>
-                    )}
-
-                    {/* Progress bar */}
-                    {!live.activity.length && (
-                      <div className="w-48 h-0.5 bg-muted/30 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary/40 rounded-full animate-indeterminate-slide" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
             {/* Approval UI */}
             {pendingToolCall && (
               <div className="flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1915,8 +2123,8 @@ export default function StandaloneChat() {
                         <span className="text-amber-600 font-semibold  text-[10px]">Arguments:</span>
                         {pendingToolCall.tool === 'execute_shell' && typeof pendingToolCall.args?.command === 'string' && /[;&|>]/.test(pendingToolCall.args.command) ? (
                           <>
-                            <div className="text-[10px] text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded my-1 border border-red-500/20">
-                              ⚠️ Warning: Command contains chaining/redirection (;, &, |, &gt;)
+                            <div className="text-[10px] text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded my-1 border border-red-500/20 flex items-center gap-1">
+                              <AlertTriangle size={10} /> Warning: Command contains chaining/redirection (;, &, |, &gt;)
                             </div>
                             <pre className="text-xs text-red-400 overflow-x-auto custom-scrollbar pt-1">
                               {JSON.stringify(pendingToolCall.args, null, 2)}
@@ -1930,20 +2138,31 @@ export default function StandaloneChat() {
                       </div>
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="space-y-2">
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleApproveTool(pendingToolCall.call_id)}
+                          className="flex-1 h-11 bg-primary text-primary-foreground font-semibold rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
+                        >
+                          <Check className="w-4 h-4" />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => clearPendingToolCall()}
+                          className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
+                        >
+                          <X className="w-4 h-4" />
+                          Deny
+                        </button>
+                      </div>
+                      {/* Its own row, and quieter than Approve: this one is
+                          permanent, so it should not be the button a user hits
+                          by reflex while clearing a prompt. */}
                       <button
-                        onClick={() => handleApproveTool(pendingToolCall.call_id)}
-                        className="flex-1 h-11 bg-primary text-primary-foreground font-semibold rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
+                        onClick={() => handleApproveTool(pendingToolCall.call_id, true)}
+                        className="w-full h-9 text-xs font-medium text-muted-foreground rounded-xl border border-border/50 hover:bg-muted/50 hover:text-foreground transition-all"
                       >
-                        <Check className="w-4 h-4" />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => clearPendingToolCall()}
-                        className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
-                      >
-                        <X className="w-4 h-4" />
-                        Deny
+                        Always allow {pendingToolCall.tool} without asking
                       </button>
                     </div>
                   </div>
@@ -1980,7 +2199,7 @@ export default function StandaloneChat() {
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500/50" />
+                        <Lightbulb className="w-3.5 h-3.5 text-amber-500/50" />
                         <span className="text-[10px] font-semibold  text-muted-foreground/60">Continue exploring</span>
                       </div>
                       <ChevronDown className={cn(
@@ -2142,7 +2361,21 @@ export default function StandaloneChat() {
 
                     {/* Right: model + voice + send */}
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {/* Model selector */}
+                      {/* Model selector. Guests have nothing to select: the
+                          backend serves them one pinned model and ignores any
+                          model a client names, so they get a label rather than
+                          a dropdown whose choices would change nothing. */}
+                      {isGuest ? (
+                        <div
+                          className="flex items-center gap-2 h-8 px-3 rounded-lg border border-transparent text-[10px] font-bold text-muted-foreground/50"
+                          title="Guest mode runs on NVIDIA NIM — log in to choose a model"
+                        >
+                          <Zap size={14} className="text-muted-foreground/50 shrink-0" />
+                          <span className="hidden sm:inline max-w-[140px] truncate">
+                            {prettyModel(llmModel)}
+                          </span>
+                        </div>
+                      ) : (
                       <div className="relative" ref={dropdownRef}>
                         <button 
                           onClick={() => setShowModelDropdown(!showModelDropdown)}
@@ -2153,8 +2386,12 @@ export default function StandaloneChat() {
                               : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
                           )}
                         >
-                          <span className="text-sm leading-none">
-                            {dynamicProviders.find(p => p.slug === llmProvider)?.icon || '🤖'}
+                          <span className="text-sm leading-none flex items-center">
+                            {dynamicProviders.find(p => p.slug === llmProvider)?.icon ? (
+                              <span>{dynamicProviders.find(p => p.slug === llmProvider)?.icon}</span>
+                            ) : (
+                              <Bot size={14} className="shrink-0" />
+                            )}
                           </span>
                           <span className="hidden sm:inline max-w-[120px] truncate">
                             {dynamicProviders.find(p => p.slug === llmProvider)?.models.find(m => m.value === llmModel)?.name || 'Select model'}
@@ -2265,6 +2502,7 @@ export default function StandaloneChat() {
                           </>
                         )}
                       </div>
+                      )}
 
                       {/* Voice button */}
                       <button
@@ -2274,20 +2512,12 @@ export default function StandaloneChat() {
                         <Mic className="w-4 h-4" />
                       </button>
 
-                      {/* Send button (platform style — round with ArrowUp) */}
-                      <button
-                        onClick={() => isLoading ? stopGeneration() : handleSend()}
-                        disabled={!input.trim() && !isLoading}
-                        className={cn(
-                          "w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg",
-                          isLoading 
-                            ? "bg-red-500 text-white shadow-red-500/20" 
-                            : "bg-primary text-primary-foreground shadow-primary/20 disabled:opacity-20 disabled:scale-100"
-                        )}
-                        title={isLoading ? "Stop generating" : "Send message"}
-                      >
-                        {isLoading ? <Square className="w-3 h-3 fill-current" /> : <ArrowUp className="w-4 h-4" />}
-                      </button>
+                      <SendButton
+                        onClick={() => handleSend()}
+                        onStop={stopGeneration}
+                        busy={isLoading}
+                        disabled={!input.trim()}
+                      />
                     </div>
                   </div>
                 </div>

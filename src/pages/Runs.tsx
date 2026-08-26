@@ -1,9 +1,14 @@
 /**
- * Runs — every execution, and what happened inside one.
+ * Runs — every execution, and what the agent was thinking inside one.
  *
- * The trace is the point: per-node status, duration bars and the agent's own
- * narrative, so you can answer "why did it do that?" without reading logs.
- * `/executions` used to redirect to `/workflows`, so none of this was reachable.
+ * A run is drawn as the loop it is: a sequence of **turns**, each showing the
+ * model's reasoning and the tool calls that reasoning produced. Calls under one
+ * turn were issued together; a flat list would imply each waited on the last,
+ * which is a claim about causality the trace cannot support.
+ *
+ * Three things are answerable here that were not before: what the agent thought
+ * at each step, which configuration revision it ran under, and — for a
+ * delegated run — who asked for it and why.
  */
 import { useState } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -16,10 +21,19 @@ import {
   Loader2,
   CircleSlash,
   Clock,
-  Radio,
+  Radar,
   ChevronRight,
+  Brain,
+  CornerDownRight,
+  GitBranch,
+  Settings2,
 } from 'lucide-react';
-import { logsService, type ExecutionLog, type NodeLog } from '../api';
+import {
+  logsService,
+  type AgentStep,
+  type AgentTurn,
+  type ExecutionLog,
+} from '../api';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 
@@ -32,6 +46,17 @@ const statusConfig = {
 } as const;
 
 const FILTERS = ['all', 'completed', 'failed', 'running'] as const;
+
+/** What started a run. `trigger_type` says how it arrived; this says who asked.
+ *  A delegated worker and a direct API call both arrive as `api`, and telling
+ *  them apart is the difference between "you asked for this" and "an agent
+ *  decided to spend your credits on it". */
+const CALLER_LABELS: Record<string, string> = {
+  api: 'API',
+  chat: 'Chat',
+  orchestrator: 'Delegated',
+  trigger: 'Trigger',
+};
 
 function ms(v: number | null) {
   if (v == null) return '—';
@@ -57,31 +82,179 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-/** Duration bars are laid out against the slowest node, so the hot spot is obvious. */
-function Trace({ nodes }: { nodes: NodeLog[] }) {
-  const slowest = Math.max(1, ...nodes.map((n) => n.duration_ms || 0));
+/** One tool call. Duration bars are scaled to the slowest call in the run, so
+ *  the hot spot is obvious without reading numbers. */
+function Step({ step, slowest }: { step: AgentStep; slowest: number }) {
+  const cfg = statusConfig[step.status as keyof typeof statusConfig] ?? statusConfig.pending;
   return (
     <div className="space-y-1">
-      {nodes.map((n) => {
-        const cfg = statusConfig[n.status as keyof typeof statusConfig] ?? statusConfig.pending;
-        return (
-          <div key={n.id} className="flex items-center gap-3 py-1.5 px-2 rounded hover:bg-secondary">
-            <cfg.icon className={cn('w-4 h-4 shrink-0', cfg.cls, 'spin' in cfg && cfg.spin && 'animate-spin')} />
-            <span className="text-[13px] w-48 truncate">{n.node_name || n.node_id}</span>
-            <span className="text-[11px] text-muted-foreground w-24 truncate">{n.node_type}</span>
-            <div className="flex-1 h-1.5 bg-secondary rounded overflow-hidden">
-              {/* block, not inline — an inline element ignores width/height */}
-              <span
-                className={cn('block h-full rounded', n.status === 'failed' ? 'bg-destructive' : 'bg-agent')}
-                style={{ width: `${Math.max(2, ((n.duration_ms || 0) / slowest) * 100)}%` }}
-              />
+      <div className="flex items-center gap-3 py-1.5 px-2 rounded hover:bg-secondary">
+        <cfg.icon className={cn('w-4 h-4 shrink-0', cfg.cls, 'spin' in cfg && cfg.spin && 'animate-spin')} />
+        <span className="text-[13px] w-48 truncate" title={step.tool}>{step.tool}</span>
+        <div className="flex-1 h-1.5 bg-secondary rounded overflow-hidden">
+          {/* block, not inline — an inline element ignores width/height */}
+          <span
+            className={cn('block h-full rounded', step.status === 'failed' ? 'bg-destructive' : 'bg-agent')}
+            style={{ width: `${Math.max(2, ((step.duration_ms || 0) / slowest) * 100)}%` }}
+          />
+        </div>
+        <span className="text-[11px] text-muted-foreground w-14 text-right tabular-nums">
+          {ms(step.duration_ms)}
+        </span>
+      </div>
+
+      {step.error_message && (
+        <p className="ml-7 text-[12px] text-destructive">{step.error_message}</p>
+      )}
+
+      {/* Runs this call delegated. Each is a real run with its own trace, so it
+          links out rather than trying to inline someone else's loop. */}
+      {step.delegated_runs.length > 0 && (
+        <div className="ml-7 space-y-1 border-l-2 border-agent-line pl-3">
+          {step.delegated_runs.map((child) => (
+            <div key={child.execution_id} className="flex items-center gap-2 text-[12px]">
+              <CornerDownRight className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+              <span className="font-medium">{child.workflow_name ?? 'Deleted agent'}</span>
+              <span className="text-muted-foreground truncate flex-1" title={child.task}>
+                {child.task}
+              </span>
+              <StatusPill status={child.status} />
             </div>
-            <span className="text-[11px] text-muted-foreground w-14 text-right tabular-nums">
-              {ms(n.duration_ms)}
-            </span>
-          </div>
-        );
-      })}
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One pass of the model: why it did what it did, then what it did. */
+function Turn({ turn, slowest }: { turn: AgentTurn; slowest: number }) {
+  return (
+    <div className="border-l-2 border-border pl-3 py-1">
+      <div className="flex items-center gap-2 mb-1">
+        <Brain className="w-3.5 h-3.5 text-agent shrink-0" />
+        <span className="text-[12px] font-semibold">Turn {turn.index}</span>
+        {turn.model_id && (
+          <span className="text-[11px] text-muted-foreground truncate" title={turn.model_id}>
+            {turn.model_id}
+          </span>
+        )}
+        <span className="text-[11px] text-muted-foreground ml-auto tabular-nums">
+          {turn.tokens.toLocaleString()} tok · {ms(turn.duration_ms)}
+        </span>
+      </div>
+
+      {turn.reasoning ? (
+        <p className="text-[12px] leading-relaxed text-muted-foreground whitespace-pre-wrap mb-2">
+          {turn.reasoning}
+          {/* A trimmed thought and a genuinely brief one must not look alike. */}
+          {turn.reasoning_truncated && (
+            <span className="italic opacity-70"> […trimmed]</span>
+          )}
+        </p>
+      ) : (
+        <p className="text-[12px] italic text-muted-foreground mb-2">
+          This model does not expose its reasoning.
+        </p>
+      )}
+
+      {turn.steps.map((step) => (
+        <Step key={step.id} step={step} slowest={slowest} />
+      ))}
+
+      {turn.decision === 'answer' && turn.content && (
+        <p className="text-[12px] text-foreground whitespace-pre-wrap mt-1">{turn.content}</p>
+      )}
+    </div>
+  );
+}
+
+/** Who delegated this run, and what they were thinking when they did. */
+function DelegatedBanner({ detail }: { detail: { delegated_by: NonNullable<import('../api').ExecutionDetail['delegated_by']> } }) {
+  const by = detail.delegated_by;
+  return (
+    <div className="mb-3 px-3 py-2 rounded bg-agent-subtle border border-agent-line">
+      <div className="flex items-center gap-2 text-[12px] mb-1">
+        <GitBranch className="w-3.5 h-3.5 text-agent shrink-0" />
+        <span>
+          Delegated by <span className="font-semibold">{by.workflow_name ?? 'a deleted agent'}</span>
+          {by.turn_index != null && ` on turn ${by.turn_index}`}
+        </span>
+        <Link
+          to={`/runs?run=${by.execution_id}`}
+          className="ml-auto text-agent hover:underline"
+        >
+          Open that run
+        </Link>
+      </div>
+      {by.task && <p className="text-[12px] text-foreground mb-1">Task: {by.task}</p>}
+      {by.reasoning && (
+        <p className="text-[12px] italic text-muted-foreground whitespace-pre-wrap">
+          {by.reasoning}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Everything inside one run: how it was configured, who asked for it, and the
+ *  loop it actually ran. */
+function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
+  // One scale across the whole run, so a bar means the same thing in every
+  // turn. Scaling per turn would make a 20ms call in a fast turn look as
+  // expensive as a 4s call in a slow one.
+  const allSteps = [
+    ...detail.turns.flatMap((t) => t.steps),
+    ...detail.unattributed_steps,
+  ];
+  const slowest = Math.max(1, ...allSteps.map((s) => s.duration_ms || 0));
+
+  return (
+    <div className="space-y-3">
+      {detail.delegated_by && (
+        <DelegatedBanner detail={{ delegated_by: detail.delegated_by }} />
+      )}
+
+      {detail.revision && (
+        <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <Settings2 className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            Ran on configuration <span className="font-semibold">rev {detail.revision.number}</span>
+            {detail.revision.summary && ` — ${detail.revision.summary}`}
+          </span>
+        </div>
+      )}
+
+      {detail.turns.length > 0 ? (
+        <div className="space-y-3">
+          {detail.turns.map((turn) => (
+            <Turn key={turn.index} turn={turn} slowest={slowest} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[13px] text-muted-foreground">
+          No turns recorded for this run.
+        </p>
+      )}
+
+      {/* Steps whose turn is missing — a run older than turn tracking, or a
+          write that failed. The agent still did the work, so it still shows. */}
+      {detail.unattributed_steps.length > 0 && (
+        <div>
+          <p className="text-[12px] text-muted-foreground mb-1">
+            Steps with no recorded turn
+          </p>
+          {detail.unattributed_steps.map((step) => (
+            <Step key={step.id} step={step} slowest={slowest} />
+          ))}
+        </div>
+      )}
+
+      {detail.steps_truncated && (
+        <p className="text-[12px] italic text-muted-foreground">
+          Showing the first {allSteps.length} of {detail.step_total} steps.
+        </p>
+      )}
     </div>
   );
 }
@@ -95,7 +268,13 @@ export default function Runs() {
   const { data, isLoading } = useQuery({
     queryKey: ['runs', filter],
     queryFn: () => logsService.listExecutions(filter === 'all' ? { limit: 50 } : { status: filter, limit: 50 }),
-    refetchInterval: 20_000,
+    // Only poll while something can still change. A finished list is finished:
+    // new runs arrive from a user action or a schedule, and window focus
+    // revalidates on return, so an idle tab does not need a timer at all.
+    refetchInterval: (q) =>
+      (q.state.data?.results ?? []).some((r) => r.status === 'running' || r.status === 'pending')
+        ? 10_000
+        : false,
   });
   const runs: ExecutionLog[] = data?.results ?? [];
 
@@ -103,12 +282,6 @@ export default function Runs() {
     queryKey: ['run', openId],
     enabled: !!openId,
     queryFn: () => logsService.getExecution(openId!),
-  });
-
-  const { data: narrative } = useQuery({
-    queryKey: ['run-narrative', openId],
-    enabled: !!openId,
-    queryFn: () => logsService.getNarrative(openId!).catch(() => null),
   });
 
   return (
@@ -119,11 +292,11 @@ export default function Runs() {
         subtitle={`${runs.length} recent execution${runs.length === 1 ? '' : 's'}`}
         actions={
           <Link
-            to="/orchestrator"
+            to="/overview"
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border hover:bg-secondary"
           >
-            <Radio className="w-4 h-4 text-agent" />
-            Live monitor
+            <Radar className="w-4 h-4 text-agent" />
+            Overview
           </Link>
         }
       >
@@ -169,8 +342,11 @@ export default function Runs() {
                   >
                     <ChevronRight className={cn('w-4 h-4 text-muted-foreground shrink-0 transition-transform', open && 'rotate-90')} />
                     <span className="font-medium text-sm flex-1 truncate">{run.workflow_name}</span>
+                    {run.is_delegated && (
+                      <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-label="Delegated run" />
+                    )}
                     <StatusPill status={run.status} />
-                    <span className="text-[12px] text-muted-foreground w-20 text-right">{run.trigger_type}</span>
+                    <span className="text-[12px] text-muted-foreground w-24 text-right">{CALLER_LABELS[run.caller] ?? run.trigger_type}</span>
                     <span className="text-[12px] text-muted-foreground w-16 text-right tabular-nums">{ms(run.duration_ms)}</span>
                     <span className="text-[12px] text-muted-foreground w-20 text-right">{when(run.created_at)}</span>
                   </button>
@@ -182,17 +358,12 @@ export default function Runs() {
                           {run.error_message}
                         </div>
                       )}
-                      {narrative && (
-                        <p className="text-[13px] leading-relaxed text-foreground mb-3 border-l-2 border-agent-line pl-3">
-                          {typeof narrative === 'string' ? narrative : JSON.stringify(narrative)}
-                        </p>
-                      )}
                       {detailLoading ? (
                         <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                      ) : detail?.node_logs?.length ? (
-                        <Trace nodes={detail.node_logs} />
+                      ) : detail ? (
+                        <RunDetail detail={detail} />
                       ) : (
-                        <p className="text-[13px] text-muted-foreground">No step detail recorded for this run.</p>
+                        <p className="text-[13px] text-muted-foreground">No detail recorded for this run.</p>
                       )}
                     </div>
                   )}

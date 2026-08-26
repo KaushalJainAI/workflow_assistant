@@ -8,6 +8,50 @@ import apiClient from './client';
 
 export type MCPServerType = 'stdio' | 'sse';
 
+/** Why a connection could not report its capabilities. */
+export type MCPToolsErrorCode =
+  | 'credential_missing'
+  | 'credential_invalid'
+  | 'connection_timeout'
+  | 'connection_failed'
+  | 'unknown';
+
+/**
+ * A capability lookup that failed, carrying the backend's own explanation.
+ *
+ * The reason is the whole value of this call: it is the one thing on the
+ * Connections page a non-technical user can act on, and "add a credential",
+ * "reconnect your account" and "this connector is broken, not you" are three
+ * different next steps.
+ */
+export class MCPToolsError extends Error {
+  code: MCPToolsErrorCode;
+  status?: number;
+
+  constructor(message: string, code: MCPToolsErrorCode, status?: number) {
+    super(message);
+    this.name = 'MCPToolsError';
+    this.code = code;
+    this.status = status;
+  }
+
+  static from(err: unknown): MCPToolsError {
+    const response = (err as { response?: { status?: number; data?: unknown } })?.response;
+    const data = response?.data as { error?: string; code?: string } | undefined;
+    const code = (data?.code ?? 'unknown') as MCPToolsErrorCode;
+    const message =
+      data?.error?.trim() ||
+      (err instanceof Error ? err.message : '') ||
+      'Could not reach this connection.';
+    return new MCPToolsError(message, code, response?.status);
+  }
+
+  /** Whether the user can fix this themselves, and how. */
+  get isCredentialProblem(): boolean {
+    return this.code === 'credential_missing' || this.code === 'credential_invalid';
+  }
+}
+
 export interface MCPServer {
   id: number;
   name: string;
@@ -27,12 +71,43 @@ export interface MCPServer {
   required_credential_types?: string[];
   credential_env_map?: Record<string, string>;
   credential_header_map?: Record<string, string>;
-  
+
+  /* Presentation, served from the database so adding a connector never means
+     editing this app. `icon_slug` is the stable key the icon map keys off —
+     never `name`, which is user-facing copy. */
+  display_name?: string;
+  /** `display_name` with a fallback to `name`; always populated. */
+  label: string;
+  category: MCPServerCategory;
+  tagline?: string;
+  icon_slug?: string;
+  help_url?: string;
+
   setup_notes?: string;
+  /** The server's own flag. Shared templates have this on for everyone. */
   enabled: boolean;
+  /** Whether this server is live *for the current user* — the value to render. */
+  effective_enabled: boolean;
+  /** True for curated system servers: config is read-only, the toggle is not. */
+  is_system: boolean;
   user: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export type MCPServerCategory =
+  | 'google_workspace'
+  | 'communication'
+  | 'productivity'
+  | 'development'
+  | 'utilities'
+  | 'custom';
+
+/** One capability a connection grants, as reported by the server itself. */
+export interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
 }
 
 export interface CreateMCPServerData {
@@ -87,6 +162,57 @@ export const mcpService = {
    */
   async delete(id: number): Promise<void> {
     await apiClient.delete(`/mcp/servers/${id}/`);
+  },
+
+  /**
+   * Turn a connection on or off for the current user.
+   *
+   * Curated servers are shared rows that no single account may edit, so this
+   * cannot be a PATCH of `enabled` — that is what used to answer 403. The
+   * backend records the choice per user and returns the resulting
+   * `effective_enabled`.
+   */
+  async setEnabled(id: number, enabled: boolean): Promise<MCPServer> {
+    const response = await apiClient.post<MCPServer>(
+      `/mcp/servers/${id}/set-enabled/`,
+      { enabled }
+    );
+    return response.data;
+  },
+
+  /**
+   * List what a connection can actually do. Live from the server, so it is the
+   * honest answer rather than a hand-maintained description — and it is the only
+   * thing on the page a non-technical user can act on.
+   */
+  async getTools(id: number): Promise<{ tools: MCPTool[] }> {
+    try {
+      const response = await apiClient.get<{ tools: MCPTool[] }>(
+        `/mcp/servers/${id}/tools/`
+      );
+      return response.data;
+    } catch (err) {
+      // The backend answers every failure with a `code` and a human-readable
+      // `error`. Rethrowing the raw Axios error threw both away, so a missing
+      // credential, an expired token and a connector whose package does not
+      // exist all rendered as the same "could not reach this connection" —
+      // three different problems, one dead end.
+      throw MCPToolsError.from(err);
+    }
+  },
+
+  /**
+   * Dry-run credential resolution: whether every credential this server needs
+   * actually exists, decrypts, and carries the mapped fields. This is the
+   * difference between "a credential row exists" and "the assistant can call
+   * this" — a server with a mistyped map or an expired OAuth token otherwise
+   * shows "Connected" while silently vanishing from the agent.
+   */
+  async validateCredentials(id: number): Promise<{ ok: boolean; errors: string[] }> {
+    const response = await apiClient.get<{ ok: boolean; errors: string[] }>(
+      `/mcp/servers/${id}/validate_credentials/`
+    );
+    return response.data;
   },
 };
 

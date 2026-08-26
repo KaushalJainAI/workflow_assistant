@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Sparkles,
+  Bot,
   ChevronDown,
   X,
   History,
@@ -21,28 +21,9 @@ import {
   Database,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { prettyModel } from '../../lib/modelNames';
 
 const DISMISS_KEY = 'guest_banner_collapsed';
-
-/* Model ids are slugs. Spell out the ones we actually serve — "120B/12B-active"
-   is the interesting part (mixture-of-experts) and no amount of string munging
-   gets you there from the slug. */
-const MODEL_NAMES: Record<string, string> = {
-  'nvidia/nemotron-3-super-120b-a12b': 'Nemotron 3 Super (120B/12B-active)',
-  'nvidia/llama-3.3-nemotron-super-49b-v1': 'Llama 3.3 Nemotron Super 49B',
-};
-
-function prettyModel(id?: string | null) {
-  if (!id) return 'a hosted model';
-  if (MODEL_NAMES[id]) return MODEL_NAMES[id];
-  // Unknown id: fall back to a readable form of the slug rather than showing raw.
-  return (id.split('/').pop() ?? id)
-    .replace(/:free$/, '')
-    .replace(/-v\d+$/, '')
-    .replace(/-/g, ' ')
-    .replace(/\b(\d+)b\b/gi, '$1B')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 const UNLOCKS = [
   { icon: History, title: 'Conversations that persist', body: 'Right now this thread disappears when you close the tab.' },
@@ -74,7 +55,7 @@ export default function GuestBanner({ model }: { model?: string | null }) {
         className="absolute top-2 right-3 z-40 flex items-center gap-1.5 px-2.5 py-1 rounded border border-border bg-card/90 backdrop-blur text-[12px] text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         title="You are in guest mode"
       >
-        <Sparkles className="w-3.5 h-3.5 text-primary" />
+        <Bot className="w-3.5 h-3.5 text-primary" />
         Guest
       </button>
     );
@@ -83,7 +64,7 @@ export default function GuestBanner({ model }: { model?: string | null }) {
   return (
     <div className="absolute top-0 left-0 right-0 z-40">
       <div className="bg-primary-subtle border-b border-primary-line backdrop-blur-md pl-16 pr-2 md:px-4 py-1.5 min-h-12 md:min-h-0 flex items-center gap-2 md:gap-3 text-sm">
-        <Sparkles className="w-4 h-4 text-primary shrink-0" />
+        <Bot className="w-4 h-4 text-primary shrink-0" />
 
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-foreground">Guest mode</span>

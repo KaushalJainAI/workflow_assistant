@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { credentialsService } from '../api';
 import { useAIModels } from '../hooks/useAIModels';
@@ -175,11 +175,18 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  return (
-    <AssistantContext.Provider value={{ 
-      isAssistantOpen, 
-      toggleAssistant, 
-      openAssistant, 
+  const refreshCredentials = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
+
+  // The object literal was rebuilt on every render of this provider, so every
+  // consumer re-rendered with it — including the whole chat panel, on a
+  // provider that also owns model-selection state that changes while typing.
+  const value = useMemo(
+    () => ({
+      isAssistantOpen,
+      toggleAssistant,
+      openAssistant,
       closeAssistant,
       llmProvider,
       setLlmProvider: updateLlmProvider,
@@ -189,8 +196,15 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       setLlmCredential: updateLlmCredential,
       syncLlmSettings,
       hasCredentials,
-      refreshCredentials: async () => { await refetch(); }
-    }}>
+      refreshCredentials,
+    }),
+    [isAssistantOpen, toggleAssistant, openAssistant, closeAssistant,
+     llmProvider, updateLlmProvider, llmModel, updateLlmModel, llmCredential,
+     updateLlmCredential, syncLlmSettings, hasCredentials, refreshCredentials],
+  );
+
+  return (
+    <AssistantContext.Provider value={value}>
       {children}
     </AssistantContext.Provider>
   );
