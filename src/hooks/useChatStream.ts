@@ -14,20 +14,58 @@
 
 import { useCallback, useMemo, useReducer } from 'react';
 import type { HtmlArtifact as HtmlArtifactData } from '../api/chat';
+import type { ChatMediaItem, CodeExecutionEntry } from '../api/chat';
 
 /**
  * One frame off the SSE wire. The payload shape varies per `type` and is not
  * described by any shared schema, so fields are read defensively rather than
  * modelled as a discriminated union that would drift from the backend.
+ *
+ * The index type is `unknown`, not `any`. That is what forces every read below
+ * through `str()` / `arr()`, and it closed a real defect: `state.content +
+ * event.content` on a frame that omitted `content` appended the literal string
+ * "undefined" to the user's answer, and nothing typed as `any` would ever have
+ * complained.
  */
-export type StreamEvent = { type: string } & Record<string, any>;
+export type StreamEvent = { type: string } & Record<string, unknown>;
+
+/** A frame field as a string, or '' — never the text "undefined". */
+const str = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/**
+ * A frame field as an array. The cast is the one unavoidable assertion in this
+ * file: the wire carries no schema, so `Array.isArray` is the only check
+ * available and the element type is the caller's expectation, not a guarantee.
+ */
+const arr = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+
+/** A frame field as a plain object, for tool arguments. */
+const obj = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+/** A frame field as a number, or undefined when absent or malformed. */
+const num = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 export interface StreamActivity {
   type: 'tool' | 'thought';
   tool?: string;
-  args?: any;
+  args?: Record<string, unknown>;
   iteration?: number;
   thought?: string;
+}
+
+/**
+ * One attachment the chosen model could not accept. Carries its id so the
+ * agent can be told which file it is; see `history.describe_for_model`.
+ */
+export interface BlockedAttachment {
+  id?: number;
+  name?: string;
+  reason?: string;
+  [key: string]: unknown;
 }
 
 export interface StreamSource {
@@ -40,7 +78,7 @@ export interface StreamSource {
 
 export interface PendingToolCall {
   tool: string;
-  args: any;
+  args: Record<string, unknown>;
   call_id: string;
 }
 
@@ -48,8 +86,8 @@ export interface ChatStreamState {
   status: { phase: string; message: string } | null;
   activity: StreamActivity[];
   sources: StreamSource[];
-  images: any[];
-  videos: any[];
+  images: ChatMediaItem[];
+  videos: ChatMediaItem[];
   thinking: string;
   content: string;
   /**
@@ -57,9 +95,9 @@ export interface ChatStreamState {
    * panel that reads it stays collapsed. Kept so the field does not have to be
    * re-threaded when the backend starts emitting it.
    */
-  codeExecutions: any[];
+  codeExecutions: CodeExecutionEntry[];
   artifacts: HtmlArtifactData[];
-  blockedAttachments: { message: string; items: any[] } | null;
+  blockedAttachments: { message: string; items: BlockedAttachment[] } | null;
   pendingToolCall: PendingToolCall | null;
 }
 
@@ -89,18 +127,18 @@ function appendActivity(activity: StreamActivity[], event: StreamEvent): StreamA
   if (event.sub_type === 'thought') {
     const last = activity[activity.length - 1];
     if (last?.type === 'thought') {
-      return [...activity.slice(0, -1), { ...last, thought: event.content }];
+      return [...activity.slice(0, -1), { ...last, thought: str(event.content) }];
     }
-    return [...activity, { type: 'thought', thought: event.content }];
+    return [...activity, { type: 'thought', thought: str(event.content) }];
   }
   return [
     ...activity,
     {
       type: 'tool',
-      tool: event.tool,
-      args: event.args,
-      iteration: event.iteration,
-      thought: event.thought,
+      tool: str(event.tool),
+      args: obj(event.args),
+      iteration: num(event.iteration),
+      thought: str(event.thought),
     },
   ];
 }
@@ -108,11 +146,11 @@ function appendActivity(activity: StreamActivity[], event: StreamEvent): StreamA
 function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamState {
   switch (event.type) {
     case 'status':
-      return { ...state, status: { phase: event.phase, message: event.message } };
+      return { ...state, status: { phase: str(event.phase), message: str(event.message) } };
     case 'thinking_chunk':
-      return { ...state, thinking: state.thinking + event.content };
+      return { ...state, thinking: state.thinking + str(event.content) };
     case 'content_chunk':
-      return { ...state, content: state.content + event.content };
+      return { ...state, content: state.content + str(event.content) };
     case 'content_reset':
       // What streamed was a preamble to a tool call ("let me search for..."),
       // not the answer. Drop it so the real answer starts from a clean buffer.
@@ -120,27 +158,42 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
     case 'agent_trace':
       return { ...state, activity: appendActivity(state.activity, event) };
     case 'sources_update':
-      return { ...state, sources: event.sources || [] };
+      return { ...state, sources: arr<StreamSource>(event.sources) };
     case 'images_update':
-      return { ...state, images: event.images || [] };
+      return { ...state, images: arr<ChatMediaItem>(event.images) };
     case 'videos_update':
-      return { ...state, videos: event.videos || [] };
+      return { ...state, videos: arr<ChatMediaItem>(event.videos) };
     case 'html_artifact':
       return {
         ...state,
         artifacts: [
           ...state.artifacts,
-          { title: event.title, html: event.html, width: event.width, height: event.height },
+          {
+            title: str(event.title),
+            html: str(event.html),
+            width: num(event.width),
+            height: num(event.height),
+          },
         ],
       };
     case 'attachments_blocked':
       // Persistent, not a transient toast: the user needs to still see this
       // while they go and change the model, which is the action it asks for.
-      return { ...state, blockedAttachments: { message: event.message, items: event.items || [] } };
+      return {
+        ...state,
+        blockedAttachments: {
+          message: str(event.message),
+          items: arr<BlockedAttachment>(event.items),
+        },
+      };
     case 'ask_permission':
       return {
         ...state,
-        pendingToolCall: { tool: event.tool, args: event.args, call_id: event.call_id },
+        pendingToolCall: {
+          tool: str(event.tool),
+          args: obj(event.args),
+          call_id: str(event.call_id),
+        },
       };
     case 'done':
       // The turn is over, so everything transient goes. Two survive: a

@@ -83,7 +83,7 @@ export default function Inbox() {
         title="Inbox"
         subtitle={
           requests.length
-            ? `${requests.length} thing${requests.length === 1 ? '' : 's'} waiting on you`
+            ? `${requests.length} ${requests.length === 1 ? 'request needs' : 'requests need'} your attention`
             : 'Nothing is waiting on you'
         }
       >
@@ -108,7 +108,7 @@ export default function Inbox() {
                 : "text-muted-foreground border-transparent hover:text-foreground"
             )}
           >
-            Extraction review
+            Documents to review
           </button>
         </div>
       </PageHeader>

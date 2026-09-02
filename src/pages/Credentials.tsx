@@ -18,7 +18,8 @@ import {
   EyeOff,
   Check,
   Copy,
-  AlertCircle
+  AlertCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import { credentialsService } from '../api/credentials';
 import type { Credential, CredentialType } from '../api/credentials';
@@ -29,7 +30,9 @@ import SearchInput from '../components/ui/SearchInput';
 import { cn } from '../lib/utils';
 
 // Icon mapper
-const IconMap: Record<string, any> = {
+// Keyed by the `icon` string the backend stores, so a new credential type
+// is a fixture row rather than a code change here.
+const IconMap: Record<string, LucideIcon> = {
   'Mail': Mail,
   'Database': Database,
   'MessageSquare': MessageSquare,

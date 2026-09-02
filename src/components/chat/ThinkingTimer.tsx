@@ -20,12 +20,20 @@ export default function ThinkingTimer({
 }) {
   const [seconds, setSeconds] = useState(0);
 
-  useEffect(() => {
-    if (!active) {
-      setSeconds(0);
-      return;
-    }
+  // Resetting the clock is an *adjustment to a prop change*, not a side effect,
+  // so it happens during render — React's documented pattern, and the reason
+  // this no longer trips `react-hooks/set-state-in-effect`. React re-runs the
+  // component immediately without committing the discarded render, so the
+  // reset costs nothing and the effect below is left owning only the interval,
+  // which is the one thing that genuinely is a side effect.
+  const [wasActive, setWasActive] = useState(active);
+  if (wasActive !== active) {
+    setWasActive(active);
     setSeconds(0);
+  }
+
+  useEffect(() => {
+    if (!active) return;
     const id = setInterval(() => setSeconds((s) => s + 0.1), 100);
     return () => clearInterval(id);
   }, [active]);

@@ -1,26 +1,10 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { credentialsService } from '../api';
 import { useAIModels } from '../hooks/useAIModels';
 import { tokenManager } from '../api/client';
 
-interface AssistantContextType {
-  isAssistantOpen: boolean;
-  toggleAssistant: () => void;
-  openAssistant: () => void;
-  closeAssistant: () => void;
-  llmProvider: string;
-  setLlmProvider: (provider: string) => void;
-  llmModel: string;
-  setLlmModel: (model: string) => void;
-  llmCredential: string | null;
-  setLlmCredential: (credential: string | null) => void;
-  syncLlmSettings: (provider: string, model: string, credential?: string | null) => Promise<void>;
-  hasCredentials: boolean | null;
-  refreshCredentials: () => Promise<void>;
-}
-
-const AssistantContext = createContext<AssistantContextType | undefined>(undefined);
+import { AssistantContext } from './assistantState';
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
@@ -31,9 +15,15 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [llmModel, setLlmModel] = useState(localStorage.getItem('orchestrator_llm_model') || 'nvidia/nemotron-3-super-120b-a12b');
   const [llmCredential, setLlmCredential] = useState<string | null>(localStorage.getItem('orchestrator_llm_credential'));
 
-  const toggleAssistant = () => setIsAssistantOpen(prev => !prev);
-  const openAssistant = () => setIsAssistantOpen(true);
-  const closeAssistant = () => setIsAssistantOpen(false);
+  // Every function on the context value is memoised. They are all listed in the
+  // `useMemo` at the bottom, so a fresh identity per render made that memo
+  // recompute every render — which meant the context value changed identity
+  // every render, and *every consumer of this provider re-rendered on every
+  // render of it*. A `useMemo` whose dependencies are rebuilt each time is not
+  // a memo, it is overhead.
+  const toggleAssistant = useCallback(() => setIsAssistantOpen(prev => !prev), []);
+  const openAssistant = useCallback(() => setIsAssistantOpen(true), []);
+  const closeAssistant = useCallback(() => setIsAssistantOpen(false), []);
 
   const { providers: dynamicProviders, isLoading: isModelsLoading } = useAIModels();
 
@@ -86,7 +76,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const updateLlmProvider = async (provider: string) => {
+  const updateLlmProvider = useCallback(async (provider: string) => {
     setLlmProvider(provider);
     localStorage.setItem('orchestrator_llm_provider', provider);
     
@@ -110,9 +100,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('Failed to sync Assistant provider change to backend:', err);
     }
-  };
+  }, [dynamicProviders, llmCredential]);
 
-  const updateLlmCredential = async (credential: string | null) => {
+  const updateLlmCredential = useCallback(async (credential: string | null) => {
     setLlmCredential(credential);
     if (credential) {
       localStorage.setItem('orchestrator_llm_credential', credential);
@@ -131,9 +121,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('Failed to sync Assistant credential change to backend:', err);
     }
-  };
+  }, [llmProvider, llmModel]);
 
-  const updateLlmModel = async (model: string) => {
+  const updateLlmModel = useCallback(async (model: string) => {
     setLlmModel(model);
     localStorage.setItem('orchestrator_llm_model', model);
     
@@ -148,9 +138,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('Failed to sync Assistant model change to backend:', err);
     }
-  };
+  }, [llmProvider, llmCredential]);
 
-  const syncLlmSettings = async (provider: string, model: string, credential?: string | null) => {
+  const syncLlmSettings = useCallback(async (
+    provider: string, model: string, credential?: string | null,
+  ) => {
     setLlmProvider(provider);
     setLlmModel(model);
     if (credential !== undefined) setLlmCredential(credential);
@@ -173,7 +165,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.warn('Failed to sync Assistant settings batch update to backend:', err);
     }
-  };
+  }, [llmCredential]);
 
   const refreshCredentials = useCallback(async () => {
     await refetch();
@@ -210,10 +202,3 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAssistant() {
-  const context = useContext(AssistantContext);
-  if (context === undefined) {
-    throw new Error('useAssistant must be used within an AssistantProvider');
-  }
-  return context;
-}

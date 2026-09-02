@@ -1,5 +1,5 @@
 import apiClient from './client';
-import { streamSse } from './sse';
+import { streamSse, type SseEvent } from './sse';
 
 export interface ChatSession {
   id: string;
@@ -23,22 +23,108 @@ export interface ChatSession {
 export interface HtmlArtifact {
   title: string;
   html: string;
-  width: number;
-  height: number;
+  /**
+   * Optional: a frame may omit them, and `HtmlArtifact.tsx` already clamps
+   * `Number(artifact.width)` to a default. Declaring them required meant the
+   * reducer had to invent a number the renderer would then discard.
+   */
+  width?: number;
+  height?: number;
+}
+
+/**
+ * What an assistant message carries besides its text.
+ *
+ * This was `Record<string, any>`, which meant every read in the transcript —
+ * `metadata.tool_trace.length`, `metadata.images`, `metadata.thinking` — was
+ * unchecked, and a backend rename would surface as a blank panel rather than a
+ * build failure. The fields below are exactly the ones the UI reads; the index
+ * signature keeps forward compatibility with anything the backend adds that
+ * nothing renders yet.
+ */
+export interface ChatSource {
+  url: string;
+  title?: string;
+  snippet?: string;
+  thumbnail?: string;
+  favicon?: string;
+  /** Two spellings arrive from different search backends; the UI reads both. */
+  publisher?: string;
+  source?: string;
+}
+
+export interface ToolTraceEntry {
+  tool?: string;
+  iteration?: number;
+  summary?: string;
+  thought?: string;
+  args?: { query?: string; question?: string; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
+export interface CodeExecutionEntry {
+  iteration?: number;
+  code?: string;
+  output?: string;
+  /** Older runs stored stdout under `result`; both spellings are rendered. */
+  result?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface ChatMediaItem {
+  url?: string;
+  /** Image results name the file under `image`, page results under `url`. */
+  image?: string;
+  thumbnail?: string;
+  title?: string;
+  /** Where it came from; two spellings, as with `ChatSource`. */
+  publisher?: string;
+  source?: string;
+  [key: string]: unknown;
+}
+
+export interface ChatMessageMetadata {
+  sources?: ChatSource[];
+  images?: ChatMediaItem[];
+  videos?: ChatMediaItem[];
+  thinking?: string;
+  summary?: string;
+  model?: string;
+  tool_trace?: ToolTraceEntry[];
+  code_executions?: CodeExecutionEntry[];
+  has_code_execution?: boolean;
+  has_extracted_text?: boolean;
+  file_type?: string;
+  html_artifacts?: HtmlArtifact[];
+  follow_ups?: string[];
+  [key: string]: unknown;
 }
 
 export interface ChatMessage {
   id: number;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  metadata: Record<string, any>;
+  metadata: ChatMessageMetadata;
   created_at: string;
+}
+
+/** What `POST /chat/sessions/{id}/upload/` answers. */
+export interface UploadResult {
+  status?: string;
+  document_id?: number;
+  [key: string]: unknown;
 }
 
 export const chatService = {
   async getSessions(): Promise<ChatSession[]> {
-    const response = await apiClient.get<any>('/chat/sessions/');
-    return response.data.results ? response.data.results : response.data;
+    // Paginated or bare, depending on the view — hence the two shapes rather
+    // than `any`.
+    const response = await apiClient.get<ChatSession[] | { results: ChatSession[] }>(
+      '/chat/sessions/',
+    );
+    const data = response.data;
+    return Array.isArray(data) ? data : data.results;
   },
 
   async getSession(id: string): Promise<ChatSession> {
@@ -75,7 +161,7 @@ export const chatService = {
     intent?: string,
     reference?: { message_id: number; snippet: string }
   ): Promise<{ user_message: ChatMessage; ai_response: ChatMessage }> {
-    const body: Record<string, any> = { content };
+    const body: Record<string, unknown> = { content };
     if (intent && intent !== 'normal') body.intent = intent;
     if (reference) body.reference = reference;
     const response = await apiClient.post(`/chat/sessions/${sessionId}/message/`, body);
@@ -93,7 +179,7 @@ export const chatService = {
     sessionId: string,
     content: string,
     intent: string | undefined,
-    onEvent: (event: { type: string; [key: string]: any }) => void,
+    onEvent: (event: SseEvent) => void,
     reference?: { message_id: number; snippet: string },
     signal?: AbortSignal,
     llmProvider?: string,
@@ -128,7 +214,7 @@ export const chatService = {
    */
   async attachStream(
     sessionId: string,
-    onEvent: (event: { type: string; [key: string]: any }) => void,
+    onEvent: (event: SseEvent) => void,
     signal?: AbortSignal,
     fromIndex = 0,
   ): Promise<void> {
@@ -156,7 +242,7 @@ export const chatService = {
     return response.data.active ?? [];
   },
 
-  async uploadFile(sessionId: string, file: File): Promise<any> {
+  async uploadFile(sessionId: string, file: File): Promise<UploadResult> {
     const formData = new FormData();
     formData.append('file', file);
     const response = await apiClient.post(`/chat/sessions/${sessionId}/upload/`, formData, {
@@ -186,7 +272,7 @@ export const chatService = {
     async sendMessageStream(
       sessionId: string,
       content: string,
-      onEvent: (event: { type: string; [key: string]: any }) => void,
+      onEvent: (event: SseEvent) => void,
       signal?: AbortSignal,
     ): Promise<void> {
       return streamSse({

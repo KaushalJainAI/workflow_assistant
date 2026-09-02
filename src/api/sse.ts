@@ -4,7 +4,7 @@
  * The chat endpoints stream newline-delimited `data: {json}` frames over a
  * plain POST rather than EventSource (EventSource cannot send a body or an
  * Authorization header). Every caller previously inlined the same
- * reader/decoder/buffer loop; the copies had already drifted — one skipped the
+ * reader/decoder/buffer loop; the copies had already drifted - one skipped the
  * `response.ok` check, so a 500 surfaced as an empty stream instead of an error.
  */
 
@@ -12,7 +12,13 @@ import { API_URL, tokenManager } from './client';
 
 export interface SseEvent {
   type: string;
-  [key: string]: any;
+  /**
+   * `unknown`, not `any`. The wire carries no schema, so every consumer has to
+   * narrow - which is the point: `hooks/useChatStream.ts` was concatenating
+   * `event.content` straight into the transcript, and a frame that omitted the
+   * field appended the literal string "undefined" to the user's answer.
+   */
+  [key: string]: unknown;
 }
 
 export interface StreamRequest {
@@ -64,7 +70,43 @@ export async function streamSse({
     signal,
   });
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
+    let errorMessage = `Stream request failed: ${response.status}`;
+    try {
+      const text = await response.text();
+      for (const line of text.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          if (evt.type === 'error' && typeof evt.message === 'string' && evt.message.trim()) {
+            errorMessage = evt.message;
+            break;
+          }
+          if (typeof evt.detail === 'string' && evt.detail.trim()) {
+            errorMessage = evt.detail;
+            break;
+          }
+        } catch {
+          // ignore malformed frame
+        }
+      }
+      if (errorMessage === `Stream request failed: ${response.status}` && text.trim().startsWith('{')) {
+        try {
+          const j = JSON.parse(text);
+          if (typeof j.detail === 'string' && j.detail.trim()) errorMessage = j.detail;
+          else if (typeof j.message === 'string' && j.message.trim()) errorMessage = j.message;
+          else if (typeof j.error === 'string' && j.error.trim()) errorMessage = j.error;
+        } catch {
+          // not JSON
+        }
+      }
+    } catch {
+      // Unable to read body - keep generic message.
+    }
+    throw new Error(errorMessage);
+  }
+
+  if (!response.body) {
     throw new Error(`Stream request failed: ${response.status}`);
   }
 

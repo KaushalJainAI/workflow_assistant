@@ -59,15 +59,16 @@ import { forgetTranscript, readTranscript, writeTranscript } from '../../lib/tra
 import type { HtmlArtifact as HtmlArtifactData } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
-import { useChatStream } from '../../hooks/useChatStream';
+import { useChatStream, type StreamEvent } from '../../hooks/useChatStream';
 import { useMessagePanels } from '../../hooks/useMessagePanels';
 import { useMessageSelection } from '../../hooks/useMessageSelection';
 import { useChatModelSelection } from '../../hooks/useChatModelSelection';
 import { prettyModel } from '../../lib/modelNames';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/authState';
 import GuestBanner from './GuestBanner';
 import { SendButton } from '../ui/SendButton';
+import { apiErrorMessage } from '../../lib/apiError';
 
 /** Rough size hint for a reasoning trace, so the toggle says what it will cost to open. */
 function formatWordCount(text: string): string {
@@ -77,12 +78,26 @@ function formatWordCount(text: string): string {
   return `${(words / 1000).toFixed(1)}k words`;
 }
 
+/**
+ * What the composer is set to do with the next message. Named because it is the
+ * state's type, a cast target, and a parameter — three places that were
+ * previously three different spellings, two of them `any`.
+ */
+export type ChatIntent = 'normal' | 'search' | 'image' | 'video' | 'research';
+
+/**
+ * A tool-argument field as text. `StreamActivity.args` is `Record<string,
+ * unknown>` because the wire carries no schema for it, so anything rendered
+ * out of it has to be narrowed rather than trusted.
+ */
+const argText = (value: unknown): string => (typeof value === 'string' ? value : '');
+
 export default function StandaloneChat() {
   const { isAuthenticated } = useAuth();
   const isGuest = !isAuthenticated;
   
   // Helper to strip XML/HTML tags from tool call argument values
-  const stripXmlTags = (val: any): string => {
+  const stripXmlTags = (val: unknown): string => {
     if (typeof val !== 'string') return String(val ?? '');
     return val.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_:.-]*[^>]*>/g, '').trim();
   };
@@ -101,12 +116,20 @@ export default function StandaloneChat() {
   const [settledId, setSettledId] = useState<number | string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  // Persisted so returning to the chat lands on the conversation the user
-  // left, rather than on whichever session happens to be newest.
-  const [conversationId, setConversationId] = usePersistedState<string | undefined>(
+  // Auth and guest conversations are independent: a guest reusing an auth
+  // session id (or vice versa) hits a 404 because the lookup is user-scoped,
+  // and a DB wipe leaves any persisted id stale. Two keys keep the namespaces
+  // separate so a stale or cross-owner id is never sent to the wrong endpoint.
+  const [authConversationId, setAuthConversationId] = usePersistedState<string | undefined>(
     'chat.lastSessionId',
     undefined,
   );
+  const [guestConversationId, setGuestConversationId] = usePersistedState<string | undefined>(
+    'chat.lastGuestSessionId',
+    undefined,
+  );
+  const conversationId = isGuest ? guestConversationId : authConversationId;
+  const setConversationId = isGuest ? setGuestConversationId : setAuthConversationId;
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -143,14 +166,13 @@ export default function StandaloneChat() {
     searchQuery: modelSearchQuery,
     setSearchQuery: setModelSearchQuery,
     dropdownRef,
-    isChecking: isCheckingCredentials,
     select: selectModel,
     adopt: adoptSessionModel,
   } = useChatModelSelection({ isGuest, providers: dynamicProviders });
 
   // --- Agentic Features State ---
   const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(true);
-  const [activeIntent, setActiveIntent] = useState<'normal' | 'search' | 'image' | 'video' | 'research'>('normal');
+  const [activeIntent, setActiveIntent] = useState<ChatIntent>('normal');
   const [deletingMsgId, setDeletingMsgId] = useState<number | null>(null);
   const { toggle: togglePanel, isOpen: isPanelOpen, openIdFor: openPanelId } = useMessagePanels();
   
@@ -307,6 +329,11 @@ export default function StandaloneChat() {
       }
     }, 100);
     return () => clearTimeout(timer);
+    // Mount only, deliberately. This restores the session the user left open;
+    // re-running it when `conversationId` changes would re-load the transcript
+    // every time they switch conversations, fighting the explicit
+    // `loadConversation` calls that do the switching.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -408,7 +435,10 @@ export default function StandaloneChat() {
     setIsRestoring(false);
     setSettledId(null);
     resetStream();
-  }, [resetStream]);
+    // `setConversationId` comes from `usePersistedState`, which returns a plain
+    // `useState` setter — stable, but the linter cannot see that through the
+    // custom hook's tuple, so it is listed rather than suppressed.
+  }, [resetStream, setConversationId]);
 
   const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -440,8 +470,8 @@ export default function StandaloneChat() {
       if (sessionDetails?.messages) {
         setMessages(sessionDetails.messages as unknown as ChatMessage[]);
       }
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to upload file");
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Failed to upload file'));
     } finally {
       setIsUploading(false);
     }
@@ -548,11 +578,11 @@ export default function StandaloneChat() {
 
   useEffect(() => {
     if (lockedIntent && !['chat', 'search', 'normal'].includes(lockedIntent) && !conversationId) {
-       setActiveIntent(lockedIntent as any);
+       setActiveIntent(lockedIntent as ChatIntent);
     }
   }, [lockedIntent, conversationId]);
 
-  const toggleIntent = (intent: any) => {
+  const toggleIntent = (intent: ChatIntent) => {
     setActiveIntent(prev => {
       const next = prev === intent ? 'normal' : intent;
       
@@ -604,6 +634,10 @@ export default function StandaloneChat() {
 
   const handleSaveSessionSettings = async (patch: Partial<ChatSession>) => {
     if (!conversationId || !currentSession) return;
+    if (isGuest && 'memory_enabled' in patch) {
+      toast.error('Log in to use conversation memory.');
+      return;
+    }
     setIsSavingSettings(true);
     try {
       const updated = await chatService.updateSession(conversationId, patch);
@@ -616,9 +650,9 @@ export default function StandaloneChat() {
         toast.success('Settings saved');
         setShowSessionSettings(false);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save chat settings', err);
-      toast.error(err?.response?.data?.detail || 'Could not save chat settings');
+      toast.error(apiErrorMessage(err, 'Could not save chat settings'));
     } finally {
       setIsSavingSettings(false);
     }
@@ -628,46 +662,56 @@ export default function StandaloneChat() {
    * Applies one SSE frame. Live turn state is folded by `useChatStream`; only
    * the effects that reach outside the turn are handled here.
    */
-  const handleStreamEvent = (event: any, meta: RunMeta = {}, replayed = false) => {
+  const handleStreamEvent = (event: StreamEvent, meta: RunMeta = {}, replayed = false) => {
     const { optimisticId, intentToSend } = { optimisticId: meta.optimisticId, intentToSend: meta.intent };
     applyStreamEvent(event);
 
     switch (event.type) {
-      case 'status':
+      case 'status': {
         // The optimistic user message gets its real database id here.
-        if (optimisticId && event.user_message_id) {
+        const realId = typeof event.user_message_id === 'number'
+          ? event.user_message_id
+          : null;
+        if (optimisticId && realId !== null) {
           setMessages(prev => prev.map(m => (
-            m.id === optimisticId ? { ...m, id: event.user_message_id } : m
+            m.id === optimisticId ? { ...m, id: realId } : m
           )));
         }
         break;
+      }
 
       case 'ask_permission':
         setIsLoading(false);
         break;
 
-      case 'done':
+      case 'done': {
+        // The `done` frame carries whole persisted messages. `StreamEvent`
+        // fields are `unknown` by design, so the assertion happens once, here,
+        // rather than at each of the six reads below.
+        const aiResponse = event.ai_response as ChatMessage | undefined;
+        const userMessage = event.user_message as ChatMessage | undefined;
+
         // Batched with the append below, so the settled answer mounts already
         // exempt from the entrance animation — the text has been on screen for
         // the length of the stream and must not fade in over itself.
-        setSettledId(event.ai_response?.id ?? null);
+        setSettledId(aiResponse?.id ?? null);
         setMessages(prev => {
           // A stop before any text was streamed closes the turn with no
           // answer to show; the question stands on its own.
-          if (!event.ai_response) return prev;
+          if (!aiResponse) return prev;
           // A replayed frame may be re-applied after the transcript was
           // reloaded from the server, which already contains this answer.
-          if (event.ai_response?.id && prev.some(m => m.id === event.ai_response.id)) {
+          if (aiResponse.id && prev.some(m => m.id === aiResponse.id)) {
             return prev;
           }
-          const reconciled = optimisticId && event.user_message
+          const reconciled = optimisticId && userMessage
             ? prev.map(m => (
-                m.id === optimisticId || m.id === event.user_message.id
-                  ? { ...m, id: event.user_message.id }
+                m.id === optimisticId || m.id === userMessage.id
+                  ? { ...m, id: userMessage.id }
                   : m
               ))
             : prev;
-          return [...reconciled, event.ai_response as unknown as ChatMessage];
+          return [...reconciled, aiResponse];
         });
         setIsLoading(false);
         clearReference();
@@ -677,6 +721,7 @@ export default function StandaloneChat() {
           setCurrentSession({ ...currentSession, intent: intentToSend });
         }
         break;
+      }
 
       case 'error':
         // Only the live delivery should raise a toast; replaying the frame
@@ -685,7 +730,9 @@ export default function StandaloneChat() {
         // Held longer than a default toast because these are the failures that
         // tell the user what to change — no credential, no credit, a model the
         // provider retired — and each is a sentence or two, not a word.
-        if (!replayed) toast.error(event.message, { duration: 12000 });
+        if (!replayed && typeof event.message === 'string') {
+          toast.error(event.message, { duration: 12000 });
+        }
         setIsLoading(false);
         break;
     }
@@ -718,7 +765,10 @@ export default function StandaloneChat() {
       if (frame.type === RUN_STATUS_EVENT) {
         setIsLoading(false);
         clearStreamStatus();
-        if (!replayed && frame.status === 'error' && frame.error) {
+        // `RunFrame` is a union with `SseEvent`, whose fields are `unknown`,
+        // so the status frame's own `error?: string` has to be re-narrowed
+        // here rather than assumed.
+        if (!replayed && frame.status === 'error' && typeof frame.error === 'string') {
           toast.error(frame.error);
         }
         return;
@@ -760,6 +810,22 @@ export default function StandaloneChat() {
       let currentSessionId = conversationId;
 
       if (isGuest) {
+        if (currentSessionId) {
+          try {
+            const existing = await chatService.guest.getSession(currentSessionId);
+            setCurrentSession(existing);
+          } catch (err: unknown) {
+            const status = (err as { response?: { status?: number } })?.response?.status;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (status === 404 || msg.includes('404') || msg.toLowerCase().includes('not found')) {
+              currentSessionId = undefined;
+              setConversationId(undefined);
+              setCurrentSession(null);
+            } else {
+              throw err;
+            }
+          }
+        }
         if (!currentSessionId) {
           const newSession = await chatService.guest.createSession(textToSend.slice(0, 30) + '...');
           currentSessionId = newSession.id;
@@ -774,6 +840,22 @@ export default function StandaloneChat() {
           meta,
         );
       } else {
+        if (currentSessionId) {
+          try {
+            const existing = await chatService.getSession(currentSessionId);
+            setCurrentSession(existing);
+          } catch (err: unknown) {
+            const status = (err as { response?: { status?: number } })?.response?.status;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (status === 404 || msg.includes('404') || msg.toLowerCase().includes('not found')) {
+              currentSessionId = undefined;
+              setConversationId(undefined);
+              setCurrentSession(null);
+            } else {
+              throw err;
+            }
+          }
+        }
         if (!currentSessionId) {
           const newSession = await chatService.createSession({
             title: textToSend.slice(0, 30) + '...',
@@ -853,14 +935,6 @@ export default function StandaloneChat() {
   // transcript is already up and this never renders.
   // A turn already running is better news than a placeholder, so it wins.
   const showSkeleton = isRestoring && messages.length === 0 && !isLoading;
-
-  if (isCheckingCredentials) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   // Note: the previous "Access Restricted / Configure Credentials" gate was
   // removed — the server-wide NVIDIA env key now backs the chat for any user
@@ -1010,7 +1084,7 @@ export default function StandaloneChat() {
                  with it off the assistant behaves very differently, and a user
                  who forgot they switched it off reads that as the model being
                  broken. */}
-             {currentSession && !currentSession.memory_enabled && (
+             {!isGuest && currentSession && !currentSession.memory_enabled && (
                <button
                  onClick={() => setShowSessionSettings(true)}
                  title="Memory is off for this chat — click to change"
@@ -1087,40 +1161,62 @@ export default function StandaloneChat() {
                   />
                 </div>
 
-                <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-3.5">
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-foreground">Memory</div>
-                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                      {currentSession.memory_enabled
-                        ? 'The assistant sees recent turns and can search the rest of this conversation.'
-                        : 'The assistant answers from your current message alone. Nothing is deleted — turning this back on restores the full history.'}
-                    </p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={currentSession.memory_enabled}
-                    aria-label="Toggle memory"
-                    disabled={isSavingSettings}
-                    onClick={() => handleSaveSessionSettings({ memory_enabled: !currentSession.memory_enabled })}
-                    className={cn(
-                      /* Track: flex + padding centres the knob, so the geometry holds
-                         at any root font-size (ours is 14px, not the 16px px-offsets assume). */
-                      "mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5",
-                      "transition-colors duration-300 ease-out",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-                      "focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                      "disabled:opacity-50",
-                      currentSession.memory_enabled ? "bg-primary" : "bg-muted-foreground/30"
-                    )}
-                  >
-                    <span
+                {!isGuest ? (
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-3.5">
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-foreground">Memory</div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        {currentSession.memory_enabled
+                          ? 'The assistant sees recent turns and can search the rest of this conversation.'
+                          : 'The assistant answers from your current message alone. Nothing is deleted – turning this back on restores the full history.'}
+                      </p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={currentSession.memory_enabled}
+                      aria-label="Toggle memory"
+                      disabled={isSavingSettings}
+                      onClick={() => handleSaveSessionSettings({ memory_enabled: !currentSession.memory_enabled })}
                       className={cn(
-                        "h-5 w-5 shrink-0 rounded-full bg-white shadow-sm transition-transform duration-300 ease-out",
-                        currentSession.memory_enabled ? "translate-x-5" : "translate-x-0"
+                        "mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5",
+                        "transition-colors duration-300 ease-out",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                        "focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                        "disabled:opacity-50",
+                        currentSession.memory_enabled ? "bg-primary" : "bg-muted-foreground/30"
                       )}
-                    />
-                  </button>
-                </div>
+                    >
+                      <span
+                        className={cn(
+                          "h-5 w-5 shrink-0 rounded-full bg-white shadow-sm transition-transform duration-300 ease-out",
+                          currentSession.memory_enabled ? "translate-x-5" : "translate-x-0"
+                        )}
+                      />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                        <span>Memory</span>
+                        <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-600">Login required</span>
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        Conversation memory is only available to logged-in users. Log in to let the assistant remember previous turns.
+                      </p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={false}
+                      aria-label="Memory requires login"
+                      disabled
+                      title="Log in to use memory"
+                      className="mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 bg-muted-foreground/20 opacity-50 cursor-not-allowed"
+                    >
+                      <span className="h-5 w-5 shrink-0 rounded-full bg-white shadow-sm translate-x-0" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 border-t border-border px-5 py-3.5">
@@ -1322,7 +1418,7 @@ export default function StandaloneChat() {
                         )}
                       </div>
                       {/* Quick Summary, Reasoning & Activity Row */}
-                      {message.role === 'assistant' && (message.metadata?.summary || message.metadata?.thinking || (message.metadata?.tool_trace && message.metadata.tool_trace.length > 0) || message.metadata?.has_code_execution) && (
+                      {message.role === 'assistant' && (message.metadata?.summary || message.metadata?.thinking || (message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0) || message.metadata?.has_code_execution) && (
                         <div className="flex flex-wrap gap-2 mt-4 mb-2">
                           {message.metadata?.summary && (
                             <div className="flex-1 min-w-[140px] group/summary animate-in fade-in slide-in-from-top-2 duration-500">
@@ -1367,7 +1463,7 @@ export default function StandaloneChat() {
                               </button>
                             </div>
                           )}
-                          {message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
+                          {message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0 && (
                             <div className="flex-1 min-w-[140px] group/activity animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
                                 onClick={() => togglePanel('activity', message.id as number)}
@@ -1386,7 +1482,7 @@ export default function StandaloneChat() {
                             </div>
                           )}
 
-                          {message.metadata?.has_code_execution && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
+                          {message.metadata?.has_code_execution && message.metadata?.code_executions && (message.metadata?.code_executions?.length ?? 0) > 0 && (
                             <div className="flex-1 min-w-[140px] group/code animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
                                 onClick={() => togglePanel('code', message.id as number)}
@@ -1452,7 +1548,7 @@ export default function StandaloneChat() {
                           honest rendering of nothing to report. */}
 
                       {/* Tool Activity Trace — shows which tools the agent called */}
-                      {message.role === 'assistant' && message.metadata?.tool_trace && message.metadata.tool_trace.length > 0 && (
+                      {message.role === 'assistant' && message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('activity', message.id)}>
                         <div className="mt-2 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
@@ -1461,7 +1557,7 @@ export default function StandaloneChat() {
                             <div className="h-px flex-1 bg-amber-500/10" />
                           </div>
                           <div className="space-y-1">
-                            {message.metadata.tool_trace.map((trace: any, i: number) => (
+                            {(message.metadata?.tool_trace ?? []).map((trace, i) => (
                               <div
                                 key={i}
                                 className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-left-2 py-2 group/trace border-b border-amber-500/5 last:border-0"
@@ -1496,7 +1592,7 @@ export default function StandaloneChat() {
                       )}
 
                       {/* Code Execution Log — shows sandbox results */}
-                      {message.role === 'assistant' && message.metadata?.code_executions && message.metadata.code_executions.length > 0 && (
+                      {message.role === 'assistant' && message.metadata?.code_executions && (message.metadata?.code_executions?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('code', message.id)}>
                         <div className="mt-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-3 px-1 mb-3">
@@ -1505,7 +1601,7 @@ export default function StandaloneChat() {
                             <div className="h-px flex-1 bg-emerald-500/10" />
                           </div>
                           <div className="space-y-4">
-                            {message.metadata.code_executions.map((exec: any, i: number) => (
+                            {(message.metadata?.code_executions ?? []).map((exec, i) => (
                               <div key={i} className="space-y-2 border-b border-emerald-500/5 last:border-0 pb-4 last:pb-0">
                                 <div className="flex items-center gap-2">
                                    <span className="text-[10px] font-semibold text-emerald-600/50">Execution #{exec.iteration || i+1}</span>
@@ -1538,9 +1634,9 @@ export default function StandaloneChat() {
 
 
                       {/* Discovered Media Row (Sources, Images, Videos on one line) */}
-                      {message.role === 'assistant' && (message.metadata?.sources?.length > 0 || message.metadata?.images?.length > 0 || message.metadata?.videos?.length > 0) && (
+                      {message.role === 'assistant' && ((message.metadata?.sources?.length ?? 0) > 0 || (message.metadata?.images?.length ?? 0) > 0 || (message.metadata?.videos?.length ?? 0) > 0) && (
                         <div className="mt-6 flex flex-wrap gap-2">
-                          {message.metadata?.sources?.length > 0 && (
+                          {(message.metadata?.sources?.length ?? 0) > 0 && (
                             <button
                               onClick={() => togglePanel('sources', message.id as number)}
                               className={cn(
@@ -1549,11 +1645,11 @@ export default function StandaloneChat() {
                               )}
                             >
                               <Globe2 className="w-3.5 h-3.5" />
-                              <span className="text-[12px] font-medium">{message.metadata.sources.length} Sources</span>
+                              <span className="text-[12px] font-medium">{(message.metadata?.sources?.length ?? 0)} Sources</span>
                             </button>
                           )}
 
-                          {message.metadata?.images?.length > 0 && (
+                          {(message.metadata?.images?.length ?? 0) > 0 && (
                             <button
                               onClick={() => togglePanel('images', message.id as number)}
                               className={cn(
@@ -1562,11 +1658,11 @@ export default function StandaloneChat() {
                               )}
                             >
                               <ImageIcon className="w-3.5 h-3.5" />
-                              <span className="text-[12px] font-medium">{message.metadata.images.length} Images</span>
+                              <span className="text-[12px] font-medium">{(message.metadata?.images?.length ?? 0)} Images</span>
                             </button>
                           )}
 
-                          {message.metadata?.videos?.length > 0 && (
+                          {(message.metadata?.videos?.length ?? 0) > 0 && (
                             <button
                               onClick={() => togglePanel('videos', message.id as number)}
                               className={cn(
@@ -1575,17 +1671,17 @@ export default function StandaloneChat() {
                               )}
                             >
                               <Video className="w-3.5 h-3.5" />
-                              <span className="text-[12px] font-medium">{message.metadata.videos.length} Videos</span>
+                              <span className="text-[12px] font-medium">{(message.metadata?.videos?.length ?? 0)} Videos</span>
                             </button>
                           )}
                         </div>
                       )}
 
                       {/* Content areas below the row triggers */}
-                      {message.role === 'assistant' && message.metadata?.sources?.length > 0 && (
+                      {message.role === 'assistant' && (message.metadata?.sources?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('sources', message.id)}>
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
-                          {message.metadata.sources.map((item: any, i: number) => (
+                          {(message.metadata?.sources ?? []).map((item, i) => (
                             <MediaPreview 
                               key={i}
                               url={item.url}
@@ -1600,35 +1696,42 @@ export default function StandaloneChat() {
                         </CollapsiblePanel>
                       )}
 
-                      {message.role === 'assistant' && message.metadata?.images?.length > 0 && (
+                      {message.role === 'assistant' && (message.metadata?.images?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('images', message.id)}>
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
-                          {(message.metadata.images || []).map((item: any, i: number) => (
-                            <MediaPreview 
-                              key={i}
-                              url={item.image || item.url}
-                              type="image"
-                              title={item.title}
-                              source={item.source}
-                              className="animate-in fade-in zoom-in-95 duration-500"
-                            />
-                          ))}
+                          {(message.metadata?.images ?? []).flatMap((item, i) => {
+                            // No url, no tile. `any` used to let `undefined`
+                            // through to MediaPreview's required `url` prop.
+                            const url = item.image || item.url;
+                            return url ? [(
+                              <MediaPreview
+                                key={i}
+                                url={url}
+                                type="image"
+                                title={item.title}
+                                source={item.source}
+                                className="animate-in fade-in zoom-in-95 duration-500"
+                              />
+                            )] : [];
+                          })}
                         </div>
                         </CollapsiblePanel>
                       )}
 
-                      {message.role === 'assistant' && message.metadata?.videos?.length > 0 && (
+                      {message.role === 'assistant' && (message.metadata?.videos?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('videos', message.id)}>
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
-                          {(message.metadata.videos || []).map((item: any, i: number) => (
-                            <MediaPreview 
-                              key={i}
-                              url={item.url}
-                              type="video"
-                              title={item.title}
-                              source={item.publisher || item.source}
-                              className="animate-in fade-in zoom-in-95 duration-500"
-                            />
+                          {(message.metadata?.videos ?? []).flatMap((item, i) => (
+                            item.url ? [(
+                              <MediaPreview
+                                key={i}
+                                url={item.url}
+                                type="video"
+                                title={item.title}
+                                source={item.publisher || item.source}
+                                className="animate-in fade-in zoom-in-95 duration-500"
+                              />
+                            )] : []
                           ))}
                         </div>
                         </CollapsiblePanel>
@@ -1637,7 +1740,7 @@ export default function StandaloneChat() {
 
                       {/* Rendered HTML artifacts, replayed from stored history. */}
                       {Array.isArray(message.metadata?.html_artifacts) &&
-                        message.metadata.html_artifacts.map((art: HtmlArtifactData, i: number) => (
+                        (message.metadata?.html_artifacts ?? []).map((art: HtmlArtifactData, i: number) => (
                           <HtmlArtifact key={`${message.id}-art-${i}`} artifact={art} />
                         ))}
 
@@ -1880,8 +1983,8 @@ export default function StandaloneChat() {
                                           {/* `question` is ask_vision: the agent interrogating a vision
                                               model about an image it cannot see. Showing the question it
                                               asked is legible in a way "calling ask_vision..." is not. */}
-                                          {!isThought && (activity.args?.query || activity.args?.question) && (
-                                             <span className="truncate max-w-[340px] text-foreground/60 italic text-[13px] font-medium opacity-80">"{stripXmlTags(activity.args.query || activity.args.question)}"</span>
+                                          {!isThought && (argText(activity.args?.query) || argText(activity.args?.question)) && (
+                                             <span className="truncate max-w-[340px] text-foreground/60 italic text-[13px] font-medium opacity-80">"{stripXmlTags(argText(activity.args?.query) || argText(activity.args?.question))}"</span>
                                           )}
                                       
                                           {thought && (
@@ -2043,21 +2146,26 @@ export default function StandaloneChat() {
 
                         {(live.images.length > 0 || live.videos.length > 0) && isLiveMediaExpanded && (
                            <div className="mt-3 flex gap-3 overflow-x-auto pb-2 scrollbar-hide px-1 animate-in slide-in-from-top-2 duration-300">
-                             {live.images.slice(0, 4).map((img, i) => (
-                               <MediaPreview 
-                                 key={`img-${i}`}
-                                 url={img.image || img.url}
-                                 type="image"
-                                 className="w-32 h-20 shrink-0 shadow-sm"
-                               />
-                             ))}
-                             {live.videos.slice(0, 4).map((vid, i) => (
-                               <MediaPreview 
-                                 key={`vid-${i}`}
-                                 url={vid.url}
-                                 type="video"
-                                 className="w-32 h-20 shrink-0 shadow-sm"
-                               />
+                             {live.images.slice(0, 4).flatMap((img, i) => {
+                               const url = img.image || img.url;
+                               return url ? [(
+                                 <MediaPreview
+                                   key={`img-${i}`}
+                                   url={url}
+                                   type="image"
+                                   className="w-32 h-20 shrink-0 shadow-sm"
+                                 />
+                               )] : [];
+                             })}
+                             {live.videos.slice(0, 4).flatMap((vid, i) => (
+                               vid.url ? [(
+                                 <MediaPreview
+                                   key={`vid-${i}`}
+                                   url={vid.url}
+                                   type="video"
+                                   className="w-32 h-20 shrink-0 shadow-sm"
+                                 />
+                               )] : []
                              ))}
                              {(live.images.length > 4 || live.videos.length > 4) && (
                                <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-semibold text-muted-foreground/30  text-center px-2">

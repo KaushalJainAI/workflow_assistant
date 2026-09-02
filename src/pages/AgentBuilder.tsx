@@ -3,35 +3,38 @@
  *
  * Two panes on purpose. The right side is the whole configuration, always
  * visible, always editable by hand. The left side is the "agent of creating
- * agents": you describe the job, it moves knobs and says why, and every change
+ * agents": you describe the job, it adjusts the settings and explains why, and every change
  * it makes lights up on the right so nothing happens behind your back.
  *
  * Generating a config you cannot see or override would be the wrong trade —
  * the point of the board is that the agent's choices stay inspectable.
  */
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Bot, Brain, Cpu, MemoryStick, FolderLock, Wrench, Plug,
+  Bot, Brain, Cpu, Timer, FolderLock, Wrench, Plug,
   ShieldCheck, Clock, Layers, Save, RotateCcw, Check, Globe, Loader2, Trash2,
   History,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import nodeService from '../api/nodeService';
 import skillsService from '../api/skills';
+import { mcpService } from '../api/mcp';
 import agentsService from '../api/agents';
 import { logsService } from '../api';
 import { cn } from '../lib/utils';
 import MultiSelect from '../components/ui/MultiSelect';
 import Select from '../components/ui/Select';
 import {
-  DEFAULT_AGENT, CONNECTOR_OPTIONS, TRIGGER_COPY, AUTONOMY_COPY, FILE_ACCESS_COPY,
+  DEFAULT_AGENT, TRIGGER_COPY, AUTONOMY_COPY, FILE_ACCESS_COPY,
   EGRESS_COPY,
   type AgentConfig, type TriggerMode, type Autonomy, type FileAccess, type Egress,
 } from '../types/agentConfig';
+import RevisionEntry from '../components/agents/RevisionEntry';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
 import { SendButton } from '../components/ui/SendButton';
+import ScheduleEditor from '../components/schedules/ScheduleEditor';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
 
@@ -57,7 +60,7 @@ function Section({ icon: Icon, title, hint, notEnforced, children }: {
         <h3 className="text-[13px] font-semibold">{title}</h3>
         {notEnforced && (
           <span className="text-[10px] uppercase tracking-wide font-semibold text-warning border border-warning/40 rounded px-1.5 py-0.5">
-            Not yet applied
+            Coming soon
           </span>
         )}
         {hint && <span className="text-[12px] text-muted-foreground ml-auto">{hint}</span>}
@@ -70,17 +73,26 @@ function Section({ icon: Icon, title, hint, notEnforced, children }: {
   );
 }
 
-/** Every configuration change to this agent, newest first.
+/** The newest few configuration changes to this agent.
  *
  *  The point is correlation, not nostalgia: a run records the revision it
  *  executed under, so "it got worse on Tuesday" becomes "it got worse at rev 4,
  *  which changed the model and the autonomy". `run_count` says whether a
  *  revision has been exercised enough to judge at all.
+ *
+ *  Only `INLINE_REVISIONS` of them show. This section used to render the whole
+ *  timeline, which grows for the life of the agent — so on an agent anyone
+ *  actually tunes it pushed the rest of the board off the screen, and there was
+ *  no way to reach a revision past the server's cap at all. The full history is
+ *  its own page now; this is the "what did I just change?" view, and the link
+ *  is here rather than at the end of a list nobody scrolls to.
  */
+const INLINE_REVISIONS = 3;
+
 function RevisionHistory({ agentId }: { agentId: number }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['agent-revisions', agentId],
-    queryFn: () => logsService.listRevisions(agentId),
+    queryKey: ['agent-revisions', agentId, INLINE_REVISIONS],
+    queryFn: () => logsService.listRevisions(agentId, { limit: INLINE_REVISIONS }),
   });
 
   if (isLoading) {
@@ -91,64 +103,34 @@ function RevisionHistory({ agentId }: { agentId: number }) {
   if (revisions.length === 0) {
     return (
       <p className="text-[12px] text-muted-foreground">
-        No changes recorded yet. Every save from here on is versioned.
+        No changes yet. Future saves will be tracked here.
       </p>
     );
   }
 
+  const total = data?.count ?? revisions.length;
+  const rest = total - revisions.length;
+
   return (
-    <ol className="space-y-2">
-      {revisions.map((rev) => (
-        <li key={rev.id} className="border-l-2 border-border pl-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] font-semibold">rev {rev.number}</span>
-            <span className="text-[12px] text-muted-foreground truncate flex-1">
-              {rev.summary}
-            </span>
-            <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
-              {rev.run_count} {rev.run_count === 1 ? 'run' : 'runs'}
-            </span>
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            {rev.changed_by ?? 'system'} · {new Date(rev.created_at).toLocaleString()}
-          </div>
-          {Object.keys(rev.diff).length > 0 && (
-            <dl className="mt-1 space-y-0.5">
-              {Object.entries(rev.diff).slice(0, 6).map(([field, change]) => (
-                <div key={field} className="flex gap-2 text-[11px]">
-                  <dt className="text-muted-foreground w-28 shrink-0 truncate">{field}</dt>
-                  <dd className="truncate">
-                    <span className="text-muted-foreground line-through">
-                      {summariseValue(change.from)}
-                    </span>
-                    {' → '}
-                    <span>{summariseValue(change.to)}</span>
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </li>
-      ))}
-    </ol>
+    <>
+      <ol className="space-y-2">
+        {revisions.map((rev) => (
+          <RevisionEntry key={rev.id} revision={rev} />
+        ))}
+      </ol>
+      <Link
+        to={`/agents/${agentId}/history`}
+        className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-primary hover:underline"
+      >
+        <History className="w-3.5 h-3.5" />
+        {rest > 0
+          ? `View all ${total} changes`
+          : 'View full history'}
+      </Link>
+    </>
   );
 }
 
-/** One side of a diff, shortened to fit a line. Objects are summarised rather
- *  than stringified: a full `tools` map would swamp the row it sits in. */
-function summariseValue(value: unknown): string {
-  if (value === null || value === undefined) return '—';
-  if (typeof value === 'boolean') return value ? 'on' : 'off';
-  if (Array.isArray(value)) return value.length === 0 ? 'none' : `${value.length} item(s)`;
-  if (typeof value === 'object') {
-    const on = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v)
-      .map(([k]) => k);
-    return on.length === 0 ? 'none' : on.join(', ');
-  }
-  const text = String(value);
-  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
-}
 
 /** Wraps a control so a knob the agent just moved is visibly flagged. */
 function Knob({ path, touched, label, hint, children }: {
@@ -251,6 +233,25 @@ export default function AgentBuilder() {
     queryFn: () => skillsService.list(),
     staleTime: 5 * 60 * 1000,
   });
+  /* The connector picker's options are the account's real connections, not a
+     list in this file. The old hardcoded six had drifted from the catalogue in
+     both directions — it offered "Photos", which no connector has ever been,
+     and could not name Notion at all — and nothing enforced it anyway. Now that
+     the runtime honours the selection, offering a connection the user does not
+     have would put an id in the config that the backend rejects on save.
+
+     `effective_enabled` rather than `enabled`: a connection the user has
+     switched off on Connections is not one to offer here, because the runtime
+     drops it when it resolves the toolbox. */
+  const { data: connectorOptions = [] } = useQuery({
+    queryKey: ['agent-builder', 'connections'],
+    queryFn: async () =>
+      (await mcpService.list()).servers
+        .filter((srv) => srv.effective_enabled)
+        .map((srv) => ({ id: srv.id, label: srv.label, iconSlug: srv.icon_slug }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Fill the board once the agent arrives. The server's shape is AgentConfig,
   // so there is nothing to translate — which is the point of the contract.
@@ -260,6 +261,10 @@ export default function AgentBuilder() {
   // board first and then overwrite it, and any edit made in that gap would be
   // silently discarded.
   const [loadedId, setLoadedId] = useState<number | null>(null);
+  // Whether the schedule editor is open on an agent that has no schedule
+  // yet. Not derived from `cfg.schedule`: the editor has to be visible
+  // *before* there is a cron to show, or there is nothing to type into.
+  const [scheduling, setScheduling] = useState(false);
   if (existing && loadedId !== existing.id) {
     setLoadedId(existing.id);
     setCfg({ ...DEFAULT_AGENT, ...existing });
@@ -318,7 +323,7 @@ export default function AgentBuilder() {
 
   const send = (text: string) => {
     if (!text.trim()) return;
-    const { reply, changes } = propose(text, cfg);
+    const { reply, changes } = propose(text, cfg, connectorOptions);
     setCfg((c) => applyChanges(c, changes));
     setTouched(new Set(changes.map((c) => c.path)));
     setMessages((m) => [...m, { role: 'user', text }, { role: 'agent', text: reply, changes }]);
@@ -344,7 +349,7 @@ export default function AgentBuilder() {
   // What actually happened, once there is something to report. Before the first
   // run there is no honest number, so the line says what to do instead.
   const subtitle = () => {
-    if (isNew) return 'Describe the job, or set the knobs yourself';
+    if (isNew) return 'Describe what you want, or adjust the settings yourself';
     if (!existing) return 'Loading…';
     if (!existing.runs) return 'Not run yet';
     const pct = Math.round((existing.unattended / existing.runs) * 100);
@@ -400,7 +405,7 @@ export default function AgentBuilder() {
                 </div>
                 <h2 className="font-semibold mb-1">What should this agent do?</h2>
                 <p className="text-[13px] text-muted-foreground leading-relaxed mb-4">
-                  Say it in plain words. I'll set the knobs on the right and tell you why
+                  Say it in plain language. I'll adjust the settings on the right and explain why
                   I picked each one — nothing is hidden, and you can override all of it.
                 </p>
                 <div className="space-y-2">
@@ -511,9 +516,13 @@ export default function AgentBuilder() {
               </Knob>
             </Section>
 
-            <Section icon={FolderLock} title="Sandbox"
-              hint="What it may touch, and how much it may use"
-              notEnforced="Saved with the agent, but the runtime has no per-agent sandbox envelope yet — Python still runs in the shared sandbox with its own fixed limits. Set these for when it lands; do not rely on them today.">
+            {/* File access is enforced; the resource knobs below are not. They
+                used to share one section under a single "not yet applied"
+                banner, which became a lie the moment the virtual filesystem
+                landed — a banner covering a setting that *is* enforced teaches
+                people to ignore it on the ones that are not. */}
+            <Section icon={FolderLock} title="Files"
+              hint="Which of your files it can reach">
               <Knob path="fileAccess" touched={touched} label="File access">
                 <Choice<FileAccess>
                   value={cfg.fileAccess} onChange={(v) => set('fileAccess', v)}
@@ -521,53 +530,94 @@ export default function AgentBuilder() {
                     id, label: FILE_ACCESS_COPY[id].label, hint: FILE_ACCESS_COPY[id].hint,
                   }))} />
               </Knob>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Knob path="cpu" touched={touched} label="vCPU">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-muted-foreground" />
-                    <input type="number" min={1} max={8} value={cfg.cpu}
-                      onChange={(e) => set('cpu', Number(e.target.value))}
-                      className="w-full h-9 px-2 rounded border border-input bg-background text-sm" />
-                  </div>
-                </Knob>
-                <Knob path="memoryMb" touched={touched} label="Memory (MB)">
-                  <div className="flex items-center gap-2">
-                    <MemoryStick className="w-4 h-4 text-muted-foreground" />
-                    <input type="number" min={256} step={256} value={cfg.memoryMb}
-                      onChange={(e) => set('memoryMb', Number(e.target.value))}
-                      className="w-full h-9 px-2 rounded border border-input bg-background text-sm" />
-                  </div>
-                </Knob>
+              <p className="text-[12px] text-muted-foreground">
+                Needs the “Read and write files” tool below. Anything it writes appears
+                in your own files, and anything it deletes goes to your recycle bin.
+              </p>
+            </Section>
+
+            {/* CPUs and Memory used to live here behind a "COMING SOON" badge.
+                They were never read and never could be — the backend runs agent
+                code on a thread inside its own process, with no cgroup to hold a
+                quota. What a run actually holds is time: an event-loop slot, a
+                checkpoint, a database connection, for as long as it waits on a
+                model. So the knob is time, and unlike the two it replaced it is
+                enforced. */}
+            <Section icon={Timer} title="Run limit"
+              hint="How long one run may take">
+              <Knob path="maxRunSeconds" touched={touched} label="Time limit" hint="per run">
+                <div className="flex items-center gap-2">
+                  <Timer className="w-4 h-4 text-muted-foreground" />
+                  <input type="number" min={1} max={120} step={1}
+                    value={Math.round(cfg.maxRunSeconds / 60)}
+                    onChange={(e) => set('maxRunSeconds',
+                      Math.max(1, Math.min(120, Number(e.target.value))) * 60)}
+                    className="w-full h-9 px-2 rounded border border-input bg-background text-sm" />
+                  <span className="text-sm text-muted-foreground shrink-0">minutes</span>
+                </div>
+              </Knob>
+              <div className="flex flex-wrap gap-1.5">
+                {[5, 15, 30, 60].map((m) => (
+                  <button key={m} type="button"
+                    onClick={() => set('maxRunSeconds', m * 60)}
+                    className={`h-7 px-2.5 rounded border text-[12px] transition-colors ${
+                      Math.round(cfg.maxRunSeconds / 60) === m
+                        ? 'border-primary text-primary bg-primary/10'
+                        : 'border-input text-muted-foreground hover:text-foreground'
+                    }`}>
+                    {m} min
+                  </button>
+                ))}
               </div>
+              <p className="text-[12px] text-muted-foreground">
+                Near the limit the agent stops calling tools and answers with what it
+                has, so a run that runs long still returns something. Work it delegates
+                shares this budget — a sub-agent cannot outlive the run that called it.
+              </p>
+              {/* Kept, but honestly labelled. The section's blanket "not yet
+                  enforced" notice went with the CPU and memory fields, and the
+                  time limit above genuinely is enforced — so this one carries
+                  its own caveat rather than borrowing a badge that no longer
+                  applies to its neighbours. */}
               <Toggle on={cfg.venv} onChange={(v) => set('venv', v)}
-                label="Isolated virtualenv" hint="Its own Python environment, not the host's." />
+                label="Isolated Python environment"
+                hint="Saved, but not yet enforced — Python currently runs in the shared sandbox." />
             </Section>
 
             <Section icon={Wrench} title="Tools">
+              <p className="px-2 text-[12px] text-muted-foreground -mt-2 mb-1">
+                Built-in tools are included with your workspace. See the{' '}
+                <Link to="/tools" className="underline text-primary">Tools library</Link> for details — same groups as below. Add-on tools appear after you connect them on{' '}
+                <Link to="/connections" className="underline text-primary">Connections</Link>.
+              </p>
               {([
                 ['codeExecution', 'Run Python', 'Sandboxed interpreter for calculation and parsing.'],
-                ['shell', 'Run shell commands', 'Powerful and blunt — leave off unless it needs it.'],
+                ['shell', 'Run shell commands', 'Powerful — leave off unless it needs it.'],
                 ['webSearch', 'Web search', 'Look things up it was not given.'],
                 ['scrape', 'Read web pages', 'Fetch and extract from a URL.'],
-                ['fileOps', 'Read and write files', 'Within the file access scope above.'],
+                ['fileOps', 'Read and write files', 'Your own files, within the access level set above.'],
                 ['rag', 'Knowledge base search', 'Retrieve from your indexed documents.'],
-                ['mcp', 'MCP servers', 'The tools from your connected MCP servers, using your credentials.'],
+                ['mcp', 'MCP servers (Plugins)', 'The tools from your connected plugins (MCP servers), using your connectors.'],
               ] as const).map(([k, label, hint]) => (
                 <Knob key={k} path={`tools.${k}`} touched={touched} label="">
                   <Toggle on={cfg.tools[k]} onChange={(v) => setTool(k, v)} label={label} hint={hint} />
                 </Knob>
               ))}
+              <p className="px-2 text-[11px] text-muted-foreground">
+                Need the full list? <Link to="/tools" className="underline">Browse tools</Link> to see what each tool does and when it needs approval.
+              </p>
             </Section>
 
             <Section icon={Plug} title="Context it is given">
-              <Knob path="connectors" touched={touched} label="Connectors (not yet applied)"
+              <Knob path="connectors" touched={touched} label="Connections"
                     hint={cfg.connectors.length ? `${cfg.connectors.length} selected` : undefined}>
                 <MultiSelect
-                  options={CONNECTOR_OPTIONS.map((c) => ({ id: c.id, label: c.label }))}
-                  value={cfg.connectors}
-                  onChange={(v) => set('connectors', v)}
-                  placeholder="No connectors — it works only with what you give it"
-                  searchPlaceholder="Search connectors…"
+                  options={connectorOptions.map((c) => ({ id: String(c.id), label: c.label }))}
+                  value={cfg.connectors.map(String)}
+                  onChange={(v) => set('connectors', v.map(Number).filter((n) => !Number.isNaN(n)))}
+                  placeholder="Every connection — narrow it to what this agent needs"
+                  searchPlaceholder="Search connections…"
+                  emptyText="None yet — add one on Connections first."
                 />
               </Knob>
               <Knob path="skills" touched={touched} label="Skills"
@@ -587,7 +637,7 @@ export default function AgentBuilder() {
               </Knob>
               <Toggle on={cfg.useOrgContext} onChange={(v) => set('useOrgContext', v)}
                 label="Organisation context"
-                hint="Not yet applied — nothing reads this at run time." />
+                hint="Coming soon — doesn't affect runs today." />
               <Knob path="useEnvironment" touched={touched} label="">
                 <Toggle on={cfg.useEnvironment} onChange={(v) => set('useEnvironment', v)}
                   label="Environment" hint="Current time and place, for anything schedule- or locale-aware." />
@@ -602,29 +652,81 @@ export default function AgentBuilder() {
                     id, label: TRIGGER_COPY[id].label, hint: TRIGGER_COPY[id].hint,
                   }))} />
               </Knob>
-              {cfg.trigger === 'maintenance' && (
-                <Knob path="schedule" touched={touched} label="Schedule" hint="cron, UTC">
-                  <input value={cfg.schedule} onChange={(e) => set('schedule', e.target.value)}
-                    placeholder="0 9 * * 1"
-                    className="w-full h-9 px-3 rounded border border-input bg-background text-sm font-mono" />
-                </Knob>
-              )}
+              {/* Offered for any invocation mode, not just `maintenance`: the
+                  backend has always created a Trigger for a non-blank cron
+                  whatever the mode said, so hiding the control behind one
+                  choice only hid schedules that already existed. */}
+              <Knob path="schedule" touched={touched} label="Schedule">
+                {cfg.schedule || scheduling ? (
+                  <>
+                    <ScheduleEditor
+                      value={{
+                        cron: cfg.schedule,
+                        timezone: cfg.scheduleTimezone,
+                        name: '', goal: '', overlap: 'skip',
+                        startsAt: null, endsAt: null,
+                      }}
+                      onChange={(next) => {
+                        set('schedule', next.cron);
+                        set('scheduleTimezone', next.timezone);
+                      }}
+                      agentAllowsUnattended={cfg.allowUnattended}
+                      // This field writes back only cron and timezone, so the
+                      // name, window, goal and overlap controls are withheld
+                      // rather than rendered and silently discarded on save.
+                      // The Schedules page is where those are set.
+                      showAdvanced={false}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { set('schedule', ''); setScheduling(false); }}
+                      className="mt-2 text-[12px] text-muted-foreground hover:text-destructive"
+                    >
+                      Remove this schedule
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setScheduling(true)}
+                    className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-[13px] hover:bg-secondary"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Run this on a schedule
+                  </button>
+                )}
+                {(cfg.extraSchedules ?? 0) > 0 && (
+                  <p className="mt-2 text-[12px] text-muted-foreground">
+                    This agent has {cfg.extraSchedules} other schedule
+                    {cfg.extraSchedules === 1 ? '' : 's'}, set up on{' '}
+                    <Link to="/schedules" className="underline">Schedules</Link>.
+                    They are not affected by this field.
+                  </p>
+                )}
+              </Knob>
               <Knob path="allowUnattended" touched={touched} label="">
                 <Toggle on={cfg.allowUnattended} onChange={(v) => set('allowUnattended', v)}
-                  label="May run with nobody watching"
-                  hint="Required for schedules, webhooks, and being delegated to by another agent." />
+                  label="Can run automatically"
+                  hint="Needed for schedules and when another agent calls it." />
               </Knob>
               {cfg.schedule && !cfg.allowUnattended && (
                 <p className="flex items-start gap-1.5 text-[12px] text-destructive">
                   <Clock className="w-3.5 h-3.5 mt-px shrink-0" />
-                  A schedule without this is refused at every firing — the runtime
+                  Schedules won't run without this enabled — the runtime
                   checks it again, and the sweep disables the trigger after five
                   refusals. Save is blocked until one of the two changes.
                 </p>
               )}
+              {cfg.schedule && cfg.allowUnattended && (
+                <p className="text-[12px] text-muted-foreground">
+                  Once saved, this schedule appears on{' '}
+                  <Link to="/schedules" className="underline">Schedules</Link>,
+                  where you can test it once before relying on it.
+                </p>
+              )}
             </Section>
 
-            <Section icon={ShieldCheck} title="Guardrails">
+            <Section icon={ShieldCheck} title="Safety">
               <Knob path="autonomy" touched={touched} label="Autonomy">
                 <Choice<Autonomy>
                   value={cfg.autonomy} onChange={(v) => set('autonomy', v)}
@@ -635,7 +737,7 @@ export default function AgentBuilder() {
               <Knob path="egress" touched={touched} label="Network access"
                     hint="separate from web search">
                 <p className="mb-2 text-[12px] text-muted-foreground">
-                  Partly applied: the agent is told this in its instructions, and
+                  Partially active: the agent is told this in its instructions, and
                   shell-plus-open-network is refused on save — but nothing blocks
                   traffic at the network layer yet.
                 </p>
@@ -647,18 +749,27 @@ export default function AgentBuilder() {
                 {cfg.tools.shell && cfg.egress === 'full' && (
                   <p className="mt-2 flex items-start gap-1.5 text-[12px] text-destructive">
                     <Globe className="w-3.5 h-3.5 mt-px shrink-0" />
-                    Shell plus an open network is refused on save — anything the agent
+                    For security, you can't enable both shell access and open network together — anything the agent
                     reads, it can also send. Narrow one of the two.
                   </p>
                 )}
               </Knob>
-              <Toggle on={cfg.notifyOnHitl} onChange={(v) => set('notifyOnHitl', v)}
-                label="Notify me when it stops to ask"
-                hint="Not yet applied — approval notifications are sent regardless of this setting." />
+              {/* The hint says what "off" leaves behind on purpose. The switch
+                  silences the pings, never the queue — a paused run always waits
+                  in the Inbox, or turning notifications off would quietly mean
+                  abandoning it. Saying so is what stops someone reading the
+                  toggle as "let it run without me". */}
+              <Knob path="notifyOnHitl" touched={touched} label="">
+                <Toggle on={cfg.notifyOnHitl} onChange={(v) => set('notifyOnHitl', v)}
+                  label="Notify me when it stops to ask"
+                  hint={cfg.notifyOnHitl
+                    ? 'Pings you when it pauses, then again after an hour and a day.'
+                    : "No pings for this agent — it still waits in your Inbox and in the daily summary."} />
+              </Knob>
               <Knob path="reviewAgent" touched={touched} label="">
                 <Toggle on={cfg.reviewAgent} onChange={(v) => set('reviewAgent', v)}
                   label="Review agent"
-                  hint="Not yet applied — grading exists in Evals, but this toggle is not wired to it." />
+                  hint="Coming soon — automatic reviews." />
               </Knob>
               <Knob path="spendCapRupees" touched={touched} label="Spend cap" hint="per month">
                 <div className="flex items-center gap-2">
@@ -677,14 +788,55 @@ export default function AgentBuilder() {
               </Section>
             )}
 
-            <Section icon={Layers} title="Context lifecycle" hint="For long-running agents"
-              notEnforced="Saved, but the turn loop does not read these yet. Long runs currently use the built-in context handling regardless of what is set here.">
-              <Toggle on={cfg.recursiveContext} onChange={(v) => set('recursiveContext', v)}
-                label="Recursive context management" hint="Summarise and re-summarise as the window fills." />
+            <Section icon={Layers} title="Context lifecycle" hint="For long runs">
+              <p className="text-[12px] text-muted-foreground -mt-1">
+                A long run carries its whole transcript into every step, so eventually it
+                outgrows the model’s context window. These decide what gets cut and
+                whether it can be read back. Nothing happens until a run actually
+                approaches its limit.
+              </p>
               <Toggle on={cfg.compaction} onChange={(v) => set('compaction', v)}
-                label="Compaction" hint="Collapse finished work into a short record." />
+                label="Auto-compact history"
+                hint="Replace older tool results with a short record. Costs nothing, and what each step did stays visible." />
+              <Toggle on={cfg.recursiveContext} onChange={(v) => set('recursiveContext', v)}
+                label="Smart summarization"
+                hint="When compaction is not enough, fold the oldest steps into one running summary. Costs a small model call each time." />
+              {cfg.recursiveContext && (
+                <Knob path="summaryModel" touched={touched} label="Summarizing model"
+                      hint="Left as default, a small NVIDIA model runs on the platform key — nothing to connect.">
+                  <Select
+                    value={cfg.summaryModel}
+                    onChange={(v) => {
+                      // Both or neither: a model with no provider cannot be
+                      // routed, and the empty value has to clear both or the
+                      // agent would keep overriding the platform default with
+                      // half a choice.
+                      const owner = providers.find((p) => p.models?.some((m) => m.value === v));
+                      setCfg((c) => ({
+                        ...c,
+                        summaryModel: v,
+                        summaryProvider: v ? (owner?.slug ?? '') : '',
+                      }));
+                    }}
+                    placeholder="Platform default (recommended)"
+                    icon={<Layers className="w-4 h-4" />}
+                    showSearch
+                    options={[
+                      { value: '', label: 'Platform default (recommended)' },
+                      ...providers.flatMap((p) =>
+                        (p.models ?? []).map((mo) => ({
+                          value: mo.value,
+                          label: `${p.name} · ${mo.name}${mo.is_free ? ' · free' : ''}`,
+                          is_free: mo.is_free,
+                        }))
+                      ),
+                    ]}
+                  />
+                </Knob>
+              )}
               <Toggle on={cfg.indexing} onChange={(v) => set('indexing', v)}
-                label="Indexing" hint="Index what it drops so it can retrieve it later." />
+                label="Save and recall"
+                hint="Store whatever is cut, so the agent can search it back mid-run. Off means removed text is gone for good." />
             </Section>
 
             </div>

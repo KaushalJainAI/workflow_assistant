@@ -12,7 +12,7 @@ import {
   Check,
   ArrowLeft
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authState';
 import authService from '../api/auth';
 
 export default function Profile() {

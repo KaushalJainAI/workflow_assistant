@@ -22,13 +22,33 @@ import {
 import { cn } from '../lib/utils';
 import InsightsDashboard from '../components/billing/InsightsDashboard';
 import { useTheme } from '../hooks/useTheme';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authState';
 import { authService } from '../api/auth';
 import Select from '../components/ui/Select';
 import NotificationsTab from '../components/settings/NotificationsTab';
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
 
+
+/**
+ * The settings form's shape. It was `any`, which meant a typo in a field name
+ * — in the initial value, the `user` sync below, or a `name` attribute — was a
+ * silent no-op rather than a compile error.
+ */
+interface SettingsForm {
+  instance_name: string;
+  timezone: string;
+  language: string;
+  display_name: string;
+  bio: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  llm_provider: string;
+  llm_model: string;
+  default_temperature: number;
+  default_max_tokens: number;
+}
 
 export default function Settings() {
   const [activeTab, setActiveTab] = usePersistedState<SettingsTab>('settings.tab', 'general');
@@ -40,7 +60,7 @@ export default function Settings() {
   const [isSaving, setIsSaving] = useState(false);
   
   // Form State
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<SettingsForm>({
     instance_name: '',
     timezone: 'UTC',
     language: 'English',
@@ -91,11 +111,11 @@ export default function Settings() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSelectChange = (name: string, value: string) => {
-    setFormData((prev: any) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {

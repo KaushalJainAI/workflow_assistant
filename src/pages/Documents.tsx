@@ -24,18 +24,19 @@ import {
   type Document,
   type Folder,
 } from '../api';
-import { API_URL } from '../api/client';
-import { toast } from '../components/ui/Toast';
+
+import { toast } from '../lib/toastStore';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
-import { useAssistant } from '../contexts/AssistantContext';
-import { MediaPreview } from '../components/chat/MediaPreview';
+import { useAssistant } from '../contexts/assistantState';
+import { DocumentGridCard } from '../components/documents/DocumentGridCard';
 import ExtractionPanel from '../components/extraction/ExtractionPanel';
 import Breadcrumbs from '../components/documents/Breadcrumbs';
 import FolderPickerModal from '../components/documents/FolderPickerModal';
 import FolderTile from '../components/documents/FolderTile';
+import { apiErrorMessage } from '../lib/apiError';
 
 type DocumentsTab = 'personal' | 'public' | 'extraction' | 'trash';
 
@@ -190,14 +191,18 @@ export default function Documents() {
 
   // ---- Folder operations ---------------------------------------------------
 
-  const folders = inTree ? folderPage?.folders ?? [] : [];
   const breadcrumbs = folderPage?.breadcrumbs ?? [];
   const currentFolder = folderPage?.folder ?? null;
 
-  const filteredFolders = useMemo(
-    () => folders.filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase())),
-    [folders, searchQuery]
-  );
+  // The `inTree` conditional lives inside the memo rather than above it. As a
+  // separate `const folders = ...` it minted a fresh array literal on every
+  // render, so it was never equal to itself and the memo below recomputed each
+  // time — a `useMemo` whose dependency changes every render is just overhead.
+  const filteredFolders = useMemo(() => {
+    const folders = inTree ? folderPage?.folders ?? [] : [];
+    const query = searchQuery.toLowerCase();
+    return folders.filter((f) => f.name.toLowerCase().includes(query));
+  }, [inTree, folderPage?.folders, searchQuery]);
 
   const handleCreateFolder = async () => {
     const name = window.prompt('Folder name');
@@ -206,8 +211,8 @@ export default function Documents() {
       await foldersService.create(name.trim(), folderId);
       refreshTree();
       toast.success('Folder created');
-    } catch (err: any) {
-      toast.error('Could not create folder', err?.response?.data?.error ?? 'Please try again.');
+    } catch (err: unknown) {
+      toast.error('Could not create folder', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
@@ -217,8 +222,8 @@ export default function Documents() {
     try {
       await foldersService.update(folder.id, { name: name.trim() });
       refreshTree();
-    } catch (err: any) {
-      toast.error('Could not rename', err?.response?.data?.error ?? 'Please try again.');
+    } catch (err: unknown) {
+      toast.error('Could not rename', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
@@ -231,8 +236,8 @@ export default function Documents() {
         'Moved to Trash',
         `You can restore it for ${result.purges_after_days} days.`
       );
-    } catch (err: any) {
-      toast.error('Could not delete', err?.response?.data?.error ?? 'Please try again.');
+    } catch (err: unknown) {
+      toast.error('Could not delete', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
@@ -250,10 +255,10 @@ export default function Documents() {
       });
       refreshTree();
       toast.success('Moved');
-    } catch (err: any) {
+    } catch (err: unknown) {
       // The server refuses cycles and foreign ids; surface its wording rather
       // than inventing our own.
-      toast.error('Could not move', err?.response?.data?.error ?? 'Please try again.');
+      toast.error('Could not move', apiErrorMessage(err, 'Please try again.'));
     } finally {
       setIsMoving(false);
       setDragging(null);
@@ -275,8 +280,8 @@ export default function Documents() {
           renamed ? `A name was taken, so it came back as “${renamed.renamed_to}”.` : undefined
         );
       }
-    } catch (err: any) {
-      toast.error('Could not restore', err?.response?.data?.error ?? 'Please try again.');
+    } catch (err: unknown) {
+      toast.error('Could not restore', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
@@ -289,8 +294,8 @@ export default function Documents() {
         'Trash emptied',
         `${result.purged_documents} file(s) and ${result.purged_folders} folder(s) removed.`
       );
-    } catch (err: any) {
-      toast.error('Could not empty Trash', err?.response?.data?.error ?? 'Please try again.');
+    } catch (err: unknown) {
+      toast.error('Could not empty Trash', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
@@ -616,18 +621,18 @@ export default function Documents() {
           </div>
         ) : viewMode === 'grid' ? (
           <div className={cn(
-            "grid gap-4 md:gap-6 stagger-children",
+            "grid gap-4 md:gap-5 stagger-children",
             isAssistantOpen 
-              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
-              : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6"
+              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" 
+              : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
           )}>
-            {filteredDocuments.map((doc) => {
-                const status = getStatusParams(doc.status);
-                const isFailed = doc.status === 'failed';
-                
-                return (
-              <div
+            {filteredDocuments.map((doc) => (
+              <DocumentGridCard
                 key={doc.id}
+                doc={doc}
+                onDownload={handleDownload}
+                onShare={handleShare}
+                onDelete={handleDelete}
                 draggable={inTree && doc.id > 0}
                 onDragStart={(e) => {
                   e.dataTransfer.effectAllowed = 'move';
@@ -635,89 +640,8 @@ export default function Documents() {
                   setDragging({ kind: 'document', id: doc.id });
                 }}
                 onDragEnd={() => setDragging(null)}
-                className={cn(
-                  "group relative bg-card border border-border/60 rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col h-full",
-                  doc.is_shared && "ring-1 ring-primary/20 shadow-sm bg-primary/5",
-                  isFailed && "border-destructive/50 bg-destructive/5"
-                )}
-              >
-                <div className="flex flex-col items-center text-center mt-2">
-                <div className="mb-5 relative w-full aspect-video">
-                  <MediaPreview 
-                    url={`${API_URL}/inference/documents/${doc.id}/download/`}
-                    type={doc.file_type.includes('image') ? 'image' : doc.file_type.includes('pdf') ? 'pdf' : 'link'}
-                    title={doc.title}
-                    source={doc.filename}
-                    className="w-full h-full shadow-none border-none bg-transparent"
-                  />
-                  {status && (
-                      <div className="absolute -bottom-1 -right-1 bg-card rounded-full p-1 border border-border/60 shadow-sm z-10">
-                          {status.icon}
-                      </div>
-                  )}
-                </div>
-                  
-                  <h4 className="font-bold text-foreground text-sm truncate w-full mb-1 px-2" title={doc.title}>
-                      {doc.title}
-                  </h4>
-                  
-                  {status ? (
-                      <div className={cn(
-                          "text-[10px] font-bold  px-2 py-0.5 rounded-md bg-muted",
-                          status.color
-                      )}>
-                          {status.label}
-                      </div>
-                  ) : (
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 justify-center">
-                            <span className="text-[11px] text-muted-foreground">{formatSize(doc.file_size)}</span>
-                            <span className="w-1 h-1 rounded-full bg-border" />
-                            <span className="text-[11px] text-muted-foreground">{doc.chunk_count} chunks</span>
-                        </div>
-                        {activeTab === 'public' && doc.author_name && (
-                           <div className="text-[9px] font-bold text-primary tracking-tight">
-                             By {doc.author_name}
-                           </div>
-                        )}
-                    </div>
-                  )}
-                </div>
-                
-                {/* Actions Overlay */}
-                <div className="mt-6 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-200">
-                  <button 
-                    className="p-2 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 rounded-lg border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all"
-                    onClick={(e) => { e.stopPropagation(); handleDownload(doc); }}
-                    title="Download"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                  {activeTab === 'personal' && (
-                    <>
-                      <button 
-                        className={cn(
-                            "p-2 rounded-lg border transition-all",
-                            doc.is_shared ? "bg-primary/20 border-primary/40 text-primary" : "bg-card border-border/60 text-muted-foreground hover:text-primary"
-                        )}
-                        onClick={(e) => { e.stopPropagation(); handleShare(doc); }}
-                        title={doc.is_shared ? "Unshare" : "Share"}
-                        disabled={!!status}
-                      >
-                        <Globe className="w-4 h-4" />
-                      </button>
-                      <button 
-                        className="p-2 bg-destructive/10 hover:bg-destructive/20 rounded-lg border border-destructive/20 text-destructive hover:text-destructive transition-all"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )})}
+              />
+            ))}
           </div>
         ) : (
           <div className="space-y-3 max-w-6xl mx-auto">

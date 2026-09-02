@@ -20,7 +20,7 @@ export interface NodeField {
   type: string;
   required?: boolean;
   placeholder?: string;
-  defaultValue?: any;
+  defaultValue?: unknown;
   options?: (string | { value: string; label: string })[];
   description?: string;
   credentialType?: string;

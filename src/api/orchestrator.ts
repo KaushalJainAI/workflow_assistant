@@ -38,7 +38,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ConversationResponse {

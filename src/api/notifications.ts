@@ -6,7 +6,8 @@ export interface Notification {
   type: string;
   title: string;
   message: string;
-  data: any;
+  /** Payload shape varies by notification type; read defensively. */
+  data: Record<string, unknown>;
   is_read: boolean;
   created_at: string;
 }

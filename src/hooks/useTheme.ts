@@ -1,4 +1,4 @@
-import { useThemeContext } from '../contexts/ThemeContext';
+import { useThemeContext } from '../contexts/themeState';
 
 /**
  * Hook for managing theme (light/dark mode)

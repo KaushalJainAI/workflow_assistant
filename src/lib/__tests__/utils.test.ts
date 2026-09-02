@@ -4,6 +4,10 @@ import { cn, generateUniqueNodeLabel } from '../utils';
 describe('cn', () => {
   it('merges classnames and dedupes tailwind conflicts', () => {
     expect(cn('p-2', 'p-4')).toBe('p-4');
+    // The constant `false` is the point: `cn` has to drop falsy entries the
+    // way `clsx` does, and that is exactly how call sites write a
+    // conditional class. Not a mistake for the linter to flag.
+    // eslint-disable-next-line no-constant-binary-expression
     expect(cn('text-red-500', false && 'hidden', undefined, 'font-bold')).toBe('text-red-500 font-bold');
   });
 });

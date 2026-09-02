@@ -6,7 +6,21 @@
 
 import apiClient from './client';
 
-export type MCPServerType = 'stdio' | 'sse';
+/**
+ * How the backend reaches a server.
+ *
+ * `http` is MCP's streamable HTTP transport and is what hosted connectors speak
+ * (`https://mcp.notion.com/mcp`). `sse` is its deprecated predecessor, kept so
+ * existing rows stay editable — the modal never *creates* one, but it must not
+ * silently rewrite a row that already is one.
+ */
+export type MCPServerType = 'stdio' | 'http' | 'sse';
+
+/** The transports that reach a server over the network rather than spawn it. */
+export const REMOTE_SERVER_TYPES: readonly MCPServerType[] = ['http', 'sse'];
+
+export const isRemoteServerType = (type: MCPServerType): boolean =>
+  REMOTE_SERVER_TYPES.includes(type);
 
 /** Why a connection could not report its capabilities. */
 export type MCPToolsErrorCode =
@@ -90,6 +104,14 @@ export interface MCPServer {
   effective_enabled: boolean;
   /** True for curated system servers: config is read-only, the toggle is not. */
   is_system: boolean;
+  /**
+   * Whether Connect is worth offering — a structural answer (remote + has a
+   * URL), not a probe. Discovering whether a server *really* speaks OAuth
+   * costs two fetches, so a server that turns out not to says so on click.
+   */
+  supports_oauth: boolean;
+  /** Whether this user has completed an authorization for this server. */
+  oauth_connected: boolean;
   user: number | null;
   created_at: string;
   updated_at: string;
@@ -211,6 +233,37 @@ export const mcpService = {
   async validateCredentials(id: number): Promise<{ ok: boolean; errors: string[] }> {
     const response = await apiClient.get<{ ok: boolean; errors: string[] }>(
       `/mcp/servers/${id}/validate_credentials/`
+    );
+    return response.data;
+  },
+
+  /**
+   * Begin an OAuth authorization for a remote server.
+   *
+   * Returns the provider URL to send the user to. Discovery, dynamic client
+   * registration and PKCE all happen server-side before this resolves, so a
+   * server that cannot be connected fails here rather than after a round trip
+   * through the browser.
+   */
+  async oauthInit(id: number, redirectUri: string): Promise<{ url: string }> {
+    const response = await apiClient.get<{ url: string }>(
+      `/mcp/servers/${id}/oauth/init/`,
+      { params: { redirect_uri: redirectUri } },
+    );
+    return response.data;
+  },
+
+  /** Hand back the code the provider redirected with. */
+  async oauthCallback(id: number, code: string, state: string): Promise<{ connected: boolean }> {
+    const response = await apiClient.post<{ connected: boolean }>(
+      `/mcp/servers/${id}/oauth/callback/`, { code, state },
+    );
+    return response.data;
+  },
+
+  async oauthDisconnect(id: number): Promise<{ connected: boolean }> {
+    const response = await apiClient.post<{ connected: boolean }>(
+      `/mcp/servers/${id}/oauth/disconnect/`, {},
     );
     return response.data;
   },

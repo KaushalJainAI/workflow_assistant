@@ -33,6 +33,13 @@ export interface RunStatusEvent {
   type: typeof RUN_STATUS_EVENT;
   status: RunStatus;
   error?: string;
+  /**
+   * This is a synthetic frame the client injects into the same stream as the
+   * server's, so it has to be assignable to `SseEvent`. Without the index
+   * signature the `RunFrame` union does not discriminate — `SseEvent.type` is
+   * an open `string`, so TS cannot rule this member out on a `type` check.
+   */
+  [key: string]: unknown;
 }
 
 export type RunFrame = SseEvent | RunStatusEvent;

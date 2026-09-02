@@ -25,25 +25,58 @@ export type OverlapPolicy = 'skip' | 'queue' | 'cancel';
  */
 export type FireOutcome =
   | 'fired'
+  | 'queued'
+  | 'dropped'
   | 'skipped'
   | 'late'
   | 'busy'
+  | 'waiting'
+  | 'expired'
+  | 'stopped'
   | 'refused'
   | 'failed';
+
+/** Where a schedule's cron came from, and therefore what may overwrite it. */
+export type TriggerOrigin = 'builder' | 'manual';
 
 export interface Trigger {
   id: number;
   subagent: number;
   agent_name: string;
+  /**
+   * Whether the agent may run unattended. A schedule on an agent without it is
+   * refused at every firing, so the editor can say so up front instead of
+   * leaving the user to infer it from five failures and a self-disabled row.
+   */
+  agent_allows_unattended: boolean;
   mode: TriggerMode;
   /** Mode-specific. For schedules this carries `{ cron }`. */
   config: { cron?: string; event?: string; [k: string]: unknown };
+  /** The cron, read back out of `config` — `cron` itself is write-only. */
+  schedule_cron: string;
+  /** IANA zone the cron fields are read in. `next_due_at` is still UTC. */
+  timezone: string;
+  /** What the user calls this schedule; an agent may have several. */
+  name: string;
   goal: string;
   enabled: boolean;
   overlap: OverlapPolicy;
+  origin: TriggerOrigin;
+  /** Optional live window. Nulls mean "from now" and "for ever". */
+  starts_at: string | null;
+  ends_at: string | null;
   last_fired_at: string | null;
   next_due_at: string | null;
+  /** Set when `overlap: 'queue'` deferred a firing that is still owed. */
+  queued_for: string | null;
   consecutive_failures: number;
+  /** The sweep's own word for what happened last time, and why. */
+  last_outcome: FireOutcome | '';
+  last_error: string;
+  /** The cron in words, as the server reads it. */
+  description: string;
+  /** The next few firings, ISO, already narrowed by the window. */
+  upcoming: string[];
   /** Only ever populated for webhook triggers, and only for the owner. */
   webhook_url: string | null;
   created_at: string;
@@ -55,9 +88,29 @@ export interface TriggerInput {
   mode: TriggerMode;
   /** Write-only on the server; it lands in `config.cron`. */
   cron?: string;
+  timezone?: string;
+  name?: string;
   goal?: string;
   enabled?: boolean;
   overlap?: OverlapPolicy;
+  starts_at?: string | null;
+  ends_at?: string | null;
+}
+
+/** What `/triggers/preview/` answers: the schedule as the sweep reads it. */
+export interface SchedulePreview {
+  valid: boolean;
+  error: string;
+  description: string;
+  upcoming: string[];
+}
+
+export interface PreviewInput {
+  cron: string;
+  timezone?: string;
+  count?: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
 }
 
 export interface RunNowResult {
@@ -66,9 +119,30 @@ export interface RunNowResult {
 }
 
 const triggersService = {
-  list: async (): Promise<Trigger[]> => {
-    const { data } = await apiClient.get<Trigger[]>('/orchestrator/triggers/');
+  /** Every trigger the caller owns, or one agent's when `agentId` is given. */
+  list: async (agentId?: number): Promise<Trigger[]> => {
+    const { data } = await apiClient.get<Trigger[]>('/orchestrator/triggers/', {
+      params: agentId ? { agent: agentId } : undefined,
+    });
+    // `asArray` because the list answers a bare array normally and an object
+    // with `results` when it hits its cap.
     return asArray<Trigger>(data);
+  },
+
+  /**
+   * What a cron expression means, before it is saved.
+   *
+   * Answers 200 with `valid: false` for a bad expression, so a field the user
+   * is still typing in does not produce an error per keystroke. Deliberately
+   * the server's reading rather than the client's: `lib/cron.ts` renders a
+   * draft instantly, but the only reading that matters is the one the sweep
+   * will act on.
+   */
+  preview: async (input: PreviewInput): Promise<SchedulePreview> => {
+    const { data } = await apiClient.post<SchedulePreview>(
+      '/orchestrator/triggers/preview/', input,
+    );
+    return data;
   },
 
   create: async (input: TriggerInput): Promise<Trigger> => {

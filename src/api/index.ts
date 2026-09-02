@@ -65,7 +65,17 @@ export {
   type Trigger,
   type TriggerInput,
   type TriggerMode,
+  type TriggerOrigin,
   type OverlapPolicy,
   type FireOutcome,
   type RunNowResult,
+  type SchedulePreview,
+  type PreviewInput,
 } from './triggers';
+export {
+  default as toolsService,
+  type ToolEntry,
+  type ToolCategory,
+  type ToolsCatalogue,
+  type ToolUsage,
+} from './tools';

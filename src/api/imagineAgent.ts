@@ -4,7 +4,7 @@ export interface ImagineIntent {
   type: 'image' | 'video' | 'audio';
   model: string | null;
   prompt: string;
-  params: Record<string, any>;
+  params: Record<string, unknown>;
   confidence: number;
   missing_required: string[];
   clarifying_question: string | null;
@@ -83,4 +83,10 @@ export const imagineAgent = {
 
   getConversation: (id: number) =>
     apiClient.get<ImagineConversation>(`/imagine/conversations/${id}/`).then(r => r.data),
+
+  deleteConversation: (id: number) =>
+    apiClient.delete(`/imagine/conversations/${id}/`).then(() => undefined),
+
+  updateConversation: (id: number, patch: Partial<Pick<ImagineConversation, 'title'>>) =>
+    apiClient.patch<ImagineConversation>(`/imagine/conversations/${id}/`, patch).then(r => r.data),
 };

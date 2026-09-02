@@ -12,16 +12,20 @@ import {
   Shield,
   Brain,
   Search,
-  ExternalLink
+  ExternalLink,
+  type LucideIcon,
 } from 'lucide-react';
 import { credentialsService, type CredentialType, type Credential } from '../../api/credentials';
 import { handleApiError } from '../../api/client';
 import Select from '../ui/Select';
 
 import { toast } from 'sonner';
+import { apiErrorMessage } from '../../lib/apiError';
 
 // Icon mapper
-const IconMap: Record<string, any> = {
+// Keyed by the `icon` string the backend stores, so a new credential type
+// is a fixture row rather than a code change here.
+const IconMap: Record<string, LucideIcon> = {
   'Mail': Mail,
   'Database': Database,
   'MessageSquare': MessageSquare,
@@ -207,11 +211,9 @@ export default function CredentialModal({
 
       if (onSave) onSave(result);
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Save failed', err);
-      // Try to extract error message
-      const msg = err.response?.data?.error || err.message || 'Failed to save credential';
-      setError(msg);
+      setError(apiErrorMessage(err, 'Failed to save credential'));
     } finally {
       setSaving(false);
     }

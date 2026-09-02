@@ -1,25 +1,32 @@
 /**
  * Overview — what the AI has been doing, from above.
  *
- * This replaces the old live monitor. The difference is the ordering: that page
- * was ordered by *time* — a feed you had to be watching for it to be worth
- * anything, which is exactly the wrong shape for work that runs while you are
- * asleep. This one is ordered by *whether it needs a human*, so the answer is
- * already here whether or not you were looking.
+ * This replaces the old live monitor and now also absorbs Inbox functionally.
+ * The difference is the ordering: the old feed was ordered by *time* — a feed
+ * you had to be watching for it to be worth anything, which is exactly the wrong
+ * shape for work that runs while you are asleep. This one is ordered by *whether
+ * it needs a human*, so the answer is already here whether or not you were looking.
  *
  * Four questions, in the order they cost you money:
- *   1. Is anything blocked on me?      — a stalled agent does nothing, silently
+ *   1. Is anything blocked on me?      — stalled HITL requests (Inbox queue inline)
  *   2. How much ran without me?        — the number that says this is agentic
  *   3. Is it healthy, and trending?    — volume + completion over the window
  *   4. What is it reaching for, and    — capability mix, repeat failures,
  *      where is it going wrong?          busiest workflows
+ *
+ * /inbox now redirects to /overview — deep links stay valid.
+ *
+ * Tool / Connector / Plugin vocabulary (see Tools page):
+ *  Tool      = callable function the model can invoke (Tools library)
+ *  Connector = credential that lets a plugin act as you (Credentials)
+ *  Plugin    = external MCP pack that brings mcp__* tools at runtime (Connections)
  *
  * Everything is scoped by the single window control in the header; no card
  * carries its own filter.
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHitlPending } from '../hooks/useHitlPending';
 import {
   Radar,
@@ -33,13 +40,21 @@ import {
   ChevronRight,
   Repeat,
   Wrench,
+  ShieldQuestion,
+  HelpCircle,
+  AlertTriangle,
+  Clock,
+  Check,
+  X,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   logsService,
   type DailyTrendPoint,
   type ExecutionLog,
   type HITLRequest,
 } from '../api';
+import { orchestratorService } from '../api';
 import { usePersistedState } from '../hooks/usePersistedState';
 import PageHeader from '../components/layout/PageHeader';
 import { cn } from '../lib/utils';
@@ -71,6 +86,29 @@ function waitedFor(iso: string) {
   if (mins < 1440) return `${Math.floor(mins / 60)}h`;
   return `${Math.floor(mins / 1440)}d`;
 }
+
+function timeAgo(iso: string) {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+function timeLeft(req: HITLRequest) {
+  if (!req.timeout_seconds) return null;
+  const deadline = new Date(req.created_at).getTime() + req.timeout_seconds * 1000;
+  const mins = Math.floor((deadline - Date.now()) / 60000);
+  if (mins <= 0) return 'expired';
+  if (mins < 60) return `${mins}m left`;
+  return `${Math.floor(mins / 60)}h left`;
+}
+
+const typeConfig = {
+  approval: { icon: ShieldQuestion, label: 'Needs your approval' },
+  clarification: { icon: HelpCircle, label: 'Needs an answer' },
+  error: { icon: AlertTriangle, label: 'Failed — needs a decision' },
+} as const;
 
 /**
  * Collapse an error into something countable: strip ids, numbers and quoted
@@ -112,7 +150,6 @@ function StatTile({
         />
         <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
       </div>
-      {/* Proportional figures: tabular-nums makes a standalone number look loose. */}
       <div className="text-[28px] font-semibold leading-none tracking-tight">{value}</div>
       {sub && <p className="text-[12px] text-muted-foreground mt-1.5">{sub}</p>}
     </div>
@@ -131,18 +168,12 @@ function ActivityChart({ points }: { points: DailyTrendPoint[] }) {
   const [hover, setHover] = useState<number | null>(null);
   const peak = Math.max(...points.map((p) => p.count), 0);
   const scale = Math.max(1, peak);
-  // Label roughly six ticks, whatever the window length.
   const every = Math.max(1, Math.ceil(points.length / 6));
   const peakIndex = points.findIndex((p) => p.count === peak);
 
   return (
     <div className="relative">
-      {/* plot + x-axis band sized together, so the axis is never cropped.
-          pt-4 reserves room for the peak label, which is absolutely placed so a
-          full-height column cannot push itself out of the container. */}
       <div className="flex items-end gap-[2px] h-[168px] pt-4 pb-6 relative">
-        {/* a single recessive hairline at the baseline; the peak is directly
-            labelled instead of carrying a top gridline that repeats it */}
         <div className="absolute left-0 right-0 bottom-6 border-b border-border" aria-hidden />
 
         {points.map((p, i) => {
@@ -162,7 +193,6 @@ function ActivityChart({ points }: { points: DailyTrendPoint[] }) {
               className="flex-1 min-w-0 h-full flex flex-col justify-end items-center group relative outline-none"
               aria-label={`${p.date ? shortDate(p.date) : 'unknown'}: ${p.count} runs, ${p.success} completed`}
             >
-              {/* hit target fills the band; the mark itself stays thin */}
               <span
                 className={cn(
                   'absolute inset-0 rounded-sm transition-colors',
@@ -174,8 +204,6 @@ function ActivityChart({ points }: { points: DailyTrendPoint[] }) {
                 className="relative w-full max-w-[24px] flex flex-col justify-end"
                 style={{ height: `${total}%` }}
               >
-                {/* the one direct label: the extreme, out of flow so it never
-                    steals height from its own column */}
                 {i === peakIndex && peak > 0 && (
                   <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground tabular-nums">
                     {peak}
@@ -191,15 +219,13 @@ function ActivityChart({ points }: { points: DailyTrendPoint[] }) {
                   <span
                     className={cn(
                       'block w-full bg-chart-work',
-                      failed > 0 ? 'mt-[2px]' : 'rounded-t' /* 2px surface gap, never a border */
+                      failed > 0 ? 'mt-[2px]' : 'rounded-t'
                     )}
                     style={{ height: `${(donePct / Math.max(total, 0.001)) * 100}%` }}
                   />
                 )}
               </span>
               {i % every === 0 && p.date && (
-                /* below the baseline, in the reserved axis band — bottom-0 puts
-                   it inside the column, where the fill swallows it */
                 <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground whitespace-nowrap">
                   {shortDate(p.date)}
                 </span>
@@ -211,7 +237,6 @@ function ActivityChart({ points }: { points: DailyTrendPoint[] }) {
 
       {hover !== null && points[hover] && (
         <div
-          /* rides the hovered column, clamped so the ends stay on-card */
           className="absolute top-0 -translate-x-1/2 z-10 pointer-events-none bg-popover border border-border rounded-lg shadow-md px-3 py-2 text-[12px] whitespace-nowrap"
           style={{
             left: `${Math.min(88, Math.max(12, ((hover + 0.5) / points.length) * 100))}%`,
@@ -225,9 +250,9 @@ function ActivityChart({ points }: { points: DailyTrendPoint[] }) {
             Completed
             <span className="ml-auto text-foreground tabular-nums">{points[hover].success}</span>
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="flex items-center gap-2 text-muted-foreground">
             <span className="w-2 h-2 rounded-sm bg-chart-fail" />
-            Didn't finish
+            Failed
             <span className="ml-auto text-foreground tabular-nums">
               {Math.max(0, points[hover].count - points[hover].success)}
             </span>
@@ -247,7 +272,7 @@ function ActivityTable({ points }: { points: DailyTrendPoint[] }) {
             <th className="font-medium py-1">Day</th>
             <th className="font-medium py-1 text-right">Runs</th>
             <th className="font-medium py-1 text-right">Completed</th>
-            <th className="font-medium py-1 text-right">Didn't finish</th>
+            <th className="font-medium py-1 text-right">Failed</th>
           </tr>
         </thead>
         <tbody className="tabular-nums">
@@ -272,6 +297,8 @@ export default function Overview() {
     validate: (v): v is Window => WINDOWS.includes(v as never),
   });
   const [asTable, setAsTable] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const hold = { placeholderData: <T,>(prev: T) => prev };
 
@@ -298,10 +325,22 @@ export default function Overview() {
     ...hold,
   });
 
+  const respond = useMutation({
+    mutationFn: ({ id, action, response }: { id: string; action: 'approve' | 'reject' | 'respond'; response?: string }) =>
+      orchestratorService.respondToHITL(id, { action, response }),
+    onSuccess: () => {
+      toast.success('Response sent');
+      setSelectedId(null);
+      queryClient.invalidateQueries({ queryKey: ['hitl'] });
+      queryClient.invalidateQueries({ queryKey: ['nav'] });
+      queryClient.invalidateQueries({ queryKey: ['overview'] });
+    },
+    onError: () => toast.error('Could not send that response'),
+  });
+
   const summary = stats?.summary;
   const trend = stats?.daily_trend ?? [];
 
-  /** Share of runs nobody had to start by hand. */
   const autonomy = useMemo(() => {
     const by = stats?.by_trigger ?? {};
     const total = Object.values(by).reduce((a, b) => a + b, 0);
@@ -310,7 +349,6 @@ export default function Overview() {
     return { pct: Math.round((auto / total) * 100), auto, manual: total - auto, total };
   }, [stats]);
 
-  /** Repeat causes, not repeat log lines. */
   const repeats = useMemo(() => {
     const runs: ExecutionLog[] = failures?.results ?? [];
     const buckets = new Map<string, { sample: string; count: number; workflows: Set<string>; last: string }>();
@@ -334,7 +372,6 @@ export default function Overview() {
     return [...buckets.values()].sort((a, b) => b.count - a.count).slice(0, 5);
   }, [failures]);
 
-  /** Tool mix. Past eight, the tail folds into one row rather than new hues. */
   const capabilities = useMemo(() => {
     const all = costs?.by_tool ?? [];
     const top = all.slice(0, 8);
@@ -345,6 +382,8 @@ export default function Overview() {
   const oldestWait = pending.length
     ? pending.reduce((a, b) => (a.created_at < b.created_at ? a : b))
     : null;
+
+  const selected = pending.find((r) => r.request_id === selectedId) ?? pending[0] ?? null;
 
   if (isLoading && !stats) {
     return (
@@ -367,7 +406,6 @@ export default function Overview() {
             : `${summary!.total_executions} run${summary!.total_executions === 1 ? '' : 's'} in the last ${days} days`
         }
       >
-        {/* One filter row, above everything it scopes. */}
         <div className="flex gap-2">
           {WINDOWS.map((w) => (
             <button
@@ -389,15 +427,14 @@ export default function Overview() {
       <div
         className={cn(
           'flex-1 overflow-y-auto p-4 md:p-6 space-y-6 transition-opacity',
-          isFetching && 'opacity-60' /* hold the last render; never flash a skeleton */
+          isFetching && 'opacity-60'
         )}
       >
-        {nothingYet ? (
+        {nothingYet && pending.length === 0 ? (
           <div className="text-center py-20">
-            <h3 className="text-lg font-semibold mb-1">Nothing to look at yet</h3>
+            <h3 className="text-lg font-semibold mb-1">No activity yet</h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Once an agent or workflow runs, this page shows how much of it happened without
-              you, what it reached for, and where it got stuck.
+              Once your agents run, you’ll see what ran automatically, which tools they used, and where they needed your help.
             </p>
             <Link to="/agents" className="inline-block mt-4 text-sm text-primary hover:underline">
               Build your first agent
@@ -405,41 +442,163 @@ export default function Overview() {
           </div>
         ) : (
           <>
-            {/* 1 — blocked work first: it is the only state that costs you time
-                   while producing nothing. */}
-            {pending.length > 0 && (
-              <section className="border border-primary-line bg-primary-subtle rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
+            {/* 1 — blocked work: now the full Inbox inline, not a teaser card.
+                   This is the only state that costs you time while producing nothing,
+                   and it now lives where the analytics already are — one surface. */}
+            {pending.length > 0 ? (
+              <section className="border border-primary-line bg-card rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-primary-subtle">
                   <Hand className="w-4 h-4 text-primary" />
                   <h2 className="text-sm font-semibold text-primary">
-                    {pending.length} thing{pending.length === 1 ? '' : 's'} stopped, waiting on you
+                    {pending.length} {pending.length === 1 ? 'request needs' : 'requests need'} your attention
                   </h2>
                   {oldestWait && (
-                    <span className="text-[12px] text-primary/80">
-                      · longest {waitedFor(oldestWait.created_at)}
-                    </span>
+                    <span className="text-[12px] text-primary/80">· longest {waitedFor(oldestWait.created_at)}</span>
                   )}
-                  <Link
-                    to="/inbox"
-                    className="ml-auto text-[13px] font-medium text-primary hover:underline flex items-center gap-1"
-                  >
-                    Open inbox <ChevronRight className="w-3.5 h-3.5" />
+                  <Link to="/runs" className="ml-auto text-[12px] text-primary hover:underline flex items-center gap-1">
+                    All runs <ChevronRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
-                <div className="space-y-1.5">
-                  {pending.slice(0, 3).map((r: HITLRequest) => (
-                    <Link
-                      key={r.request_id}
-                      to="/inbox"
-                      className="flex items-center gap-3 bg-card border border-border rounded px-3 py-2 hover:bg-secondary transition-colors"
-                    >
-                      <span className="text-[13px] font-medium truncate flex-1">{r.title}</span>
-                      <span className="text-[11px] text-muted-foreground shrink-0">
-                        {r.workflow_name ?? 'agent'} · {waitedFor(r.created_at)}
-                      </span>
-                    </Link>
-                  ))}
+                <div className="flex min-h-[280px] max-h-[420px]">
+                  {/* Queue */}
+                  <div className="w-full lg:w-[380px] border-r border-border overflow-y-auto shrink-0">
+                    {pending.map((req) => {
+                      const cfg = typeConfig[req.request_type as keyof typeof typeConfig] ?? typeConfig.approval;
+                      const Icon = cfg.icon;
+                      const isError = req.request_type === 'error';
+                      const active = selected?.request_id === req.request_id;
+                      return (
+                        <button
+                          key={req.request_id}
+                          onClick={() => setSelectedId(req.request_id)}
+                          className={cn(
+                            'w-full text-left px-4 py-3 border-b border-border transition-colors relative',
+                            active ? 'bg-primary-subtle' : 'hover:bg-secondary'
+                          )}
+                        >
+                          <span className={cn('absolute left-0 top-0 bottom-0 w-[3px]', isError ? 'bg-destructive' : 'bg-primary')} />
+                          <div className="flex items-center gap-2 mb-1">
+                            <Icon className={cn('w-4 h-4', isError ? 'text-destructive' : 'text-primary')} />
+                            <span className={cn('text-[13px] font-semibold', isError ? 'text-destructive' : 'text-primary')}>
+                              {cfg.label}
+                            </span>
+                            <span className="ml-auto text-[11px] text-muted-foreground">{timeAgo(req.created_at)}</span>
+                          </div>
+                          <p className="text-sm font-medium text-foreground mb-1 line-clamp-1">{req.title}</p>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            {req.workflow_name && <span className="truncate">{req.workflow_name}</span>}
+                            {timeLeft(req) && (
+                              <span className="flex items-center gap-1 shrink-0">
+                                <Clock className="w-3 h-3" />
+                                {timeLeft(req)}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Detail */}
+                  <div className="hidden lg:flex flex-1 flex-col overflow-y-auto">
+                    {!selected ? (
+                      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                        Pick a request to see what the agent wants to do
+                      </div>
+                    ) : (
+                      <div className="p-5 max-w-2xl">
+                        <h2 className="text-lg font-semibold mb-1">{selected.title}</h2>
+                        {selected.workflow_name && (
+                          <p className="text-sm text-muted-foreground mb-3 flex items-center gap-1">
+                            {selected.workflow_name}
+                            <ChevronRight className="w-3 h-3" />
+                            step {selected.node_id}
+                          </p>
+                        )}
+                        <div className="bg-card border border-border rounded p-4 mb-4">
+                          <p className="text-[14px] leading-relaxed text-foreground whitespace-pre-wrap">{selected.message}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(selected.options?.length ? selected.options : ['Approve', 'Reject']).map((opt, i) => (
+                            <button
+                              key={opt}
+                              disabled={respond.isPending}
+                              onClick={() =>
+                                respond.mutate({
+                                  id: selected.request_id,
+                                  action: i === 0 ? 'approve' : 'respond',
+                                  response: opt,
+                                })
+                              }
+                              className={cn(
+                                'px-4 py-2 text-sm rounded border transition-colors disabled:opacity-50',
+                                i === 0
+                                  ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90 font-semibold'
+                                  : 'bg-card border-border hover:bg-secondary'
+                              )}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                          <button
+                            disabled={respond.isPending}
+                            onClick={() => respond.mutate({ id: selected.request_id, action: 'reject' })}
+                            className="px-4 py-2 text-sm rounded border border-border hover:bg-secondary text-muted-foreground flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            <X className="w-4 h-4" />
+                            Stop this run
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-3">Nothing has left your account. This step runs only after you answer.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
+                {/* Mobile fallback: show selected below queue */}
+                {selected && (
+                  <div className="lg:hidden border-t border-border p-4">
+                    <h3 className="text-sm font-semibold mb-2">{selected.title}</h3>
+                    <p className="text-[14px] leading-relaxed bg-card border border-border rounded p-3 mb-3 whitespace-pre-wrap">{selected.message}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(selected.options?.length ? selected.options : ['Approve', 'Reject']).map((opt, i) => (
+                        <button
+                          key={opt}
+                          disabled={respond.isPending}
+                          onClick={() =>
+                            respond.mutate({
+                              id: selected.request_id,
+                              action: i === 0 ? 'approve' : 'respond',
+                              response: opt,
+                            })
+                          }
+                          className={cn(
+                            'px-3 py-1.5 text-sm rounded border disabled:opacity-50',
+                            i === 0 ? 'bg-primary text-primary-foreground border-primary font-semibold' : 'bg-card border-border'
+                          )}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                      <button
+                        disabled={respond.isPending}
+                        onClick={() => respond.mutate({ id: selected.request_id, action: 'reject' })}
+                        className="px-3 py-1.5 text-sm rounded border border-border text-muted-foreground flex items-center gap-1.5"
+                      >
+                        <X className="w-3 h-3" /> Stop
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            ) : (
+              <section className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">You're clear — nothing is waiting on you</p>
+                  <p className="text-[12px] text-muted-foreground">When an agent reaches a step it isn't allowed to take on its own, it stops and asks here.</p>
+                </div>
+                <Link to="/runs" className="ml-auto text-[12px] text-primary hover:underline hidden sm:block">See runs →</Link>
               </section>
             )}
 
@@ -448,27 +607,17 @@ export default function Overview() {
               <section className="bg-card border border-border rounded-lg p-5">
                 <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-8">
                   <div className="shrink-0">
-                    <p className="text-[13px] font-medium text-muted-foreground mb-1">
-                      Ran without you
-                    </p>
-                    <div className="text-[52px] font-semibold leading-none tracking-tight">
-                      {autonomy.pct}%
-                    </div>
+                    <p className="text-[13px] font-medium text-muted-foreground mb-1">Ran without you</p>
+                    <div className="text-[52px] font-semibold leading-none tracking-tight">{autonomy.pct}%</div>
                   </div>
                   <div className="flex-1 min-w-0 pb-1">
-                    {/* meter: fill and track are steps of the same ramp, so the
-                        state reads across the whole bar */}
                     <div className="h-2 rounded-full bg-agent-subtle overflow-hidden">
-                      <span
-                        className="block h-full rounded-full bg-chart-work"
-                        style={{ width: `${autonomy.pct}%` }}
-                      />
+                      <span className="block h-full rounded-full bg-chart-work" style={{ width: `${autonomy.pct}%` }} />
                     </div>
                     <p className="text-[12px] text-muted-foreground mt-2 leading-relaxed">
                       <span className="tabular-nums text-foreground">{autonomy.auto}</span> run
-                      {autonomy.auto === 1 ? '' : 's'} started from a schedule, webhook or API call.{' '}
-                      <span className="tabular-nums text-foreground">{autonomy.manual}</span> you
-                      started by hand.
+                      {autonomy.auto === 1 ? '' : 's'} started automatically (schedules or connected apps).{' '}
+                      <span className="tabular-nums text-foreground">{autonomy.manual}</span> you started yourself.
                     </p>
                   </div>
                 </div>
@@ -481,7 +630,7 @@ export default function Overview() {
                 icon={PlayCircle}
                 label="Running"
                 value={String(stats?.by_status?.running ?? 0)}
-                sub="in flight right now"
+                sub="running now"
               />
               <StatTile
                 icon={Hand}
@@ -492,7 +641,7 @@ export default function Overview() {
               />
               <StatTile
                 icon={XCircle}
-                label="Didn't finish"
+                label="Failed"
                 value={String(summary!.failed)}
                 sub={`of ${summary!.total_executions} runs`}
                 tone={summary!.failed ? 'bad' : undefined}
@@ -509,7 +658,6 @@ export default function Overview() {
             <section className="bg-card border border-border rounded-lg p-5">
               <div className="flex items-center gap-3 mb-5">
                 <h2 className="text-sm font-semibold">Activity</h2>
-                {/* legend is always present for two series */}
                 <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-sm bg-chart-work" />
@@ -517,7 +665,7 @@ export default function Overview() {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-sm bg-chart-fail" />
-                    Didn't finish
+                    Failed
                   </span>
                 </div>
                 <button
@@ -530,9 +678,7 @@ export default function Overview() {
                 </button>
               </div>
               {trend.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground py-8 text-center">
-                  No runs in this window.
-                </p>
+                <p className="text-[13px] text-muted-foreground py-8 text-center">No runs in this window.</p>
               ) : asTable ? (
                 <ActivityTable points={trend} />
               ) : (
@@ -541,14 +687,13 @@ export default function Overview() {
             </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 5 — capability mix. One series, one hue, so no legend. */}
               <section className="bg-card border border-border rounded-lg p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <Wrench className="w-4 h-4 text-muted-foreground" />
-                  <h2 className="text-sm font-semibold">What it reached for</h2>
+                  <h2 className="text-sm font-semibold">Most used tools</h2>
                 </div>
                 {capabilities.length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">No steps recorded yet.</p>
+                  <p className="text-[13px] text-muted-foreground">No activity recorded yet.</p>
                 ) : (
                   <div className="space-y-2">
                     {capabilities.map((c) => {
@@ -574,7 +719,6 @@ export default function Overview() {
                 )}
               </section>
 
-              {/* 6 — causes, not lines */}
               <section className="bg-card border border-border rounded-lg p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <Repeat className="w-4 h-4 text-muted-foreground" />
@@ -584,9 +728,7 @@ export default function Overview() {
                   </Link>
                 </div>
                 {repeats.length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">
-                    Nothing has failed more than once. Good sign.
-                  </p>
+                  <p className="text-[13px] text-muted-foreground">Nothing has failed more than once. Good sign.</p>
                 ) : (
                   <div className="space-y-2.5">
                     {repeats.map((r) => (
@@ -608,14 +750,13 @@ export default function Overview() {
               </section>
             </div>
 
-            {/* 7 — where the work actually goes */}
             {costs?.by_workflow?.length ? (
               <section className="bg-card border border-border rounded-lg p-5">
-                <h2 className="text-sm font-semibold mb-4">Busiest workflows</h2>
+                <h2 className="text-sm font-semibold mb-4">Most active agents</h2>
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="text-[11px] text-muted-foreground text-left">
-                      <th className="font-medium pb-2">Workflow</th>
+                      <th className="font-medium pb-2">Agent</th>
                       <th className="font-medium pb-2 w-28">Runs</th>
                       <th className="font-medium pb-2 text-right w-20">Tokens</th>
                       <th className="font-medium pb-2 text-right w-20">Credits</th>
@@ -626,26 +767,18 @@ export default function Overview() {
                       const top = costs.by_workflow[0].executions || 1;
                       return (
                         <tr key={w.workflow_id} className="border-t border-border">
-                          <td className="py-2 pr-3 truncate max-w-0">
-                            {w.workflow_name}
-                          </td>
+                          <td className="py-2 pr-3 truncate max-w-0">{w.workflow_name}</td>
                           <td className="py-2">
                             <div className="flex items-center gap-2">
                               <span
                                 className="block h-2 rounded-r bg-chart-work"
                                 style={{ width: `${Math.max(6, (w.executions / top) * 72)}px` }}
                               />
-                              <span className="text-[12px] text-muted-foreground tabular-nums">
-                                {w.executions}
-                              </span>
+                              <span className="text-[12px] text-muted-foreground tabular-nums">{w.executions}</span>
                             </div>
                           </td>
-                          <td className="py-2 text-right tabular-nums text-muted-foreground">
-                            {compact(w.tokens ?? 0)}
-                          </td>
-                          <td className="py-2 text-right tabular-nums text-muted-foreground">
-                            {compact(w.credits ?? 0)}
-                          </td>
+                          <td className="py-2 text-right tabular-nums text-muted-foreground">{compact(w.tokens ?? 0)}</td>
+                          <td className="py-2 text-right tabular-nums text-muted-foreground">{compact(w.credits ?? 0)}</td>
                         </tr>
                       );
                     })}

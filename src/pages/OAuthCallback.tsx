@@ -15,8 +15,38 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { credentialsService } from '../api/credentials';
+import { mcpService } from '../api/mcp';
 
 type Phase = 'working' | 'done' | 'failed';
+
+/**
+ * Which flow this popup is finishing.
+ *
+ * The provider owns the redirect URL, so the opener cannot add a marker to it —
+ * it records one here before opening the popup instead. `localStorage` rather
+ * than `sessionStorage`: a popup inherits only a *copy* of session storage, and
+ * only in some browsers, so a value written by the opener after `window.open`
+ * would not be visible here.
+ *
+ * Consumed exactly once, and cleared even when the exchange fails: a stale key
+ * would send the next Google connection to the MCP endpoint.
+ */
+const MCP_FLOW_KEY = 'oauth.mcp_server_id';
+
+function takePendingMcpServerId(): number | null {
+  try {
+    const raw = window.localStorage.getItem(MCP_FLOW_KEY);
+    window.localStorage.removeItem(MCP_FLOW_KEY);
+    const id = Number(raw);
+    return raw && Number.isFinite(id) ? id : null;
+  } catch {
+    // Storage can be unavailable (private mode, blocked site data). Falling
+    // back to the credential flow is the safer default: it is the one that
+    // existed before, and an MCP connect simply reports a failure the user
+    // can retry.
+    return null;
+  }
+}
 
 export default function OAuthCallback() {
   const [searchParams] = useSearchParams();
@@ -33,6 +63,10 @@ export default function OAuthCallback() {
     const code = searchParams.get('code');
     const state = searchParams.get('state') ?? undefined;
     const oauthError = searchParams.get('error');
+    // Consumed before any early return: a key left behind by a declined or
+    // malformed authorization would send the *next* Google connection to the
+    // MCP endpoint.
+    const mcpServerId = takePendingMcpServerId();
 
     /**
      * The opener owns the UI; this window only reports back. Targeting our own
@@ -57,24 +91,34 @@ export default function OAuthCallback() {
       fail(
         oauthError === 'access_denied'
           ? 'You declined the permission request.'
-          : `Google reported an error: ${oauthError}`
+          : `The provider reported an error: ${oauthError}`
       );
       return;
     }
 
     if (!code) {
-      fail('Google did not return an authorisation code.');
+      fail('The provider did not return an authorisation code.');
       return;
     }
 
     void (async () => {
       try {
-        await credentialsService.completeGoogleOAuth({
-          code,
-          redirect_uri: `${window.location.origin}/oauth/callback`,
-          state,
-          name: 'Google Account',
-        });
+        if (mcpServerId !== null) {
+          // An MCP server authorization. `state` is required here — it is what
+          // the backend looks the PKCE verifier up by.
+          if (!state) {
+            fail('The provider did not return the expected sign-in state.');
+            return;
+          }
+          await mcpService.oauthCallback(mcpServerId, code, state);
+        } else {
+          await credentialsService.completeGoogleOAuth({
+            code,
+            redirect_uri: `${window.location.origin}/oauth/callback`,
+            state,
+            name: 'Google Account',
+          });
+        }
         setPhase('done');
         report({ type: 'OAUTH_SUCCESS' });
         // Leave the confirmation up briefly so a popup that fails to close is

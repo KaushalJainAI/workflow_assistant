@@ -54,7 +54,7 @@ const FILTERS = ['all', 'completed', 'failed', 'running'] as const;
 const CALLER_LABELS: Record<string, string> = {
   api: 'API',
   chat: 'Chat',
-  orchestrator: 'Delegated',
+  orchestrator: 'By another agent',
   trigger: 'Trigger',
 };
 
@@ -133,14 +133,14 @@ function Turn({ turn, slowest }: { turn: AgentTurn; slowest: number }) {
     <div className="border-l-2 border-border pl-3 py-1">
       <div className="flex items-center gap-2 mb-1">
         <Brain className="w-3.5 h-3.5 text-agent shrink-0" />
-        <span className="text-[12px] font-semibold">Turn {turn.index}</span>
+        <span className="text-[12px] font-semibold">Step {turn.index}</span>
         {turn.model_id && (
           <span className="text-[11px] text-muted-foreground truncate" title={turn.model_id}>
             {turn.model_id}
           </span>
         )}
         <span className="text-[11px] text-muted-foreground ml-auto tabular-nums">
-          {turn.tokens.toLocaleString()} tok · {ms(turn.duration_ms)}
+          {turn.tokens.toLocaleString()} tokens · {ms(turn.duration_ms)}
         </span>
       </div>
 
@@ -170,15 +170,15 @@ function Turn({ turn, slowest }: { turn: AgentTurn; slowest: number }) {
 }
 
 /** Who delegated this run, and what they were thinking when they did. */
-function DelegatedBanner({ detail }: { detail: { delegated_by: NonNullable<import('../api').ExecutionDetail['delegated_by']> } }) {
+function OrchestratorBanner({ detail }: { detail: { delegated_by: NonNullable<import('../api').ExecutionDetail['delegated_by']> } }) {
   const by = detail.delegated_by;
   return (
     <div className="mb-3 px-3 py-2 rounded bg-agent-subtle border border-agent-line">
       <div className="flex items-center gap-2 text-[12px] mb-1">
         <GitBranch className="w-3.5 h-3.5 text-agent shrink-0" />
         <span>
-          Delegated by <span className="font-semibold">{by.workflow_name ?? 'a deleted agent'}</span>
-          {by.turn_index != null && ` on turn ${by.turn_index}`}
+          Started by <span className="font-semibold">{by.workflow_name ?? 'a deleted agent'}</span>
+          {by.turn_index != null && ` — step ${by.turn_index}`}
         </span>
         <Link
           to={`/runs?run=${by.execution_id}`}
@@ -212,14 +212,14 @@ function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
   return (
     <div className="space-y-3">
       {detail.delegated_by && (
-        <DelegatedBanner detail={{ delegated_by: detail.delegated_by }} />
+        <OrchestratorBanner detail={{ delegated_by: detail.delegated_by }} />
       )}
 
       {detail.revision && (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
           <Settings2 className="w-3.5 h-3.5 shrink-0" />
           <span>
-            Ran on configuration <span className="font-semibold">rev {detail.revision.number}</span>
+            Ran on configuration <span className="font-semibold">v{detail.revision.number}</span>
             {detail.revision.summary && ` — ${detail.revision.summary}`}
           </span>
         </div>
@@ -233,7 +233,7 @@ function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
         </div>
       ) : (
         <p className="text-[13px] text-muted-foreground">
-          No turns recorded for this run.
+          No steps recorded for this run.
         </p>
       )}
 
@@ -242,7 +242,7 @@ function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
       {detail.unattributed_steps.length > 0 && (
         <div>
           <p className="text-[12px] text-muted-foreground mb-1">
-            Steps with no recorded turn
+            Other steps
           </p>
           {detail.unattributed_steps.map((step) => (
             <Step key={step.id} step={step} slowest={slowest} />
@@ -327,7 +327,7 @@ export default function Runs() {
           <div className="text-center py-20">
             <h3 className="text-lg font-semibold mb-1">No runs yet</h3>
             <p className="text-sm text-muted-foreground">
-              Executions appear here the moment a workflow starts, whether you triggered it or a schedule did.
+              Runs appear here as soon as they start, whether you started them or a schedule did.
             </p>
           </div>
         ) : (
@@ -343,7 +343,7 @@ export default function Runs() {
                     <ChevronRight className={cn('w-4 h-4 text-muted-foreground shrink-0 transition-transform', open && 'rotate-90')} />
                     <span className="font-medium text-sm flex-1 truncate">{run.workflow_name}</span>
                     {run.is_delegated && (
-                      <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-label="Delegated run" />
+                      <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-label="Started by another agent" />
                     )}
                     <StatusPill status={run.status} />
                     <span className="text-[12px] text-muted-foreground w-24 text-right">{CALLER_LABELS[run.caller] ?? run.trigger_type}</span>
@@ -363,7 +363,7 @@ export default function Runs() {
                       ) : detail ? (
                         <RunDetail detail={detail} />
                       ) : (
-                        <p className="text-[13px] text-muted-foreground">No detail recorded for this run.</p>
+                        <p className="text-[13px] text-muted-foreground">No details recorded for this run.</p>
                       )}
                     </div>
                   )}

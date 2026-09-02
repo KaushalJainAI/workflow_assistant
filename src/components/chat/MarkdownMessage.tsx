@@ -153,6 +153,25 @@ function CodeBlock({
   );
 }
 
+/**
+ * Prop types for the react-markdown overrides below.
+ *
+ * `node` is the mdast node react-markdown hands every override. It was not
+ * destructured out of the anchor override, so with `any` it was being spread
+ * straight onto the DOM `<a>` — React warns about that at runtime. Naming the
+ * props is what made it visible.
+ */
+type MarkdownNode = { node?: unknown };
+type AnchorProps = React.ComponentPropsWithoutRef<'a'> & MarkdownNode;
+type CodeProps = React.ComponentPropsWithoutRef<'code'> & MarkdownNode & {
+  /**
+   * react-markdown dropped `inline` in v9 and this project is on v10, so it is
+   * always undefined and the branch below turns on the language match alone.
+   * Kept because removing it would change which fence renders as a block.
+   */
+  inline?: boolean;
+};
+
 function MarkdownMessage({
   content,
   sources,
@@ -161,7 +180,7 @@ function MarkdownMessage({
 }: MarkdownMessageProps) {
   const components = useMemo(
     () => ({
-      a: ({ href, children, ...props }: any) => {
+      a: ({ node: _node, href, children, ...props }: AnchorProps) => {
         if (href?.startsWith('citation:')) {
           const index = parseInt(href.split(':')[1], 10);
           return <Citation index={index} source={sources?.[index - 1]} variant={variant} />;
@@ -192,7 +211,7 @@ function MarkdownMessage({
           </a>
         );
       },
-      code: ({ node: _node, inline, className: codeClass, children, ...props }: any) => {
+      code: ({ node: _node, inline, className: codeClass, children, ...props }: CodeProps) => {
         const match = /language-(\w+)/.exec(codeClass || '');
         if (!inline && match) {
           return (

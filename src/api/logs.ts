@@ -292,22 +292,25 @@ async listExecutions(params?: {
   // ========== Configuration history ==========
 
 /**
- * Every configuration change to an agent, newest first, with its diff.
- * `truncated` says when the timeline hit its cap — a cut history and a short
- * one must not look alike.
+ * One page of an agent's configuration changes, newest first, with its diff.
+ *
+ * Keyset-paged like the execution list: the history grows for the life of the
+ * agent, so the builder asks for a handful and the history page walks the rest
+ * with `next_cursor`. Only the uncursored first page carries a `count`.
  */
-async listRevisions(agentId: number): Promise<{
-  results: AgentRevision[];
-  count: number;
-  limit: number;
-  truncated: boolean;
-}> {
-  const response = await apiClient.get<{
-    results: AgentRevision[];
-    count: number;
-    limit: number;
-    truncated: boolean;
-  }>(`/logs/agents/${agentId}/revisions/`);
+async listRevisions(
+  agentId: number,
+  params: { limit?: number; cursor?: string | null } = {}
+): Promise<CursorPage<AgentRevision>> {
+  const response = await apiClient.get<CursorPage<AgentRevision>>(
+    `/logs/agents/${agentId}/revisions/`,
+    {
+      params: {
+        ...(params.limit != null ? { limit: params.limit } : {}),
+        ...(params.cursor ? { cursor: params.cursor } : {}),
+      },
+    }
+  );
   return response.data;
 },
 

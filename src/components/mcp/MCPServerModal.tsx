@@ -14,10 +14,14 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { mcpService, type MCPServer, type MCPServerType, type CreateMCPServerData } from '../../api/mcp';
+import {
+  mcpService, isRemoteServerType,
+  type MCPServer, type MCPServerType, type CreateMCPServerData,
+} from '../../api/mcp';
 import { credentialsService, type CredentialType } from '../../api/credentials';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
+import { apiErrorMessage } from '../../lib/apiError';
 
 // LLM provider credential slugs — these are used by the platform's own AI,
 // not by MCP servers, so they should not appear in the MCP credentials picker.
@@ -68,6 +72,12 @@ export default function MCPServerModal({
   // ---- Basic config -------------------------------------------------------
   const [name, setName] = useState('');
   const [type, setType] = useState<MCPServerType>('stdio');
+  // Remote covers both URL transports. The toggle offers "local vs remote"
+  // rather than three buttons, because streamable-HTTP vs deprecated-SSE is not
+  // a choice a user should have to understand: new remote servers are created
+  // as `http`, and an existing `sse` row keeps its type so opening it to edit a
+  // header does not silently migrate the transport underneath it.
+  const isRemote = isRemoteServerType(type);
   const [command, setCommand] = useState('');
   const [url, setUrl] = useState('');
 
@@ -193,7 +203,7 @@ export default function MCPServerModal({
   const buildPayload = (): { data?: CreateMCPServerData; error?: string } => {
     if (!name.trim()) return { error: 'Name is required' };
     if (type === 'stdio' && !command.trim()) return { error: 'Command is required for stdio servers' };
-    if (type === 'sse' && !url.trim()) return { error: 'Endpoint URL is required for SSE servers' };
+    if (isRemote && !url.trim()) return { error: 'Endpoint URL is required for a remote server' };
 
     const args = argsRows.map((a) => a.trim()).filter(Boolean);
     const env: Record<string, string> = {};
@@ -229,11 +239,11 @@ export default function MCPServerModal({
         type,
         command: type === 'stdio' ? command.trim() : undefined,
         args: type === 'stdio' ? args : undefined,
-        url: type === 'sse' ? url.trim() : undefined,
+        url: isRemote ? url.trim() : undefined,
         ...(isEdit && !envDirty ? {} : { env }),
         required_credential_types: requiredCreds,
         credential_env_map: type === 'stdio' ? credential_env_map : undefined,
-        credential_header_map: type === 'sse' ? credential_header_map : undefined,
+        credential_header_map: isRemote ? credential_header_map : undefined,
         setup_notes: setupNotes.trim() || undefined,
         enabled,
       },
@@ -260,10 +270,9 @@ export default function MCPServerModal({
       }
       if (onSave) onSave(result);
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Save failed', err);
-      const msg = err.response?.data?.error || err.message || 'Failed to save MCP server';
-      setError(msg);
+      setError(apiErrorMessage(err, 'Failed to save MCP server'));
     } finally {
       setSaving(false);
     }
@@ -350,7 +359,7 @@ export default function MCPServerModal({
               <div>
                 <label className={cn(labelCls, 'flex items-center gap-2')}>
                   Connection type
-                  <FieldTip text="Stdio runs a program on the server (npx, python...). SSE talks to a remote endpoint over HTTP." />
+                  <FieldTip text="Run locally spawns a program on the server (npx, python...). Remote endpoint talks to a hosted MCP server over HTTP." />
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -368,10 +377,10 @@ export default function MCPServerModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setType('sse')}
+                    onClick={() => setType(isRemote ? type : 'http')}
                     className={cn(
                       'flex items-center justify-center gap-2 p-3 border rounded-xl transition-all font-semibold text-sm',
-                      type === 'sse'
+                      isRemote
                         ? 'bg-primary/10 border-primary text-primary'
                         : 'border-border/60 hover:border-border hover:bg-muted/50'
                     )}
@@ -441,7 +450,7 @@ export default function MCPServerModal({
                     type="url"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://mcp.example.com/sse"
+                    placeholder="https://mcp.notion.com/mcp"
                     className={monoCls}
                   />
                 </div>

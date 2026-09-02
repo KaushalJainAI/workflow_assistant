@@ -37,32 +37,52 @@ interface Options {
 }
 
 export function useChatModelSelection({ isGuest = false, providers }: Options) {
-  const [provider, setProvider] = useState(isGuest ? GUEST_PROVIDER : DEFAULT_PROVIDER);
-  const [model, setModel] = useState(isGuest ? GUEST_MODEL : DEFAULT_MODEL);
+  /**
+   * Restore the user's last chosen model.
+   *
+   * This used to be gated on the account having at least one valid credential,
+   * which meant the common case — a user on the server-side NVIDIA key — had
+   * their choice silently discarded on every reload. The stored pair is now
+   * always restored; an id the provider no longer offers is caught by the
+   * validation effect below, which is the check that actually matters.
+   *
+   * Read in a lazy initialiser rather than an effect. `localStorage` is
+   * synchronous, so there was never anything to wait for — but the effect made
+   * it *look* asynchronous, which is why `isChecking` existed and why
+   * `StandaloneChat` rendered a full-screen spinner for exactly one frame on
+   * every mount. Reading it during the first render removes the flash, the
+   * extra render pass, and the state that coordinated them.
+   * (`react-hooks/set-state-in-effect` is what flagged it.)
+   */
+  const stored = (key: string, fallback: string) => {
+    try {
+      return localStorage.getItem(key) || fallback;
+    } catch {
+      // Private mode and "block site data" both throw on access.
+      return fallback;
+    }
+  };
+
+  const [provider, setProvider] = useState(
+    () => (isGuest ? GUEST_PROVIDER : stored(PROVIDER_KEY, DEFAULT_PROVIDER)),
+  );
+  const [model, setModel] = useState(
+    () => (isGuest ? GUEST_MODEL : stored(MODEL_KEY, DEFAULT_MODEL)),
+  );
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isChecking, setIsChecking] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Restore the user's last chosen model.
-  //
-  // This used to be gated on the account having at least one valid credential,
-  // which meant the common case — a user on the server-side NVIDIA key — had
-  // their choice silently discarded on every reload. The stored pair is now
-  // always restored; an id the provider no longer offers is caught by the
-  // validation effect below, which is the check that actually matters.
-  useEffect(() => {
-    // A guest has one model, so a stored preference is not theirs to restore.
-    if (isGuest) {
-      setIsChecking(false);
-      return;
-    }
-    const savedProvider = localStorage.getItem(PROVIDER_KEY);
-    const savedModel = localStorage.getItem(MODEL_KEY);
-    if (savedProvider) setProvider(savedProvider);
-    if (savedModel) setModel(savedModel);
-    setIsChecking(false);
-  }, [isGuest]);
+  // A lazy initialiser runs once, so the guest flag flipping after mount — the
+  // moment auth resolves — still has to be handled. Adjusting during render is
+  // React's documented answer for "reset state when a prop changes"; the
+  // discarded render is never committed.
+  const [wasGuest, setWasGuest] = useState(isGuest);
+  if (wasGuest !== isGuest) {
+    setWasGuest(isGuest);
+    setProvider(isGuest ? GUEST_PROVIDER : stored(PROVIDER_KEY, DEFAULT_PROVIDER));
+    setModel(isGuest ? GUEST_MODEL : stored(MODEL_KEY, DEFAULT_MODEL));
+  }
 
   // Close the dropdown on any click outside it.
   useEffect(() => {
@@ -78,6 +98,16 @@ export function useChatModelSelection({ isGuest = false, providers }: Options) {
 
   // A stored model may no longer be offered by its provider; fall back to the
   // provider's first model rather than sending an id the backend will reject.
+  //
+  // This one stays an effect, and the rule is suppressed rather than satisfied.
+  // `react-hooks/set-state-in-effect` is aimed at effects that compute state
+  // already derivable during render; this is the other kind — it reconciles
+  // stored state against a catalogue that arrives from the server *after*
+  // mount, and it writes `localStorage`. Both halves are synchronisation with
+  // an external system, which is what an effect is for. Deriving it during
+  // render is not available either: `model` is user-editable through `select`
+  // and `adopt`, so a derived value would overwrite the choice it is meant to
+  // validate.
   useEffect(() => {
     if (isGuest || !providers.length) return;
     const current = providers.find((p) => p.slug === provider);
@@ -85,6 +115,9 @@ export function useChatModelSelection({ isGuest = false, providers }: Options) {
     if (current.models.some((m) => m.value === model)) return;
 
     const fallback = current.models[0].value;
+    // See the note above: this is reconciliation with the server's catalogue,
+    // not state that could have been derived during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setModel(fallback);
     localStorage.setItem(MODEL_KEY, fallback);
   }, [isGuest, providers, provider, model]);
@@ -118,7 +151,6 @@ export function useChatModelSelection({ isGuest = false, providers }: Options) {
     searchQuery,
     setSearchQuery,
     dropdownRef,
-    isChecking,
     select,
     adopt,
   };

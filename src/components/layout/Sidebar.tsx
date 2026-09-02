@@ -11,8 +11,9 @@ import {
   MessageCircle,
   Plug,
   Wrench,
+  GraduationCap,
+  FlaskConical,
   User,
-  Inbox,
   Activity,
   Radar,
   Bot,
@@ -24,7 +25,8 @@ import type { LucideIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useHitlPending } from "../../hooks/useHitlPending";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/authState";
+import { useImagineOptional } from "../../contexts/imagineState";
 import { logsService } from "../../api";
 import { toast } from "sonner";
 
@@ -67,6 +69,8 @@ const Sidebar = () => {
     }, [isMobile, collapsed]);
     const { user, isAuthenticated } = useAuth();
     const isGuest = !isAuthenticated;
+    const imagine = useImagineOptional();
+    const imaginePending = imagine?.activeCount ?? 0;
 
     // Badge counts: what is waiting on you (blue count) and what the agent is
     // doing unattended (violet dot). Polled, because the nav outlives any one
@@ -134,9 +138,11 @@ const Sidebar = () => {
             title: "Work",
             items: [
                 { icon: MessageCircle, label: "Ask", path: "/ai-chat", guestOk: true },
-                { icon: Radar, label: "Overview", path: "/overview" },
+                // Overview now absorbs Inbox functionally — single surface ordered
+                // by whether it needs a human (approvals first, then analytics).
+                // pending badge moves from Inbox to Overview; Inbox route redirects.
+                { icon: Radar, label: "Overview", path: "/overview", pending: true },
                 { icon: Activity, label: "Runs", path: "/runs", agent: true },
-                { icon: Inbox, label: "Inbox", path: "/inbox", pending: true },
             ],
         },
         {
@@ -149,26 +155,35 @@ const Sidebar = () => {
                 // separate destination. `/workflows` redirects here so old
                 // links keep working.
                 { icon: Bot, label: "Automations", path: "/agents", match: ["/agents", "/workflow"] },
+                // Standard tool library — code-owned tools grouped by grant.
+                // Plugins (MCP) bring dynamic mcp__* tools; their catalogue is on
+                // Connections, not here. Connectors are credentials (Credentials).
+                { icon: Wrench, label: "Tools", path: "/tools" },
                 // Separate from Automations on purpose: an agent is a
                 // configuration, a schedule is a standing commitment to
                 // spend on it. The second is worth being able to audit in
                 // one place without opening every agent to find it.
                 { icon: CalendarClock, label: "Schedules", path: "/schedules" },
-                { icon: Wrench, label: "Skills", path: "/skills" },
+                { icon: GraduationCap, label: "Skills", path: "/skills" },
+                // Evals sit next to Skills rather than under Runs: a suite is
+                // something you author, and its result is only final once a
+                // person has answered the review queue.
+                { icon: FlaskConical, label: "Evals", path: "/evals" },
                 { icon: Clapperboard, label: "Studio", path: "/imagine" },
             ],
         },
-        // "Tools" (/mcp-servers) and "Data sources" (/connectors) were two views
-        // of the same two tables, and neither ingested data — the second one only
-        // created credentials. They are now one Connections page, with the raw MCP
-        // config behind its Advanced disclosure. Credentials sits beside it: most
-        // keys are reached through the connection that uses them, but a stored key
-        // outlives any one connection and needs somewhere to be audited, rotated,
-        // or deleted — with no nav entry that page was reachable only by typing
-        // the URL, so a key you had saved looked like a key you had lost.
+        // Plugins vs Connectors vs Tools — unambiguous now:
+        // Tools = one callable function the model can invoke (Tools page, code-owned)
+        // Plugin = external MCP pack that advertises mcp__* tools at runtime (Connections)
+        // Connector = credential/connection info that lets a plugin act as you (Credentials + per-plugin wiring on Connections)
+        // Documents holds the file tree that the fileOps tools address via inference/vfs.py.
         {
             title: "Data",
             items: [
+                // Connections = Plugins: the MCPServer rows + per-plugin connector wiring.
+                // "Data sources" (/connectors) and "Tools" (/mcp-servers) used to be
+                // two views of the same tables; they are now one page with clear
+                // section headings (Plugins vs Connectors).
                 { icon: Plug, label: "Connections", path: "/connections" },
                 { icon: KeyRound, label: "Credentials", path: "/credentials" },
                 { icon: FileText, label: "Documents", path: "/documents" },
@@ -248,7 +263,7 @@ const Sidebar = () => {
                 <button
                     onClick={() => {
                         if (isGuest) {
-                            toast.info('Log in to create automations');
+                            toast.info('Log in to create agents');
                             navigate('/login');
                             return;
                         }
@@ -258,14 +273,14 @@ const Sidebar = () => {
                         "flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-all duration-200 font-semibold shadow-sm active:scale-[0.98] overflow-hidden whitespace-nowrap mx-auto",
                         collapsed ? "w-10 h-10 p-0" : "w-full py-2.5 px-4 gap-2"
                     )}
-                    title={collapsed ? "New automation" : undefined}
+                    title={collapsed ? "New agent" : undefined}
                 >
                     <Plus className="w-5 h-5 shrink-0" />
                     <span className={cn(
                         "transition-all duration-300 overflow-hidden",
                         collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-2"
                     )}>
-                        New automation
+                        New agent
                     </span>
                 </button>
             </div>
@@ -324,6 +339,19 @@ const Sidebar = () => {
                                                 {pendingCount}
                                             </span>
                                         )}
+                                        {/* Studio: generating count (toby) */}
+                                        {!collapsed && item.path === '/imagine' && imaginePending > 0 && (
+                                            <span
+                                                className="ml-auto flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20"
+                                                title={`${imaginePending} generation${imaginePending === 1 ? '' : 's'} in progress`}
+                                            >
+                                                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                                                {imaginePending}
+                                            </span>
+                                        )}
+                                        {collapsed && item.path === '/imagine' && imaginePending > 0 && (
+                                            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary animate-pulse border border-background" />
+                                        )}
                                     </Link>
                                 );
                             })}
@@ -350,7 +378,7 @@ const Sidebar = () => {
                     </Link>
                     {!collapsed && (
                         <p className="text-[11px] text-muted-foreground px-2 leading-snug">
-                            Log in for workflows, uploads, KB, MCP, and the help agent.
+                            Log in to create agents, upload files, and use the assistant.
                         </p>
                     )}
                 </div>

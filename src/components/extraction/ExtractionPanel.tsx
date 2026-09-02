@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ScanText, Plus, AlertTriangle, CheckCircle2, Loader2, Upload, Check, X, SlidersHorizontal, Wand2,
 } from 'lucide-react';
-import { toast } from '../../components/ui/Toast';
+import { toast } from '../../lib/toastStore';
 import { cn } from '../../lib/utils';
 import { documentsService } from '../../api';
 import extractionService, {

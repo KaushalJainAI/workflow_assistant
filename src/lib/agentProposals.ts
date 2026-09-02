@@ -24,23 +24,55 @@ export interface Proposal {
 
 const has = (t: string, ...words: string[]) => words.some((w) => t.includes(w));
 
-export function propose(input: string, cfg: AgentConfig): Proposal {
+/** The connections available to match against, as the builder knows them. */
+export interface ConnectorChoice {
+  id: number;
+  label: string;
+  /** The stable presentation key from the backend, e.g. `gmail`. */
+  iconSlug?: string;
+}
+
+/* Which words should reach for which connector, keyed by `icon_slug`.
+ *
+ * Keyed on the slug rather than on the label because the label is user-facing
+ * copy served from the database — "Gmail" today, "Google Mail" after an edit —
+ * while the slug is the same stable key the icon map and the OAuth scope map
+ * already key on. A connector with no entry here is simply never proposed,
+ * which is the right failure: a user's own MCP server has no keywords anyone
+ * could have guessed, and proposing the wrong one is worse than proposing none. */
+const CONNECTOR_KEYWORDS: Record<string, string[]> = {
+  gmail: ['gmail', 'email', 'inbox', 'mail'],
+  'google-drive': ['drive', 'g-drive', 'gdrive'],
+  'google-sheets': ['sheet', 'spreadsheet', 'excel'],
+  'google-calendar': ['calendar', 'meeting', 'schedule a', 'availability'],
+  'google-docs': ['google doc', 'gdoc'],
+  slack: ['slack'],
+  notion: ['notion'],
+};
+
+export function propose(
+  input: string,
+  cfg: AgentConfig,
+  available: ConnectorChoice[] = [],
+): Proposal {
   const t = input.toLowerCase();
   const changes: Change[] = [];
   const add = (path: string, label: string, value: unknown, why: string) => {
     changes.push({ path, label, value, why });
   };
 
-  // --- what it works on -----------------------------------------------------
+  /* --- what it works on ----------------------------------------------------
+   *
+   * Proposed only from what the user has actually connected. Suggesting a
+   * connection they do not have would put an id in the config that the backend
+   * rejects on save, so the account's own catalogue is the candidate list. */
   const connectors = new Set(cfg.connectors);
-  if (has(t, 'gmail', 'email', 'inbox')) connectors.add('gmail');
-  if (has(t, 'drive', 'g-drive', 'gdrive')) connectors.add('gdrive');
-  if (has(t, 'sheet', 'spreadsheet', 'excel')) connectors.add('sheets');
-  if (has(t, 'photo', 'image library')) connectors.add('photos');
-  if (has(t, 'calendar', 'meeting')) connectors.add('calendar');
-  if (has(t, 'slack')) connectors.add('slack');
+  for (const choice of available) {
+    const words = CONNECTOR_KEYWORDS[choice.iconSlug ?? ''];
+    if (words && has(t, ...words)) connectors.add(choice.id);
+  }
   if (connectors.size !== cfg.connectors.length) {
-    add('connectors', 'Connectors', [...connectors],
+    add('connectors', 'Connections', [...connectors].sort((a, b) => a - b),
         'Named a source it has to reach.');
   }
 
@@ -112,10 +144,19 @@ export function propose(input: string, cfg: AgentConfig): Proposal {
     }
   }
 
-  // --- sandbox budget -------------------------------------------------------
+  // --- run budget -----------------------------------------------------------
+  // Bulk work needs *time*, which is the resource a run actually holds. It used
+  // to propose more memory and vCPUs; neither was ever enforced, so the
+  // proposal was advice that could not work.
   if (has(t, 'large', 'thousands', 'bulk', 'heavy', 'big file', 'millions')) {
-    if (cfg.memoryMb < 4096) add('memoryMb', 'Memory', 4096, 'Bulk work needs headroom.');
-    if (cfg.cpu < 2) add('cpu', 'vCPU', 2, 'Bulk work needs headroom.');
+    if (cfg.maxRunSeconds < 45 * 60) {
+      add('maxRunSeconds', 'Time limit', 45 * 60, 'Bulk work needs longer to finish.');
+    }
+  }
+  if (has(t, 'quick', 'fast', 'brief', 'short')) {
+    if (cfg.maxRunSeconds > 5 * 60) {
+      add('maxRunSeconds', 'Time limit', 5 * 60, 'You asked for something quick.');
+    }
   }
   if (has(t, 'cheap', 'low cost', 'budget', 'minimal')) {
     if (cfg.spendCapRupees > 200) add('spendCapRupees', 'Spend cap', 200, 'You asked to keep it cheap.');

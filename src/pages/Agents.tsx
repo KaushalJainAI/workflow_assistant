@@ -11,14 +11,17 @@ import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2, Sliders } from 'lu
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import agentsService, { type Agent } from '../api/agents';
-import { AUTONOMY_COPY, CONNECTOR_OPTIONS, TRIGGER_COPY } from '../types/agentConfig';
+import { AUTONOMY_COPY, TRIGGER_COPY } from '../types/agentConfig';
+import { mcpService } from '../api/mcp';
 
 /* Autonomy is the whole safety story, so it is the most prominent field on the
    card: how much this agent may do before it has to stop and ask. */
 const autonomyStyle = {
   full: 'bg-agent-subtle text-agent border-agent-line',
+  auto: 'bg-agent-subtle text-agent border-agent-line',
   ask: 'bg-primary-subtle text-primary border-primary-line',
   review: 'bg-secondary text-muted-foreground border-border',
+  plan: 'bg-secondary text-muted-foreground border-border',
 } as const;
 
 const TOOL_NAMES: Record<string, string> = {
@@ -38,13 +41,21 @@ function initials(name: string) {
   return (words[0][0] + (words[1]?.[0] ?? words[0][1] ?? '')).toUpperCase();
 }
 
-/** What this agent was granted, as readable chips. */
-function grants(agent: Agent) {
+/** What this agent was granted, as readable chips.
+ *
+ * `names` maps a connection id to its label. It is passed in rather than looked
+ * up from a table in this file because connector presentation is served from
+ * the database — adding a connector is a fixture row, not an edit here. A id
+ * with no name is one the user can no longer see (deleted, or another
+ * account's), and it is rendered as such rather than as a bare number: the
+ * runtime drops it too, so a chip reading "Gmail" for a connection that no
+ * longer resolves would be the one misleading thing this list could say. */
+function grants(agent: Agent, names: Map<number, string>) {
   const tools = Object.entries(agent.tools ?? {})
     .filter(([, on]) => on)
     .map(([k]) => TOOL_NAMES[k] ?? k);
   const conns = (agent.connectors ?? []).map(
-    (id) => CONNECTOR_OPTIONS.find((c) => c.id === id)?.label ?? id
+    (id) => names.get(id) ?? 'Unavailable connection'
   );
   return [...conns, ...tools];
 }
@@ -57,9 +68,8 @@ function EmptyState() {
       </div>
       <h2 className="font-semibold mb-1">No agents yet</h2>
       <p className="text-[13px] text-muted-foreground leading-relaxed mb-4">
-        An agent is a brief plus a set of tools it may use. Describe the job in
-        plain words and the builder will set the knobs — you can override every
-        one of them.
+        An agent combines instructions and tools. Describe the job in plain
+        language and the builder handles setup — you can change anything.
       </p>
       <Link
         to="/agents/new"
@@ -76,6 +86,14 @@ export default function Agents() {
   const { data: agents = [], isLoading, isError } = useQuery({
     queryKey: ['agents'],
     queryFn: () => agentsService.list(),
+  });
+  /* Connection names for the capability chips. An agent stores ids; the label
+     belongs to the connector row, so it is fetched rather than mapped here. */
+  const { data: connectorNames = new Map<number, string>() } = useQuery({
+    queryKey: ['agents', 'connection-names'],
+    queryFn: async () =>
+      new Map((await mcpService.list()).servers.map((s) => [s.id, s.label])),
+    staleTime: 5 * 60 * 1000,
   });
 
   const totalRuns = agents.reduce((n, a) => n + (a.runs ?? 0), 0);
@@ -148,7 +166,7 @@ export default function Agents() {
                   </div>
 
                   <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">
-                    {a.brief || 'No brief yet.'}
+                    {a.brief || 'No description yet.'}
                   </p>
 
                   <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mb-3">
@@ -158,7 +176,7 @@ export default function Agents() {
                   </div>
 
                   <div className="flex flex-wrap gap-1 mb-4">
-                    {grants(a).map((t) => (
+                    {grants(a, connectorNames).map((t) => (
                       <span
                         key={t}
                         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary border border-border text-[11px] text-muted-foreground"

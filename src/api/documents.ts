@@ -45,7 +45,7 @@ export interface Document {
   chunk_count: number;
   is_shared: boolean;
   shared_at: string | null;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   status: 'pending' | 'processing' | 'indexed' | 'stored' | 'failed' | 'uploading';
@@ -156,7 +156,7 @@ export interface SearchResult {
 export interface RAGQueryResponse {
   answer: string;
   sources: SearchResult[];
-  thought_process?: any[];
+  thought_process?: unknown[];
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -230,6 +230,23 @@ export const documentsService = {
   async download(id: number): Promise<Blob> {
     const r = await apiClient.get<Blob>(`/inference/documents/${id}/download/`, { responseType: 'blob' });
     return r.data;
+  },
+
+  /** Authenticated preview for `<img src>`.
+   *  Fetches via `Authorization` header (no token in URL) and returns a
+   *  `blob:` URL. Use for previews; `download()` for saves. */
+  async previewBlobUrl(id: number): Promise<string> {
+    const blob = await this.download(id);
+    return URL.createObjectURL(blob);
+  },
+
+  /** Legacy helper — kept for non-preview uses. Prefer `download()` / `previewBlobUrl()`.
+   *  Direct `<img src>` to this URL without a header **will 401**; it is not
+   *  public. `QueryParamJWTAuthentication` accepts `?token=` only as a fallback
+   *  for browser-initiated GETs that cannot set headers, but the UI should use
+   *  header-based fetch. */
+  previewUrl(id: number): string {
+    return `/api/inference/documents/${id}/download/`;
   },
 
   async search(

@@ -1,17 +1,20 @@
 /**
- * Connections — the single page for "what can the assistant reach on my behalf".
+ * Connections — Plugins & their Connectors.
  *
- * It replaces two pages that were views of the same two tables: "Tools"
- * (`/mcp-servers`, raw MCPServer CRUD: stdio commands, arg arrays, env maps) and
- * "Data sources" (`/connectors`, which despite the name ingested nothing — it
- * created a Credential per curated server). Splitting them implied a distinction
- * that did not exist, hid the one that does (live capability you call, versus a
- * corpus you ingest, which is Documents), and left the transport detail of MCP
- * in top-level navigation.
+ * Vocabulary (see Tools page for the full split):
+ *  Tool      = one callable function the model can invoke — the standard library
+ *              lives on /tools (code-owned, grouped by grant like webSearch/rag).
+ *  Plugin    = an external MCP pack (MCPServer row) that brings its own
+ *              mcp__* tools at runtime — listed here. Needs a Connector to work.
+ *  Connector = credential/connection info that lets a plugin act as you
+ *              (Google OAuth on Credentials, Slack token, etc.) — wired per
+ *              plugin on this page. Without it, the plugin's tools never appear
+ *              to the model even when the plugin is "on".
  *
- * What a person needs here is a recognisable name, whether it is on, and what it
- * lets the assistant do. Command lines are real but are a power-user concern, so
- * they live behind the Advanced disclosure at the bottom.
+ * This page used to be two pages ("Tools" /mcp-servers and "Data sources"
+ * /connectors) that were views of the same two tables; they are now one page
+ * with clear section headings (Plugins above, Connectors wiring inline).
+ * Standard tools are not configured here — see /tools for the code-owned library.
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -49,6 +52,7 @@ import {
   connectorVisual,
 } from '../lib/connectorIcons';
 import { googleScopesFor } from '../lib/googleScopes';
+import { markMcpOAuthFlow, openOAuthPopup } from '../lib/oauthPopup';
 import { cn } from '../lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -59,8 +63,17 @@ import { cn } from '../lib/utils';
  * `always` — needs no credential, so it works out of the box.
  * `connected` / `needs_auth` — every required credential is present, or is not.
  * `off` — the user switched it off; nothing else matters until they switch it on.
+ * `unavailable` — the *platform* switched it off. Distinct from `off` because
+ *   the two need opposite affordances: `off` is undone by flipping the switch
+ *   back, while `unavailable` is not a choice the user has at all. Collapsing
+ *   them is what produced a live-looking toggle that silently did nothing.
  */
-type ConnectionStatus = 'always' | 'connected' | 'needs_auth' | 'off';
+type ConnectionStatus =
+  | 'always'
+  | 'connected'
+  | 'needs_auth'
+  | 'off'
+  | 'unavailable';
 
 interface StatusView {
   label: string;
@@ -88,6 +101,11 @@ const STATUS_VIEWS: Record<ConnectionStatus, StatusView> = {
     label: 'Off',
     dot: 'bg-muted-foreground/30',
     badge: 'bg-muted/60 text-muted-foreground border-border/40',
+  },
+  unavailable: {
+    label: 'Unavailable',
+    dot: 'bg-amber-400/60',
+    badge: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
   },
 };
 
@@ -280,7 +298,7 @@ function ConnectModal({
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {credType.fields_schema.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                This connection needs no credentials.
+                No setup needed — this works right away.
               </p>
             ) : (
               credType.fields_schema.map((field: CredentialFieldSchema) => (
@@ -411,7 +429,7 @@ function CapabilityList({ server }: { server: MCPServer }) {
         <p className="text-xs text-muted-foreground">
           {reason?.isCredentialProblem
             ? 'Connect an account to see what this can do.'
-            : 'Could not reach this connection to list its abilities.'}
+            : "Couldn't load what this connection can do."}
         </p>
         {reason && (
           // The backend's own words. A generic failure line tells the user
@@ -426,7 +444,7 @@ function CapabilityList({ server }: { server: MCPServer }) {
   }
 
   if (data.tools.length === 0) {
-    return <p className="text-xs text-muted-foreground py-2">No abilities reported.</p>;
+    return <p className="text-xs text-muted-foreground py-2">This connection didn't report any tools.</p>;
   }
 
   return (
@@ -516,6 +534,9 @@ function ConnectionCard({
   const { icon: Icon, color } = connectorVisual(server.icon_slug, server.is_system);
   const view = STATUS_VIEWS[status];
   const isOn = server.effective_enabled;
+  // Turned off by the platform, not by this user: the switch is not theirs to
+  // flip, and the API answers 409 if we ask. Render it inert and say why.
+  const unavailable = status === 'unavailable';
   // Only worth asking the server what it can do once it could actually answer.
   const canShowCapabilities = isOn && (status === 'always' || status === 'connected');
 
@@ -541,9 +562,25 @@ function ConnectionCard({
           )}
         </div>
         {/* Per-user switch. Curated rows are shared, so this writes a preference
-            rather than editing the row — see mcpService.setEnabled. */}
-        <ConnectionSwitch isOn={isOn} onToggle={onToggle} disabled={busy} label={server.label} />
+            rather than editing the row — see mcpService.setEnabled. Disabled
+            outright when the platform turned the row off: a switch that cannot
+            move is honest, one that moves and springs back is not. */}
+        <ConnectionSwitch
+          isOn={isOn}
+          onToggle={onToggle}
+          disabled={busy || unavailable}
+          label={server.label}
+        />
       </div>
+
+      {/* `setup_notes` is written by the catalogue migrations to explain exactly
+          this state, and was fetched but never rendered — so every dead card
+          was dead for a reason no user could read. */}
+      {unavailable && server.setup_notes && (
+        <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-amber-500/30 pl-3">
+          {server.setup_notes}
+        </p>
+      )}
 
       {canShowCapabilities && (
         <div className="border-t border-border/40 pt-2">
@@ -566,16 +603,16 @@ function ConnectionCard({
         <span
           className={cn(
             'inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full border',
-            isOn ? view.badge : STATUS_VIEWS.off.badge
+            isOn || unavailable ? view.badge : STATUS_VIEWS.off.badge
           )}
         >
           <span
             className={cn(
               'w-1.5 h-1.5 rounded-full flex-shrink-0',
-              isOn ? view.dot : STATUS_VIEWS.off.dot
+              isOn || unavailable ? view.dot : STATUS_VIEWS.off.dot
             )}
           />
-          {isOn ? view.label : STATUS_VIEWS.off.label}
+          {isOn || unavailable ? view.label : STATUS_VIEWS.off.label}
         </span>
 
         {status === 'needs_auth' && (
@@ -604,6 +641,74 @@ function ConnectionCard({
 // Advanced: the user's own MCP servers
 // ---------------------------------------------------------------------------
 
+/**
+ * Sign in to a remote MCP server.
+ *
+ * Offered for any remote server with a URL, because knowing whether one
+ * genuinely speaks OAuth needs two discovery fetches and doing that per row
+ * would put a dozen network calls behind this page. A server that turns out not
+ * to support it says so on click — `oauth/init` answers `oauth_unavailable`
+ * with the reason, which is more useful than a button that was never shown.
+ */
+function OAuthConnectButton({ server }: { server: MCPServer }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['mcpServers'] });
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const redirectUri = `${window.location.origin}/oauth/callback`;
+      const { url } = await mcpService.oauthInit(server.id, redirectUri);
+      // Recorded before the popup opens: /oauth/callback has no other way to
+      // know which flow it is finishing, since the provider owns the URL.
+      markMcpOAuthFlow(server.id);
+      const result = await openOAuthPopup(url, `Connect ${server.label}`);
+      if (result.status === 'success') {
+        toast.success(`${server.label} connected`);
+        refresh();
+      } else if (result.status === 'error') {
+        toast.error('Could not connect', { description: result.message });
+      }
+      // 'dismissed' is the user changing their mind — not worth a toast.
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error('Could not start sign-in', { description: detail });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    try {
+      await mcpService.oauthDisconnect(server.id);
+      toast.success(`${server.label} disconnected`);
+      refresh();
+    } catch {
+      toast.error('Could not disconnect');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={server.oauth_connected ? disconnect : connect}
+      disabled={busy}
+      className={cn(
+        'px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap',
+        server.oauth_connected
+          ? 'text-muted-foreground hover:bg-muted'
+          : 'bg-primary/10 text-primary hover:bg-primary/20',
+      )}
+    >
+      {busy ? '…' : server.oauth_connected ? 'Disconnect' : 'Sign in'}
+    </button>
+  );
+}
+
 function CustomServerRow({
   server,
   onEdit,
@@ -629,6 +734,7 @@ function CustomServerRow({
             : server.url}
         </p>
       </div>
+      {server.supports_oauth && <OAuthConnectButton server={server} />}
       <ConnectionSwitch isOn={isOn} onToggle={onToggle} disabled={busy} label={server.label} />
       <button
         onClick={onEdit}
@@ -750,6 +856,10 @@ export default function Connections() {
    * the same resolution, so a status that ignored it would be a lie.
    */
   const statusOf = (server: MCPServer): ConnectionStatus => {
+    // The platform's own switch is checked first: a row turned off here can
+    // never be turned on by the user, so reporting it as their `off` would
+    // offer an action that does not exist.
+    if (server.is_system && !server.enabled) return 'unavailable';
     if (!server.effective_enabled) return 'off';
     const validation = validationQuery.data?.get(server.id);
     if (validation) {
@@ -775,7 +885,20 @@ export default function Connections() {
       queryClient.invalidateQueries({ queryKey: ['mcpServerTools', updated.id] });
       toast.success(`${updated.label} turned ${updated.effective_enabled ? 'on' : 'off'}`);
     },
-    onError: () => toast.error('Could not change that. Please try again.'),
+    onError: (err: unknown) => {
+      // A 409 is the API saying this row is off at the platform level. That is
+      // a fact about the connector, not a transient failure, so "please try
+      // again" would be advice that can only fail — the switch is already
+      // rendered inert, and this covers a stale list.
+      const res = (err as { response?: { status?: number; data?: { error?: string } } })
+        .response;
+      if (res?.status === 409) {
+        toast.error(res.data?.error ?? 'That connection is unavailable.');
+        queryClient.invalidateQueries({ queryKey: ['mcpServers'] });
+        return;
+      }
+      toast.error('Could not change that. Please try again.');
+    },
     onSettled: () => setBusyId(null),
   });
 
@@ -949,7 +1072,7 @@ export default function Connections() {
               Advanced
             </span>
             <span className="text-xs text-muted-foreground">
-              Add a custom tool server (MCP)
+              Add a custom server
               {custom.length > 0 && ` · ${custom.length} added`}
             </span>
           </button>
@@ -957,9 +1080,7 @@ export default function Connections() {
           {advancedOpen && (
             <div className="mt-4 space-y-3">
               <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
-                Run any Model Context Protocol server and its tools become available
-                to your agents. You provide the command or URL; secrets stay in
-                Credentials and are injected at call time.
+                Connect any compatible server to add its tools to your agents. Your keys are stored securely and used only when needed.
               </p>
 
               {custom.map((server) => (
@@ -986,7 +1107,7 @@ export default function Connections() {
                 className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                Add MCP server
+                Add custom server
               </button>
             </div>
           )}
@@ -996,9 +1117,9 @@ export default function Connections() {
             connection that uses it. This is the way to the full list for anyone
             auditing stored secrets directly. */}
         <p className="text-xs text-muted-foreground pb-4">
-          Looking for a specific key?{' '}
+          Looking for a key?{' '}
           <Link to="/credentials" className="text-primary hover:underline font-semibold">
-            Manage stored credentials
+            Manage saved accounts
           </Link>
           .
         </p>

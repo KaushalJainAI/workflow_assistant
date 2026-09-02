@@ -17,15 +17,20 @@
 import { useState } from 'react';
 import {
   Headphones,
+  History,
   ImageIcon,
   Info,
   Loader2,
+  MessageSquare,
+  Plus,
   Settings2,
   Palette,
+  Trash2,
   Video,
   X,
 } from 'lucide-react';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useImagineAgent } from '../hooks/useImagineAgent';
 import { useImagineStudio } from '../hooks/useImagineStudio';
 import type { Generation, MediaKind } from '../api/imagine';
 import { GenerationControls } from '../components/imagine/GenerationControls';
@@ -98,6 +103,7 @@ export default function Imagine() {
   const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [showAgentHistory, setShowAgentHistory] = useState(false);
 
   const {
     capabilities,
@@ -122,13 +128,33 @@ export default function Imagine() {
     remove,
   } = useImagineStudio({ enabled: viewMode === 'studio' });
 
+  // Reuse chat's conversation pattern for Imagine agent — single hook, shared
+  // between header badge and the drawer. This is the same `getSessions`/
+  // `createSession`/`deleteSession` shape as `chatService`.
+  const agent = useImagineAgent();
+
   const patch = (next: Partial<typeof params>) => setParams(prev => ({ ...prev, ...next }));
 
   const header = (
     <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-border/40">
       <div className="flex items-center gap-2 min-w-0">
+        {viewMode === 'agent' && (
+          <button
+            onClick={() => setShowAgentHistory(true)}
+            className="p-2 rounded-xl border border-border/60 bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Conversation history"
+            title="Conversations — independent contexts"
+          >
+            <History className="h-4 w-4" />
+          </button>
+        )}
         <Palette size={18} className="text-primary shrink-0" />
         <h1 className="text-lg font-semibold truncate">Imagine</h1>
+        {viewMode === 'agent' && agent.conversations.length > 0 && (
+          <span className="hidden sm:inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+            {agent.conversations.length} chats
+          </span>
+        )}
       </div>
       <div className="flex p-1 bg-muted/40 rounded-full border border-border/50 shrink-0">
         {(['agent', 'studio'] as const).map(view => (
@@ -149,17 +175,100 @@ export default function Imagine() {
     </div>
   );
 
+  // Agent history drawer — reuses StandaloneChat's drawer pattern (overlay + fixed left)
+  const agentHistoryDrawer = viewMode === 'agent' && (
+    <>
+      {showAgentHistory && (
+        <div className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm md:hidden" onClick={() => setShowAgentHistory(false)} />
+      )}
+      <div
+        className={cn(
+          'fixed inset-y-0 left-0 z-40 flex w-[85vw] max-w-[320px] flex-col border-r bg-card shadow-xl transition-transform duration-300 md:absolute md:shadow-none',
+          showAgentHistory ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        <div className="flex h-14 items-center justify-between border-b px-4">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary/70" />
+            <span className="text-xs font-bold tracking-wide">Conversations</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{agent.conversations.length}</span>
+          </div>
+          <button onClick={() => setShowAgentHistory(false)} className="rounded-lg p-1.5 hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-3">
+          <button
+            onClick={() => {
+              agent.newConversation();
+              setShowAgentHistory(false);
+            }}
+            className="flex w-full items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" /> New conversation
+          </button>
+          <p className="mt-2 px-1 text-[11px] leading-relaxed text-muted-foreground">Each thread is isolated — history stays per-thread. Saves tokens.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 pb-4">
+          {agent.isLoadingConversations ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : agent.conversations.length === 0 ? (
+            <p className="px-3 py-6 text-center text-xs text-muted-foreground">No chats yet. Start one.</p>
+          ) : (
+            <div className="space-y-1">
+              {agent.conversations.map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => {
+                    void agent.switchConversation(c.id);
+                    setShowAgentHistory(false);
+                  }}
+                  className={cn(
+                    'group flex items-center gap-2 rounded-xl px-3 py-2.5 text-left cursor-pointer transition-colors border',
+                    agent.conversationId === c.id ? 'bg-primary/10 border-primary/20' : 'hover:bg-muted/60 border-transparent'
+                  )}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-medium">{c.title || 'Untitled'}</div>
+                    <div className="truncate text-[11px] text-muted-foreground">{c.last_message ? `${c.last_message.role === 'user' ? 'You: ' : ''}${c.last_message.content.slice(0, 44)}` : 'No messages'}</div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!confirm('Delete this conversation?')) return;
+                      void agent.deleteConversation(c.id);
+                    }}
+                    className="rounded-md p-1 opacity-0 group-hover:opacity-100 hover:bg-destructive hover:text-white"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+
   if (viewMode === 'agent') {
     return (
-      <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
+      <div className="flex flex-col h-full bg-background text-foreground overflow-hidden relative">
         {header}
         {credentialMissing && <MissingCredentialBanner detail={credentialMissing} />}
-        <div className="flex-1 min-h-0">
-          <ImagineChat
-            capabilities={capabilities}
-            onRefreshCatalog={refreshCatalog}
-            isRefreshingCatalog={isRefreshing}
-          />
+        <div className="flex flex-1 min-h-0 overflow-hidden relative">
+          {agentHistoryDrawer}
+          <div className="flex-1 min-h-0">
+            <ImagineChat
+              capabilities={capabilities}
+              onRefreshCatalog={refreshCatalog}
+              isRefreshingCatalog={isRefreshing}
+              agent={agent}
+              showHistory={showAgentHistory}
+              onShowHistoryChange={setShowAgentHistory}
+            />
+          </div>
         </div>
       </div>
     );

@@ -1,26 +1,43 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authState';
 import { googleAuthAvailable, googleAuthorizeUrl } from '../lib/googleAuth';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Submit state for *this form*. `isLoading` from useAuth is the loading flag
+  // of the `authProfile` query, not of the login request -- so the button's
+  // disabled binding read false for the whole time a login was in flight and
+  // the button stayed clickable. Five rapid clicks sent five POSTs, burning the 5/minute login
+  // throttle on one user action. A ref alongside the state because React
+  // batches state updates: two clicks in the same tick would both observe
+  // `submitting === false` and both get through.
+  const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false);
   const { login, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSubmitting(true);
     clearError();
-    
+
     try {
       await login(email, password);
       navigate('/');
     } catch {
       // Error is handled by AuthContext
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
     }
   };
+
+  const busy = submitting || isLoading;
 
   const handleGoogleLogin = () => {
     window.location.href = googleAuthorizeUrl();
@@ -93,10 +110,10 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={busy}
               className="inline-flex items-center justify-center w-full rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-sm active:scale-[0.98]"
             >
-              {isLoading ? (
+              {busy ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Signing in...
