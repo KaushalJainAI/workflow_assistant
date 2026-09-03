@@ -51,6 +51,7 @@ const Schedules = lazyPage(() => import('./pages/Schedules'));
 const Settings = lazyPage(() => import('./pages/Settings'));
 const Skills = lazyPage(() => import('./pages/Skills'));
 const Evals = lazyPage(() => import('./pages/Evals'));
+const Templates = lazyPage(() => import('./pages/Templates'));
 const Tools = lazyPage(() => import('./pages/Tools'));
 
 // Protected route wrapper
@@ -183,6 +184,10 @@ const AppContent = () => {
               {/* Build */}
               <Route path="/agents" element={<Agents />} />
               <Route path="/agents/new" element={<AgentBuilder />} />
+              {/* Templates sit beside the agent list rather than inside it:
+                  installing one is how most people get their first agent, so
+                  it needs a link you can send someone. */}
+              <Route path="/templates" element={<Templates />} />
               <Route path="/agents/:id" element={<AgentBuilder />} />
               {/* The configuration timeline grows for the life of the agent, so
                   it is a page rather than a section of the builder, which shows

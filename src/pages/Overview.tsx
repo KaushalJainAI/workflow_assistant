@@ -58,6 +58,7 @@ import { orchestratorService } from '../api';
 import { usePersistedState } from '../hooks/usePersistedState';
 import PageHeader from '../components/layout/PageHeader';
 import { cn } from '../lib/utils';
+import { describeCost, formatCost } from '../lib/cost';
 
 const WINDOWS = [7, 30, 90] as const;
 type Window = (typeof WINDOWS)[number];
@@ -759,7 +760,7 @@ export default function Overview() {
                       <th className="font-medium pb-2">Agent</th>
                       <th className="font-medium pb-2 w-28">Runs</th>
                       <th className="font-medium pb-2 text-right w-20">Tokens</th>
-                      <th className="font-medium pb-2 text-right w-20">Credits</th>
+                      <th className="font-medium pb-2 text-right w-20">Cost</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -778,7 +779,14 @@ export default function Overview() {
                             </div>
                           </td>
                           <td className="py-2 text-right tabular-nums text-muted-foreground">{compact(w.tokens ?? 0)}</td>
-                          <td className="py-2 text-right tabular-nums text-muted-foreground">{compact(w.credits ?? 0)}</td>
+                          {/* Was `credits`, a column nothing ever wrote, so this
+                              read 0 for every agent. Now what the runs cost. */}
+                          <td
+                            className="py-2 text-right tabular-nums text-muted-foreground"
+                            title={describeCost(w.cost_usd, w.cost_source)}
+                          >
+                            {formatCost(w.cost_usd, w.cost_source)}
+                          </td>
                         </tr>
                       );
                     })}

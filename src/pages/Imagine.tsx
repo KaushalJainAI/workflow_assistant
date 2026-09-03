@@ -76,10 +76,12 @@ const STARTERS: Record<MediaKind, string[]> = {
   ],
 };
 
-function toLightboxItem(generation: Generation): LightboxItem {
+function toLightboxItem(generation: Generation, url?: string): LightboxItem {
   return {
     id: generation.id,
-    url: generation.output_url!,
+    // The clicked frame, not the first: a batch of four opened on image one
+    // whichever thumbnail was pressed.
+    url: url ?? generation.output_url!,
     prompt: generation.prompt,
     type: generation.type,
     model: generation.model,
@@ -462,7 +464,7 @@ export default function Imagine() {
                     <ResultCard
                       key={result.id}
                       generation={result}
-                      onOpen={g => setLightbox(toLightboxItem(g))}
+                      onOpen={(g, url) => setLightbox(toLightboxItem(g, url))}
                       onDelete={id => void remove(id)}
                     />
                   ))}

@@ -35,13 +35,36 @@ import { usePersistedState } from './usePersistedState';
 /** Poll interval for pending jobs when the socket is not connected. */
 const FALLBACK_POLL_MS = 15000;
 
+/**
+ * Every dial the OpenRouter media endpoints accept, in the panel's own shape.
+ *
+ * A field left `undefined` is not sent, which is how a model's own default is
+ * respected — and the only correct value for a dial the selected model does
+ * not advertise, since the backend refuses those outright.
+ */
 export interface GenerationParams {
   resolution?: string;
   aspectRatio?: string;
+  /** Explicit `WIDTHxHEIGHT`, where a model advertises sizes instead of tiers. */
+  size?: string;
   duration?: number;
   quality?: string;
+  outputFormat?: string;
+  background?: string;
+  /** 0-100, jpeg/webp only. */
+  outputCompression?: number;
+  /** `n` — how many images one request should return. */
+  batchSize?: number;
+  /** Image-to-image / style guidance, as urls or data URIs. */
+  referenceUrls: string[];
+  /** Video: pins the first and/or last frame of the clip to an image. */
+  frameImages: { url: string; frame_type: string }[];
   voice?: string;
   speed: number;
+  /** Tone direction, for the speech models that take it. */
+  instructions: string;
+  /** `mp3` (plays in the browser) or `pcm` (raw samples, downloads). */
+  responseFormat?: string;
   seed: string;
   negativePrompt: string;
   generateAudio: boolean;
@@ -52,6 +75,9 @@ const INITIAL_PARAMS: GenerationParams = {
   seed: '',
   negativePrompt: '',
   generateAudio: true,
+  referenceUrls: [],
+  frameImages: [],
+  instructions: '',
 };
 
 /**
@@ -64,6 +90,11 @@ const INITIAL_PARAMS: GenerationParams = {
 function snap<T>(current: T | undefined, allowed: T[] | undefined): T | undefined {
   if (!allowed || allowed.length === 0) return undefined;
   return current !== undefined && allowed.includes(current) ? current : allowed[0];
+}
+
+/** Keeps a number inside the window the model advertises for that dial. */
+function clamp(value: number, window: { min: number; max: number }): number {
+  return Math.min(Math.max(value, window.min), window.max);
 }
 
 export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {}) {
@@ -110,11 +141,14 @@ export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {})
       if (refresh) toast.success('Model catalog refreshed');
       return caps;
     } catch (err: unknown) {
-      const response = (err as { response?: { status?: number; data?: { detail?: string } } })
-        .response;
-      if (response?.status === 400) {
-        // The only 400 this endpoint returns is "no OpenRouter credential",
-        // which is the user's to fix — surface it rather than logging it.
+      const response = (
+        err as { response?: { status?: number; data?: { detail?: string; code?: string } } }
+      ).response;
+      // Keyed on the backend's `code`, with the bare status as the fallback for
+      // an older backend. "Every 400 here means no credential" was true only
+      // because nothing else on this endpoint answered 400 yet — the next thing
+      // that did would have been reported to the user as a missing key.
+      if (response?.data?.code === 'credential_missing' || response?.status === 400) {
         setCredentialMissing(
           response.data?.detail ?? 'No OpenRouter credential configured for this account.',
         );
@@ -145,15 +179,47 @@ export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {})
   }, [capabilities, mode, model, setModel]);
 
   // Re-snap every parameter to what the selected model actually accepts.
+  //
+  // This is the client half of the rule the backend enforces: a dial the model
+  // does not advertise must not be sent, because OpenRouter either rejects the
+  // value outright or — worse — accepts the key and ignores it. `snap`
+  // returning undefined for an empty option list is what makes switching from a
+  // model with 4K tiers to one with none drop the tier, rather than carry a
+  // value the new model will refuse.
   useEffect(() => {
     if (!activeModel) return;
     setParams(prev => ({
       ...prev,
       resolution: snap(prev.resolution, activeModel.resolutions),
       aspectRatio: snap(prev.aspectRatio, activeModel.aspect_ratios),
+      size: mode === 'video' ? snap(prev.size, activeModel.sizes) : undefined,
       duration: mode === 'video' ? snap(prev.duration, activeModel.durations) : undefined,
       quality: mode === 'image' ? snap(prev.quality, activeModel.qualities) : undefined,
+      outputFormat:
+        mode === 'image' ? snap(prev.outputFormat, activeModel.output_formats) : undefined,
+      background: mode === 'image' ? snap(prev.background, activeModel.backgrounds) : undefined,
+      outputCompression:
+        mode === 'image' && activeModel.output_compression
+          ? clamp(prev.outputCompression ?? 80, activeModel.output_compression)
+          : undefined,
+      batchSize:
+        mode === 'image' && activeModel.batch
+          ? clamp(prev.batchSize ?? activeModel.batch.min, activeModel.batch)
+          : undefined,
+      // References and frames are urls, not choices — there is nothing to snap
+      // them to, so they are dropped when the new model cannot take them.
+      referenceUrls:
+        (activeModel.max_references ?? 0) > 0
+          ? prev.referenceUrls.slice(0, activeModel.max_references)
+          : [],
+      frameImages: prev.frameImages.filter(f =>
+        (activeModel.frame_slots ?? []).includes(f.frame_type),
+      ),
       voice: mode === 'audio' ? snap(prev.voice, activeModel.voices) : undefined,
+      responseFormat:
+        mode === 'audio' ? snap(prev.responseFormat, activeModel.response_formats) : undefined,
+      speed: activeModel.speed_range ? clamp(prev.speed, activeModel.speed_range) : prev.speed,
+      instructions: activeModel.supports_instructions ? prev.instructions : '',
     }));
   }, [activeModel, mode]);
 
@@ -233,20 +299,36 @@ export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {})
       // history entry that omits half the prompt cannot be reproduced.
       const styledPrompt =
         mode === 'audio' ? trimmed : applyStyle(trimmed, findStyle(mode, styleId));
+      // Each dial is sent only where the *model* advertises it — the same rule
+      // the serializer enforces. Sending one it does not take is either a 400,
+      // or a 200 that quietly ignored the setting and billed for it anyway.
       const request: GenerationRequest = {
         type: mode,
         prompt: styledPrompt,
         model,
         resolution: params.resolution,
         aspect_ratio: mode === 'audio' ? undefined : params.aspectRatio,
+        size: mode === 'video' ? params.size : undefined,
         negative_prompt: mode === 'audio' ? undefined : params.negativePrompt.trim() || undefined,
-        seed: Number.isFinite(seed) ? seed : undefined,
+        seed: Number.isFinite(seed) && activeModel?.supports_seed ? seed : undefined,
         quality: mode === 'image' ? params.quality : undefined,
+        output_format: mode === 'image' ? params.outputFormat : undefined,
+        background: mode === 'image' ? params.background : undefined,
+        output_compression: mode === 'image' ? params.outputCompression : undefined,
+        batch_size: mode === 'image' ? params.batchSize : undefined,
+        reference_urls:
+          (activeModel?.max_references ?? 0) > 0 ? params.referenceUrls : undefined,
+        frame_images: mode === 'video' ? params.frameImages : undefined,
         duration: mode === 'video' && params.duration ? String(params.duration) : undefined,
         generate_audio:
           mode === 'video' && activeModel?.supports_audio ? params.generateAudio : undefined,
         voice: mode === 'audio' ? params.voice : undefined,
         speed: mode === 'audio' && activeModel?.supports_speed ? params.speed : undefined,
+        response_format: mode === 'audio' ? params.responseFormat : undefined,
+        instructions:
+          mode === 'audio' && activeModel?.supports_instructions
+            ? params.instructions.trim() || undefined
+            : undefined,
       };
 
       const created = await imagineApi.create(request);

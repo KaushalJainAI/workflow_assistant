@@ -31,6 +31,22 @@ export interface AgentRunStarted {
   unserved_grants: string[];
 }
 
+/** One knob the configuring model wants moved, in the board's own shape. */
+export interface AgentProposalChange {
+  /** Dotted path into AgentConfig, e.g. "tools.codeExecution". */
+  path: string;
+  label: string;
+  value: unknown;
+  why: string;
+}
+
+export interface AgentProposal {
+  reply: string;
+  changes: AgentProposalChange[];
+  /** 'model' from the server; the client sets 'rules' on its local fallback. */
+  source?: string;
+}
+
 /** What the server accepts. Everything read-only is stripped by the caller. */
 export type AgentInput = Partial<AgentConfig> & Pick<AgentConfig, 'name'>;
 
@@ -78,6 +94,26 @@ const agentsService = {
     const { data } = await apiClient.post(`/orchestrator/agents/${id}/approve/`, {
       thread_id: threadId, call_id: callId,
     });
+    return data;
+  },
+
+  /**
+   * The builder's chat: a description in, knob changes out.
+   *
+   * Nothing is saved — the server proposes against the board we send it, and
+   * the user still presses Save. It answers 503 when no model could be
+   * reached, which is why the caller keeps its local rule-based `propose()`:
+   * a builder that cannot reach a model should degrade, not stop.
+   */
+  configure: async (
+    message: string,
+    config: Partial<AgentConfig>,
+    history: { role: string; text: string }[] = [],
+  ): Promise<AgentProposal> => {
+    const { data } = await apiClient.post<AgentProposal>(
+      '/orchestrator/agents/configure/',
+      { message, config, history },
+    );
     return data;
   },
 

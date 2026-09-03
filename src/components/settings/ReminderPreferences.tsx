@@ -41,17 +41,15 @@ function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'relative w-11 h-6 rounded-full transition-colors shrink-0',
-        checked ? 'bg-primary' : 'bg-muted-foreground/30',
+        // Flex + padding rather than a hardcoded translate: the knob is placed
+        // by the track, so it stays inside it whatever either is sized to.
+        'inline-flex items-center w-11 h-6 p-0.5 box-border rounded-full',
+        'transition-colors shrink-0',
+        checked ? 'bg-primary justify-end' : 'bg-muted-foreground/30 justify-start',
         disabled && 'opacity-50 cursor-not-allowed',
       )}
     >
-      <span
-        className={cn(
-          'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-          checked && 'translate-x-5',
-        )}
-      />
+      <span className="block w-5 h-5 rounded-full bg-white shadow" />
     </button>
   );
 }

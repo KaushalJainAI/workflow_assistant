@@ -13,27 +13,63 @@ import apiClient from './client';
 export type MediaKind = 'image' | 'video' | 'audio';
 export type GenerationStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
-/** One model as served by `GET /imagine/capabilities/`. */
+/** An inclusive numeric window a model advertises for one dial. */
+export interface Range {
+  min: number;
+  max: number;
+}
+
+/**
+ * One model as served by `GET /imagine/capabilities/`.
+ *
+ * Every field is *per model*, and an empty one means the same thing throughout:
+ * this model does not take that dial, so no control is rendered for it. The
+ * backend used to substitute defaults where a model advertised none, which
+ * produced two different wrongs — a value outside a model's enum is a hard 400
+ * from OpenRouter, and a dial it never advertised is accepted and silently
+ * ignored. The one exception is `voices`: empty there means the model takes a
+ * free-form provider voice id, which is why that control becomes a text field.
+ */
 export interface ModelCapability {
   id: string;
   name: string;
   provider: string;
   description: string;
-  /** Image: `1K`/`2K`/`4K`. Video: `480p`/`720p`/`1080p`. Absent for audio. */
+  /** Image: `512`/`1K`/`2K`/`4K`. Video: `480p`/`720p`/`1080p`/`4K`. */
   resolutions?: string[];
   aspect_ratios?: string[];
+  /** Explicit `WIDTHxHEIGHT` alternatives to a resolution tier. Video. */
+  sizes?: string[];
   /** Video only — the exact clip lengths this model accepts, in seconds. */
   durations?: number[];
   /** Image only, and only where the model exposes a quality switch. */
   qualities?: string[];
+  /** Image only — `png`/`jpeg`/`webp`/`svg`, where advertised. */
+  output_formats?: string[];
+  /** Image only — `auto`/`transparent`/`opaque`. OpenAI + Riverflow families. */
+  backgrounds?: string[];
+  /** Image only — the 0-100 window for jpeg/webp compression, if offered. */
+  output_compression?: Range | null;
+  /** Image only — how many images one request may return. Absent: exactly one. */
+  batch?: Range | null;
   max_batch?: number;
+  /** How many reference images this model accepts. 0 means none. */
+  max_references?: number;
   supports_seed?: boolean;
   supports_references?: boolean;
+  /** Video only — which ends of the clip may be pinned to an image. */
+  frame_slots?: string[];
   /** Video only — whether the model can score the clip with audio. */
   supports_audio?: boolean;
   /** Audio only. Empty means the model takes a free-form voice id. */
   voices?: string[];
   supports_speed?: boolean;
+  /** Audio only — the endpoint's documented 0.5-2.0, not the UI's old guess. */
+  speed_range?: Range | null;
+  /** Audio only — `mp3` plays in the browser, `pcm` is raw samples. */
+  response_formats?: string[];
+  /** Audio only — free-text tone direction (the OpenAI speech family). */
+  supports_instructions?: boolean;
 }
 
 export interface Capabilities {
@@ -61,7 +97,17 @@ export interface Generation {
   generate_audio: boolean | null;
   voice: string | null;
   speed: number | null;
+  instructions: string | null;
+  response_format: string | null;
+  size: string | null;
+  background: string | null;
+  output_compression: number | null;
+  batch_size: number | null;
+  reference_urls: string[];
+  frame_images: { url: string; frame_type: string }[];
   output_url: string | null;
+  /** Every output of the request. `output_url` is the first of these. */
+  output_urls: string[];
   status: GenerationStatus;
   error_message: string | null;
   metadata: Record<string, unknown>;
@@ -69,7 +115,15 @@ export interface Generation {
   updated_at: string;
 }
 
-/** Only the fields a client is allowed to set — `metadata` is server-owned. */
+/**
+ * Only the fields a client is allowed to set — `metadata` and every output
+ * field are server-owned.
+ *
+ * This is the complete dial set the OpenRouter endpoints accept. Which of them
+ * may be sent for a given call is decided by the selected model's
+ * `ModelCapability`, and the backend refuses the rest rather than forwarding a
+ * setting that would be ignored.
+ */
 export interface GenerationRequest {
   type: MediaKind;
   prompt: string;
@@ -77,13 +131,21 @@ export interface GenerationRequest {
   negative_prompt?: string;
   resolution?: string;
   aspect_ratio?: string;
+  size?: string;
   duration?: string;
   seed?: number;
   quality?: string;
   output_format?: string;
+  background?: string;
+  output_compression?: number;
+  batch_size?: number;
+  reference_urls?: string[];
+  frame_images?: { url: string; frame_type: string }[];
   generate_audio?: boolean;
   voice?: string;
   speed?: number;
+  instructions?: string;
+  response_format?: string;
 }
 
 export const EMPTY_CAPABILITIES: Capabilities = {
@@ -121,7 +183,13 @@ export function pruneRequest(req: GenerationRequest): GenerationRequest {
   const out = { ...req };
   (Object.keys(out) as Array<keyof GenerationRequest>).forEach(key => {
     const value = out[key];
-    if (value === undefined || value === null || value === '') delete out[key];
+    const empty =
+      value === undefined || value === null || value === '' ||
+      // An empty array is "no references", which is what sending nothing
+      // already says — and `input_references: []` is a key some providers read
+      // as an image-to-image request with no image.
+      (Array.isArray(value) && value.length === 0);
+    if (empty) delete out[key];
   });
   return out;
 }

@@ -27,6 +27,7 @@ import {
   CornerDownRight,
   GitBranch,
   Settings2,
+  Coins,
 } from 'lucide-react';
 import {
   logsService,
@@ -35,7 +36,9 @@ import {
   type ExecutionLog,
 } from '../api';
 import { cn } from '../lib/utils';
+import { describeCost, formatCost } from '../lib/cost';
 import PageHeader from '../components/layout/PageHeader';
+import MarkdownMessage from '../components/chat/MarkdownMessage';
 
 const statusConfig = {
   completed: { icon: CheckCircle2, cls: 'text-success', bg: 'bg-success-subtle', label: 'Succeeded' },
@@ -139,21 +142,28 @@ function Turn({ turn, slowest }: { turn: AgentTurn; slowest: number }) {
             {turn.model_id}
           </span>
         )}
-        <span className="text-[11px] text-muted-foreground ml-auto tabular-nums">
-          {turn.tokens.toLocaleString()} tokens · {ms(turn.duration_ms)}
+        <span
+          className="text-[11px] text-muted-foreground ml-auto tabular-nums"
+          title={describeCost(turn.cost_usd, turn.cost_source, turn)}
+        >
+          {turn.tokens.toLocaleString()} tokens ·{' '}
+          <span className={cn(turn.cost_source === 'unpriced' && 'opacity-60')}>
+            {formatCost(turn.cost_usd, turn.cost_source)}
+          </span>{' '}
+          · {ms(turn.duration_ms)}
         </span>
       </div>
 
       {turn.reasoning ? (
-        <p className="text-[12px] leading-relaxed text-muted-foreground whitespace-pre-wrap mb-2">
-          {turn.reasoning}
+        <div className="prose prose-sm dark:prose-invert max-w-none mb-2 text-muted-foreground prose-p:text-muted-foreground prose-p:leading-relaxed prose-p:text-[13px]">
+          <MarkdownMessage content={turn.reasoning} variant="compact" className="text-[13px] leading-relaxed" />
           {/* A trimmed thought and a genuinely brief one must not look alike. */}
           {turn.reasoning_truncated && (
-            <span className="italic opacity-70"> […trimmed]</span>
+            <span className="text-[11px] italic opacity-70"> […trimmed]</span>
           )}
-        </p>
+        </div>
       ) : (
-        <p className="text-[12px] italic text-muted-foreground mb-2">
+        <p className="text-[12px] italic text-muted-foreground/60 mb-2">
           This model does not expose its reasoning.
         </p>
       )}
@@ -163,7 +173,12 @@ function Turn({ turn, slowest }: { turn: AgentTurn; slowest: number }) {
       ))}
 
       {turn.decision === 'answer' && turn.content && (
-        <p className="text-[12px] text-foreground whitespace-pre-wrap mt-1">{turn.content}</p>
+        <div className="mt-3 prose prose-sm dark:prose-invert max-w-none rounded-lg border border-border bg-card px-4 py-3 shadow-sm prose-headings:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground prose-p:text-[13.5px] prose-p:leading-relaxed prose-li:text-[13.5px] prose-ul:my-2 prose-ol:my-2">
+          <MarkdownMessage
+            content={turn.content + (turn.content_truncated ? "\n\n*\u2026 trimmed \u2014 open the full trace to see more*" : "")}
+            variant="full"
+          />
+        </div>
       )}
     </div>
   );
@@ -197,6 +212,55 @@ function OrchestratorBanner({ detail }: { detail: { delegated_by: NonNullable<im
   );
 }
 
+/**
+ * What the run cost, and what it was made of.
+ *
+ * The delegated total is shown as a separate figure rather than folded in: an
+ * orchestrator's own spend is usually a rounding error beside its workers', so
+ * one blended number would hide which of the two you are reading.
+ */
+function RunCostSummary({ detail }: { detail: import('../api').ExecutionDetail }) {
+  const unpriced = detail.cost_source === 'unpriced';
+  const delegated = detail.delegated_run_count > 0;
+
+  return (
+    <div className="flex items-center gap-2 text-[12px] text-muted-foreground flex-wrap">
+      <Coins className="w-3.5 h-3.5 shrink-0" />
+      <span title={describeCost(detail.cost_usd, detail.cost_source, detail)}>
+        {unpriced ? (
+          /* Never a number here: no price on record is not the same as free. */
+          <>Cost unknown — no price on record for this model</>
+        ) : (
+          <>
+            <span className="font-semibold text-foreground">
+              {formatCost(detail.cost_usd, detail.cost_source)}
+            </span>
+            {detail.cost_source === 'estimated' && ' estimated'}
+            {detail.cost_source === 'billed' && ' charged'}
+          </>
+        )}
+      </span>
+      {!unpriced && (
+        <span className="tabular-nums">
+          · {detail.input_tokens.toLocaleString()} in
+          {detail.cached_read_tokens > 0 && (
+            <> ({detail.cached_read_tokens.toLocaleString()} cached)</>
+          )}
+          {' '}· {detail.output_tokens.toLocaleString()} out
+        </span>
+      )}
+      {delegated && (
+        <span title={describeCost(detail.cost_usd_total, detail.cost_source_total)}>
+          · with {detail.delegated_run_count} delegated{' '}
+          <span className="font-semibold text-foreground">
+            {formatCost(detail.cost_usd_total, detail.cost_source_total)}
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Everything inside one run: how it was configured, who asked for it, and the
  *  loop it actually ran. */
 function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
@@ -214,6 +278,8 @@ function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
       {detail.delegated_by && (
         <OrchestratorBanner detail={{ delegated_by: detail.delegated_by }} />
       )}
+
+      <RunCostSummary detail={detail} />
 
       {detail.revision && (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
@@ -347,6 +413,17 @@ export default function Runs() {
                     )}
                     <StatusPill status={run.status} />
                     <span className="text-[12px] text-muted-foreground w-24 text-right">{CALLER_LABELS[run.caller] ?? run.trigger_type}</span>
+                    <span
+                      className={cn(
+                        'text-[12px] w-20 text-right tabular-nums',
+                        run.cost_source === 'unpriced'
+                          ? 'text-muted-foreground/50'
+                          : 'text-muted-foreground',
+                      )}
+                      title={describeCost(run.cost_usd, run.cost_source, run)}
+                    >
+                      {formatCost(run.cost_usd, run.cost_source)}
+                    </span>
                     <span className="text-[12px] text-muted-foreground w-16 text-right tabular-nums">{ms(run.duration_ms)}</span>
                     <span className="text-[12px] text-muted-foreground w-20 text-right">{when(run.created_at)}</span>
                   </button>

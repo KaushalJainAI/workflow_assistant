@@ -15,7 +15,8 @@ import { cn } from '../../lib/utils';
 
 interface Props {
   generation: Generation;
-  onOpen: (generation: Generation) => void;
+  /** `url` is the frame the user actually clicked — a batch has several. */
+  onOpen: (generation: Generation, url: string) => void;
   onDelete: (id: number) => void;
 }
 
@@ -28,14 +29,25 @@ function aspectStyle(ratio: string | null): string {
 
 export function ResultCard({ generation, onOpen, onDelete }: Props) {
   const [isDownloading, setIsDownloading] = useState(false);
+  // Which image of a batch is showing. `n` may return up to ten, and one card
+  // that displayed `output_url` alone would show a tenth of what was billed.
+  const [frame, setFrame] = useState(0);
   const { status, type, output_url, prompt, error_message, model } = generation;
-  const isDone = status === 'completed' && !!output_url;
+  // `output_urls` is authoritative; the fallback covers rows written before it
+  // existed, which have only the single url.
+  const urls = generation.output_urls?.length
+    ? generation.output_urls
+    : output_url
+      ? [output_url]
+      : [];
+  const shown = urls[Math.min(frame, urls.length - 1)] ?? output_url;
+  const isDone = status === 'completed' && !!shown;
 
   const handleDownload = async () => {
-    if (!output_url) return;
+    if (!shown) return;
     setIsDownloading(true);
     try {
-      await downloadFile(output_url, prompt, DEFAULT_EXTENSION[type]);
+      await downloadFile(shown, prompt, DEFAULT_EXTENSION[type]);
     } catch (err) {
       // Remote video URLs are signed and can expire — say so rather than
       // failing silently on a button the user just pressed.
@@ -54,7 +66,7 @@ export function ResultCard({ generation, onOpen, onDelete }: Props) {
           isDone && type !== 'audio' && 'cursor-zoom-in',
         )}
         style={{ aspectRatio: type === 'audio' ? '16 / 6' : aspectStyle(generation.aspect_ratio) }}
-        onClick={() => isDone && type !== 'audio' && onOpen(generation)}
+        onClick={() => isDone && type !== 'audio' && shown && onOpen(generation, shown)}
       >
         {status === 'failed' ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center bg-destructive/5">
@@ -73,16 +85,16 @@ export function ResultCard({ generation, onOpen, onDelete }: Props) {
           </div>
         ) : type === 'image' ? (
           <img
-            src={output_url!}
+            src={shown!}
             alt={prompt}
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
           />
         ) : type === 'video' ? (
-          <video src={output_url!} controls playsInline className="w-full h-full object-cover" />
+          <video src={shown!} controls playsInline className="w-full h-full object-cover" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-5">
-            <audio src={output_url!} controls className="w-full" />
+            <audio src={shown!} controls className="w-full" />
           </div>
         )}
 
@@ -92,7 +104,7 @@ export function ResultCard({ generation, onOpen, onDelete }: Props) {
               <button
                 onClick={e => {
                   e.stopPropagation();
-                  onOpen(generation);
+                  if (shown) onOpen(generation, shown);
                 }}
                 title="Open full size"
                 className="p-2 rounded-lg bg-background/90 backdrop-blur border border-border/50 text-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
@@ -120,6 +132,24 @@ export function ResultCard({ generation, onOpen, onDelete }: Props) {
       </div>
 
       <div className="p-4 space-y-2.5">
+        {urls.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {urls.map((url, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setFrame(i)}
+                title={`Image ${i + 1} of ${urls.length}`}
+                className={cn(
+                  'h-10 w-10 rounded-lg overflow-hidden border transition-colors',
+                  i === frame ? 'border-primary' : 'border-border/50 hover:border-border',
+                )}
+              >
+                <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
         <p className="text-sm leading-relaxed line-clamp-2 text-foreground/85">{prompt}</p>
         <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-border/40">
           <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-muted-foreground">

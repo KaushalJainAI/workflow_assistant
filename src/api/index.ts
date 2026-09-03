@@ -51,6 +51,8 @@ export {
   type ExecutionStatistics,
   type DailyTrendPoint,
   type CostBreakdown,
+  type CostSource,
+  type CostFields,
 } from './logs';
 export { default as nodeService, type NodeSchema, type NodeField, type NodeHandle } from './nodeService';
 export { chatService, type ChatSession, type ChatMessage as StandaloneChatMessage } from './chat';

@@ -185,11 +185,22 @@ function Toggle({ on, onChange, label, hint }: {
   on: boolean; onChange: (v: boolean) => void; label: string; hint?: string;
 }) {
   return (
-    <button onClick={() => onChange(!on)} className="w-full flex items-start gap-2.5 text-left py-1 group">
-      <span className={cn('mt-0.5 w-8 h-[18px] rounded-full shrink-0 transition-colors relative',
-        on ? 'bg-primary' : 'bg-accent border border-border-strong')}>
-        <span className={cn('absolute top-[2px] w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all',
-          on ? 'left-[16px]' : 'left-[2px]')} />
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      className="w-full flex items-start gap-2.5 text-left py-1 group"
+    >
+      {/* The knob is placed by the track's own flexbox rather than by a hardcoded
+          offset: `justify-end` plus the track's padding lands it inside the track
+          whatever the two are sized to, so a change to either size cannot leave
+          the knob hanging over the edge. */}
+      <span className={cn(
+        'mt-0.5 w-8 h-[18px] p-[2px] rounded-full shrink-0 box-border',
+        'inline-flex items-center transition-colors',
+        on ? 'bg-primary justify-end' : 'bg-accent border border-border-strong justify-start')}>
+        <span className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm" />
       </span>
       <span className="min-w-0">
         <span className="block text-[13px] text-foreground">{label}</span>
@@ -214,6 +225,10 @@ export default function AgentBuilder() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
+  /** A turn is in flight. One at a time: the proposal is against a snapshot of
+   *  the board, so a second send while the first is out would propose against a
+   *  config that is about to change under it. */
+  const [pending, setPending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data: existing, isLoading } = useQuery({
@@ -314,20 +329,55 @@ export default function AgentBuilder() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, pending]);
 
   const set = <K extends keyof AgentConfig>(k: K, v: AgentConfig[K]) =>
     setCfg((c) => ({ ...c, [k]: v }));
   const setTool = (k: keyof AgentConfig['tools'], v: boolean) =>
     setCfg((c) => ({ ...c, tools: { ...c.tools, [k]: v } }));
 
-  const send = (text: string) => {
-    if (!text.trim()) return;
-    const { reply, changes } = propose(text, cfg, connectorOptions);
+  /* The chat pane is a *model* configuring the agent, with the local rule table
+     as its fallback.
+
+     The rules stay because they are the only thing that works when no model can
+     be reached — but they are the fallback and not the feature: they moved a
+     knob only when the description happened to contain a word in their table,
+     so a brief that named its source, its job and its cadence could still be
+     answered with "I couldn't tell which knobs that should move". The server
+     sees the account's real connections, knowledge bases and skills, so it can
+     name ids the browser has no way to guess, and it validates every value it
+     proposes against the same serializer that will validate the save. */
+  const send = async (text: string) => {
+    if (!text.trim() || pending) return;
+    setMessages((m) => [...m, { role: 'user', text }]);
+    setInput('');
+    setPending(true);
+    // Captured before the await: `cfg` in this closure is the board the user
+    // was looking at when they pressed send, which is what the proposal is
+    // against — and what `applyChanges` must be applied to below.
+    const history = messages.map((m) => ({ role: m.role, text: m.text }));
+    try {
+      const proposal = await agentsService.configure(text, cfg, history);
+      apply(proposal.reply, proposal.changes as Change[]);
+    } catch {
+      const { reply, changes } = propose(text, cfg, connectorOptions);
+      apply(
+        changes.length
+          ? `${reply}
+
+(The configuring model was unreachable, so this is the local rule set — check each change.)`
+          : "I couldn't reach the model that configures agents, and the local rules didn't recognise that. Try naming what it reads, what it does with it, and whether it may act without you.",
+        changes,
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const apply = (reply: string, changes: Change[]) => {
     setCfg((c) => applyChanges(c, changes));
     setTouched(new Set(changes.map((c) => c.path)));
-    setMessages((m) => [...m, { role: 'user', text }, { role: 'agent', text: reply, changes }]);
-    setInput('');
+    setMessages((m) => [...m, { role: 'agent', text: reply, changes }]);
   };
 
   const reset = () => {
@@ -410,8 +460,8 @@ export default function AgentBuilder() {
                 </p>
                 <div className="space-y-2">
                   {STARTERS.map((s) => (
-                    <button key={s} onClick={() => send(s)}
-                      className="w-full text-left px-3 py-2 text-[13px] bg-card hover:bg-accent border border-border rounded transition-colors">
+                    <button key={s} onClick={() => send(s)} disabled={pending}
+                      className="w-full text-left px-3 py-2 text-[13px] bg-card hover:bg-accent border border-border rounded transition-colors disabled:opacity-50">
                       {s}
                     </button>
                   ))}
@@ -439,6 +489,15 @@ export default function AgentBuilder() {
                 </div>
               ))
             )}
+            {pending && (
+              <div className="flex">
+                <div className="max-w-[92%] rounded px-3 py-2 bg-card border border-border
+                                flex items-center gap-2 text-[13px] text-muted-foreground">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Working out the settings…
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-border p-3">
@@ -447,10 +506,11 @@ export default function AgentBuilder() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && send(input)}
-                placeholder="Describe what it should do…"
-                className="flex-1 h-10 px-3 rounded border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                disabled={pending}
+                placeholder={pending ? 'Working…' : 'Describe what it should do…'}
+                className="flex-1 h-10 px-3 rounded border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
               />
-              <SendButton onClick={() => send(input)} disabled={!input.trim()} />
+              <SendButton onClick={() => send(input)} disabled={!input.trim() || pending} />
             </div>
           </div>
         </div>

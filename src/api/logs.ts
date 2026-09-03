@@ -19,7 +19,7 @@ import apiClient from './client';
 /** Who started a run. `trigger_type` says how; this says what. */
 export type RunCaller = 'api' | 'chat' | 'orchestrator' | 'trigger';
 
-export interface ExecutionLog {
+export interface ExecutionLog extends CostFields {
   id?: number;
   execution_id: string;
   workflow_id: number;
@@ -57,6 +57,32 @@ export interface AgentStep {
   delegated_runs: DelegatedRun[];
 }
 
+/**
+ * Where a cost figure came from.
+ *
+ * `unpriced` is not a zero — it means no price is on record for the model, and
+ * rendering it as a number would claim a run was free when we simply do not
+ * know. `formatCost` in `lib/cost.ts` is what enforces that distinction.
+ */
+export type CostSource = 'billed' | 'estimated' | 'unpriced';
+
+/**
+ * What a run or a turn consumed, in the buckets it was actually billed in.
+ *
+ * `input_tokens` EXCLUDES the cached ones, so the four are disjoint and sum to
+ * the prompt plus the completion. `cost_usd` is a decimal string, never a
+ * number: JSON has no decimal type and a cost that picks up binary drift on
+ * the way here will not add up against the one the spend cap enforced.
+ */
+export interface CostFields {
+  input_tokens: number;
+  output_tokens: number;
+  cached_read_tokens: number;
+  cached_write_tokens: number;
+  cost_usd: string;
+  cost_source: CostSource;
+}
+
 export interface DelegatedRun {
   execution_id: string;
   workflow_id: number | null;
@@ -70,7 +96,7 @@ export interface DelegatedRun {
 }
 
 /** One pass of the model: what it thought, and what it decided to do next. */
-export interface AgentTurn {
+export interface AgentTurn extends CostFields {
   index: number;
   decision: 'tools' | 'answer' | 'paused' | 'error';
   /** The model's reasoning for THIS turn. Capped; see `reasoning_truncated`. */
@@ -81,6 +107,8 @@ export interface AgentTurn {
   provider: string;
   model_id: string;
   tokens: number;
+  /** Reasoning tokens, a subset of `output_tokens`. Never billed separately. */
+  reasoning_tokens: number;
   duration_ms: number | null;
   created_at: string;
   steps: AgentStep[];
@@ -124,6 +152,16 @@ export interface ExecutionDetail extends ExecutionLog {
   /** The configuration this run actually executed under. */
   revision: RevisionSummary | null;
   delegated_by: DelegatedBy | null;
+  /** How many runs this one delegated, at any depth. */
+  delegated_run_count: number;
+  /**
+   * This run's cost WITH its delegated workers. Separate from `cost_usd`
+   * because an orchestrator's own spend is a rounding error next to its
+   * workers', and one blended figure would hide which you are looking at.
+   */
+  cost_usd_total: string;
+  cost_source_total: CostSource;
+  tokens_used_total: number;
 }
 
 // Configuration history
@@ -216,17 +254,36 @@ export interface WorkflowMetrics {
  */
 export interface CostBreakdown {
   period_days: number;
+  /**
+   * Always 0. `credits_used` is a column nothing has ever written, so this was
+   * structurally zero for the life of the endpoint; it is kept on the wire so
+   * an older client does not read `undefined`. Use `total_cost_usd`.
+   */
   total_credits: number;
   total_tokens: number;
+  total_cost_usd: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cached_read_tokens: number;
   by_workflow: {
     workflow_id: number;
     workflow_name: string;
     tokens: number;
-    credits: number;
+    cost_usd: string;
+    /** `unpriced` when any of this agent's runs was — see `lib/cost.ts`. */
+    cost_source: CostSource;
     executions: number;
   }[];
+  /** Which model the money actually went to — `by_workflow` says which agent. */
+  by_model: {
+    model_id: string;
+    provider: string;
+    tokens: number;
+    cost_usd: string;
+    turns: number;
+  }[];
   by_tool: { tool: string; count: number }[];
-  daily_usage: { date: string | null; credits: number; tokens: number }[];
+  daily_usage: { date: string | null; cost_usd: string; tokens: number }[];
 }
 
 export const logsService = {

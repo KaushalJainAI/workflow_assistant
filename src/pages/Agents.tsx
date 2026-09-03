@@ -7,7 +7,7 @@
  */
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2, Sliders } from 'lucide-react';
+import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2, Sliders, LayoutGrid } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import agentsService, { type Agent } from '../api/agents';
@@ -71,13 +71,25 @@ function EmptyState() {
         An agent combines instructions and tools. Describe the job in plain
         language and the builder handles setup — you can change anything.
       </p>
-      <Link
-        to="/agents/new"
-        className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90"
-      >
-        <Plus className="w-4 h-4" />
-        New agent
-      </Link>
+      <div className="flex items-center gap-2">
+        <Link
+          to="/agents/new"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90"
+        >
+          <Plus className="w-4 h-4" />
+          New agent
+        </Link>
+        {/* The likelier first move of the two: starting from a template means
+            approving a permission envelope somebody already thought about,
+            rather than choosing every dial from scratch. */}
+        <Link
+          to="/templates"
+          className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded font-semibold text-sm hover:bg-secondary"
+        >
+          <LayoutGrid className="w-4 h-4" />
+          Browse templates
+        </Link>
+      </div>
     </div>
   );
 }
@@ -108,6 +120,14 @@ export default function Agents() {
         title="Agents"
         subtitle={subtitle}
         actions={
+          <div className="flex items-center gap-2">
+          <Link
+            to="/templates"
+            className="flex items-center gap-2 px-4 py-2 border border-border rounded font-semibold text-sm hover:bg-secondary"
+          >
+            <LayoutGrid className="w-4 h-4" />
+            Templates
+          </Link>
           <Link
             to="/agents/new"
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90"
@@ -115,6 +135,7 @@ export default function Agents() {
             <Plus className="w-4 h-4" />
             New agent
           </Link>
+          </div>
         }
       />
 

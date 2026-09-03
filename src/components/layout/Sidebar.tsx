@@ -17,6 +17,7 @@ import {
   Activity,
   Radar,
   Bot,
+  LayoutGrid,
   Clapperboard,
   // LineChart,  // MVP: unused while Evals is hidden
   // SlidersHorizontal,  // MVP: unused while Tuning is hidden
@@ -158,6 +159,9 @@ const Sidebar = () => {
                 // Standard tool library — code-owned tools grouped by grant.
                 // Plugins (MCP) bring dynamic mcp__* tools; their catalogue is on
                 // Connections, not here. Connectors are credentials (Credentials).
+                // A template is where most agents start, so it is a
+                // destination rather than a button inside the list.
+                { icon: LayoutGrid, label: "Templates", path: "/templates" },
                 { icon: Wrench, label: "Tools", path: "/tools" },
                 // Separate from Automations on purpose: an agent is a
                 // configuration, a schedule is a standing commitment to
