@@ -6,6 +6,14 @@ export interface ChatSession {
   title: string;
   llm_provider: string;
   llm_model: string;
+  /**
+   * How hard the model is asked to think: '' (the model's own default),
+   * 'none', 'minimal', 'low', 'medium' or 'high'. Which of those a given model
+   * actually offers comes from `AIModel.effort_levels` on `/llm/models/` — a
+   * level the model has no rung for is snapped server-side rather than
+   * refused, so sending a stale one is safe, just not what was asked.
+   */
+  llm_effort: string;
   intent: string;
   system_prompt: string;
   /**
@@ -186,13 +194,25 @@ export const chatService = {
     llmModel?: string,
     approveToolCall?: string,
     /** Approve *and* stop asking about this tool. Only read alongside an approval. */
-    rememberApproval?: boolean
+    rememberApproval?: boolean,
+    /**
+     * Reasoning effort. Appended last rather than placed beside `llmModel`
+     * because this list is positional and moving anything would silently
+     * reassign every existing call's arguments.
+     *
+     * `undefined` means "say nothing", so the session's stored level stands.
+     * `''` is an explicit request for the model's default and is what clears a
+     * stored level — which is why the check below is on `!== undefined` and
+     * not on truthiness.
+     */
+    llmEffort?: string
   ): Promise<void> {
     const body: Record<string, unknown> = { content };
     if (intent && intent !== 'normal') body.intent = intent;
     if (reference) body.reference = reference;
     if (llmProvider) body.llm_provider = llmProvider;
     if (llmModel) body.llm_model = llmModel;
+    if (llmEffort !== undefined) body.llm_effort = llmEffort;
     if (approveToolCall) body.approve_tool_call = approveToolCall;
     if (approveToolCall && rememberApproval) body.remember_approval = true;
 

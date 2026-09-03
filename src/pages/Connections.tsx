@@ -67,13 +67,18 @@ import { cn } from '../lib/utils';
  *   the two need opposite affordances: `off` is undone by flipping the switch
  *   back, while `unavailable` is not a choice the user has at all. Collapsing
  *   them is what produced a live-looking toggle that silently did nothing.
+ * `coming_soon` — also platform-off, but on the way rather than broken. Same
+ *   inert affordance as `unavailable`, opposite reading: "Unavailable" tells a
+ *   user something is wrong, and these connectors are simply not built yet.
+ *   Driven by the row's own `coming_soon` flag, never by its name.
  */
 type ConnectionStatus =
   | 'always'
   | 'connected'
   | 'needs_auth'
   | 'off'
-  | 'unavailable';
+  | 'unavailable'
+  | 'coming_soon';
 
 interface StatusView {
   label: string;
@@ -106,6 +111,11 @@ const STATUS_VIEWS: Record<ConnectionStatus, StatusView> = {
     label: 'Unavailable',
     dot: 'bg-amber-400/60',
     badge: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  },
+  coming_soon: {
+    label: 'Coming soon',
+    dot: 'bg-sky-400/60',
+    badge: 'bg-sky-500/10 text-sky-600 border-sky-500/20',
   },
 };
 
@@ -536,7 +546,9 @@ function ConnectionCard({
   const isOn = server.effective_enabled;
   // Turned off by the platform, not by this user: the switch is not theirs to
   // flip, and the API answers 409 if we ask. Render it inert and say why.
-  const unavailable = status === 'unavailable';
+  // Both platform-off statuses qualify -- an upcoming connector is just as
+  // un-flippable as a broken one, so this must not narrow to 'unavailable'.
+  const platformOff = status === 'unavailable' || status === 'coming_soon';
   // Only worth asking the server what it can do once it could actually answer.
   const canShowCapabilities = isOn && (status === 'always' || status === 'connected');
 
@@ -568,7 +580,7 @@ function ConnectionCard({
         <ConnectionSwitch
           isOn={isOn}
           onToggle={onToggle}
-          disabled={busy || unavailable}
+          disabled={busy || platformOff}
           label={server.label}
         />
       </div>
@@ -576,7 +588,7 @@ function ConnectionCard({
       {/* `setup_notes` is written by the catalogue migrations to explain exactly
           this state, and was fetched but never rendered — so every dead card
           was dead for a reason no user could read. */}
-      {unavailable && server.setup_notes && (
+      {platformOff && server.setup_notes && (
         <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-amber-500/30 pl-3">
           {server.setup_notes}
         </p>
@@ -603,16 +615,16 @@ function ConnectionCard({
         <span
           className={cn(
             'inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full border',
-            isOn || unavailable ? view.badge : STATUS_VIEWS.off.badge
+            isOn || platformOff ? view.badge : STATUS_VIEWS.off.badge
           )}
         >
           <span
             className={cn(
               'w-1.5 h-1.5 rounded-full flex-shrink-0',
-              isOn || unavailable ? view.dot : STATUS_VIEWS.off.dot
+              isOn || platformOff ? view.dot : STATUS_VIEWS.off.dot
             )}
           />
-          {isOn || unavailable ? view.label : STATUS_VIEWS.off.label}
+          {isOn || platformOff ? view.label : STATUS_VIEWS.off.label}
         </span>
 
         {status === 'needs_auth' && (
@@ -859,6 +871,10 @@ export default function Connections() {
     // The platform's own switch is checked first: a row turned off here can
     // never be turned on by the user, so reporting it as their `off` would
     // offer an action that does not exist.
+    // Checked before `unavailable`, which it is a special case of: both are
+    // platform-off and inert, but an upcoming connector is not a fault, and
+    // saying "Unavailable" reads as one.
+    if (server.is_system && !server.enabled && server.coming_soon) return 'coming_soon';
     if (server.is_system && !server.enabled) return 'unavailable';
     if (!server.effective_enabled) return 'off';
     const validation = validationQuery.data?.get(server.id);

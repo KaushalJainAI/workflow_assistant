@@ -35,6 +35,7 @@ import RevisionEntry from '../components/agents/RevisionEntry';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
 import { SendButton } from '../components/ui/SendButton';
 import ScheduleEditor from '../components/schedules/ScheduleEditor';
+import { EFFORT_LABELS } from '../hooks/useEffortSelection';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
 
@@ -327,6 +328,17 @@ export default function AgentBuilder() {
   // saved model with the catalogue's default.
   const effectiveModel = cfg.model || activeProvider?.models?.[0]?.value || '';
 
+  // Which effort rungs the model in force offers, or `[]` for none — which is
+  // what hides the control entirely. Derived for the same reason as
+  // `effectiveModel`: writing it back through an effect would race the agent's
+  // own load and could clear a saved level before it was ever rendered.
+  const effortLevels = useMemo(
+    () =>
+      activeProvider?.models?.find((mo) => mo.value === effectiveModel)?.effort_levels
+      ?? [],
+    [activeProvider, effectiveModel]
+  );
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, pending]);
@@ -562,6 +574,32 @@ export default function AgentBuilder() {
                   />
                 </Knob>
               </div>
+              {/* Only for models that have the knob. Rendering a disabled row
+                  for the rest would suggest the setting exists and is simply
+                  off, when in fact nothing would be sent. */}
+              {(effortLevels.length > 0) && (
+                <Knob path="effort" touched={touched} label="Reasoning effort"
+                      hint={cfg.effort || 'model default'}>
+                  <Select
+                    value={cfg.effort}
+                    onChange={(v) => set('effort', v)}
+                    placeholder="Model default"
+                    icon={<Brain className="w-4 h-4" />}
+                    options={[
+                      { value: '', label: 'Model default' },
+                      ...effortLevels.map((level) => ({
+                        value: level,
+                        label: EFFORT_LABELS[level] ?? level,
+                      })),
+                    ]}
+                  />
+                  <p className="text-[12px] text-muted-foreground mt-1">
+                    Raise it for multi-step analysis. Extraction, routing and
+                    formatting do not get better for the extra thinking, and it
+                    is billed either way.
+                  </p>
+                </Knob>
+              )}
               <Knob path="temperature" touched={touched} label="Temperature"
                     hint={cfg.temperature <= 0.2 ? 'deterministic' : cfg.temperature >= 0.7 ? 'varied' : 'balanced'}>
                 <div className="flex items-center gap-3">

@@ -100,6 +100,9 @@ export interface MCPServer {
   setup_notes?: string;
   /** The server's own flag. Shared templates have this on for everyone. */
   enabled: boolean;
+  /** Announced, not yet shippable. Presentation only: always paired with
+   *  `enabled: false`, which is what actually withholds the tools. */
+  coming_soon: boolean;
   /** Whether this server is live *for the current user* — the value to render. */
   effective_enabled: boolean;
   /** True for curated system servers: config is read-only, the toggle is not. */

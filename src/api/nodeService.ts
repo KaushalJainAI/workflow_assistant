@@ -42,6 +42,20 @@ export interface AIModel {
   value: string;
   is_free: boolean;
   description: string;
+  /**
+   * Reasoning-effort rungs this model actually offers, cheapest first, from
+   * `llm.effort.LADDER` on the backend. **Always present**, and `[]` is a real
+   * answer — "this model has no effort control" — so a picker renders the
+   * control off this array rather than guessing from the model's name.
+   *
+   * The backend cleans the list before sending it, so every entry here is one
+   * the runtime will actually put on the wire.
+   */
+  effort_levels: string[];
+  /** The rung used when nobody chooses. `''` means the provider's own default. */
+  default_effort: string;
+  /** Convenience for `effort_levels.length > 0`; the server computes both. */
+  supports_effort: boolean;
 }
 
 export interface AIProvider {

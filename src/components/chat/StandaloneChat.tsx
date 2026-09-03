@@ -63,6 +63,8 @@ import { useChatStream, type StreamEvent } from '../../hooks/useChatStream';
 import { useMessagePanels } from '../../hooks/useMessagePanels';
 import { useMessageSelection } from '../../hooks/useMessageSelection';
 import { useChatModelSelection } from '../../hooks/useChatModelSelection';
+import { useEffortSelection, EFFORT_LABELS } from '../../hooks/useEffortSelection';
+import { EffortPicker } from './EffortPicker';
 import { prettyModel } from '../../lib/modelNames';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/authState';
@@ -170,6 +172,20 @@ export default function StandaloneChat() {
     adopt: adoptSessionModel,
   } = useChatModelSelection({ isGuest, providers: dynamicProviders });
 
+  // Which rungs are on offer depends on the model chosen just above, so this
+  // reads that selection rather than owning it. See `useEffortSelection` for
+  // why a stale level is dropped rather than sent.
+  const {
+    effort: llmEffort,
+    effortToSend,
+    available: effortLevels,
+    supported: effortSupported,
+    choose: chooseEffort,
+    adopt: adoptSessionEffort,
+  } = useEffortSelection({
+    providers: dynamicProviders, provider: llmProvider, model: llmModel, isGuest,
+  });
+
   // --- Agentic Features State ---
   const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(true);
   const [activeIntent, setActiveIntent] = useState<ChatIntent>('normal');
@@ -241,6 +257,7 @@ export default function StandaloneChat() {
     setConversationId(session.id);
     setCurrentSession(session);
     adoptSessionModel(session.llm_provider, session.llm_model);
+    adoptSessionEffort(session.llm_effort ?? '');
   };
 
   /**
@@ -369,6 +386,25 @@ export default function StandaloneChat() {
     }
     
     toast.success(`Chat engine switched to ${model}`);
+  };
+
+  /**
+   * Persist an effort choice the same way a model choice is persisted.
+   *
+   * Separate from `saveLLMSettings` rather than folded into it because the two
+   * are chosen independently: switching model must not silently reset the
+   * effort, and changing effort must not re-announce the model with a toast.
+   */
+  const saveEffort = async (next: string) => {
+    chooseEffort(next);
+
+    if (conversationId) {
+      try {
+        await chatService.updateSession(conversationId, { llm_effort: next });
+      } catch (err) {
+        console.error('Failed to update reasoning effort', err);
+      }
+    }
   };
 
   const processFile = async (file: File) => {
@@ -626,7 +662,8 @@ export default function StandaloneChat() {
           llmProvider,
           llmModel,
           callId,
-          remember
+          remember,
+          effortToSend
         ),
       { intent: activeIntent },
     );
@@ -887,7 +924,10 @@ export default function StandaloneChat() {
               reference,
               signal,
               llmProvider,
-              llmModel
+              llmModel,
+              undefined,
+              undefined,
+              effortToSend
             ),
           meta,
         );
@@ -2504,6 +2544,15 @@ export default function StandaloneChat() {
                           <span className="hidden sm:inline max-w-[120px] truncate">
                             {dynamicProviders.find(p => p.slug === llmProvider)?.models.find(m => m.value === llmModel)?.name || 'Select model'}
                           </span>
+                          {/* Only when it is doing something. A badge reading
+                              "Default" on every model would be noise, and one
+                              shown for a model with no effort control would be
+                              a claim about a setting that is not applied. */}
+                          {effortSupported && llmEffort && (
+                            <span className="hidden sm:inline px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary">
+                              {EFFORT_LABELS[llmEffort] ?? llmEffort}
+                            </span>
+                          )}
                           <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", showModelDropdown && "rotate-180")} />
                         </button>
 
@@ -2606,6 +2655,14 @@ export default function StandaloneChat() {
                                   ) : null;
                                 })()}
                               </div>
+
+                              {/* Renders nothing when this model has no effort
+                                  control, which is most of the catalogue. */}
+                              <EffortPicker
+                                available={effortLevels}
+                                value={llmEffort}
+                                onChange={saveEffort}
+                              />
                             </div>
                           </>
                         )}

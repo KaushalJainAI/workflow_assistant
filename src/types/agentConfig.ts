@@ -22,6 +22,16 @@ export interface AgentConfig {
   model: string;
   /** 0 = deterministic, 1 = loose. Extraction wants low, drafting wants high. */
   temperature: number;
+  /**
+   * How hard the model thinks before answering: `''` (the model's own
+   * default), `'none'`, `'minimal'`, `'low'`, `'medium'` or `'high'`.
+   *
+   * Which of those the chosen model actually offers comes from
+   * `AIModel.effort_levels`; a model with no effort control ignores this
+   * entirely. `''` is the default so an agent saved before this field existed
+   * runs exactly as it did.
+   */
+  effort: string;
 
   // Sandbox
   fileAccess: FileAccess;
@@ -129,6 +139,7 @@ export const DEFAULT_AGENT: AgentConfig = {
   provider: 'openrouter',
   model: '',
   temperature: 0.2,
+  effort: '',
 
   // Default to the cautious end of every dial. An agent that turns out to need
   // more can be widened deliberately; one that starts wide is never narrowed.
