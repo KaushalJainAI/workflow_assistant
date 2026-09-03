@@ -61,3 +61,11 @@ __pycache__/
 *.pyc
 .venv/
 
+# Local scratch / backups / generated demos
+.archive/
+demo-recordings/
+scratch/
+status.txt
+diff.txt
+*.tmp
+

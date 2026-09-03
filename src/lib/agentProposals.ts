@@ -7,7 +7,7 @@
  * returns an AgentConfig patch, swap `propose()` for that call — the shape it
  * returns here is the shape the UI already consumes.
  */
-import type { AgentConfig } from '../types/agentConfig';
+import type { AgentConfig, ConnectorChoice } from '../types/agentConfig';
 
 export interface Change {
   /** Dotted path into AgentConfig, e.g. "tools.codeExecution". */
@@ -24,8 +24,10 @@ export interface Proposal {
 
 const has = (t: string, ...words: string[]) => words.some((w) => t.includes(w));
 
-/** The connections available to match against, as the builder knows them. */
-export interface ConnectorChoice {
+/** The connections available to match against, as the builder knows them.
+ *  Distinct from the stored `ConnectorChoice`: this is what the picker offers,
+ *  that is what an agent saved. */
+export interface ConnectorOption {
   id: number;
   label: string;
   /** The stable presentation key from the backend, e.g. `gmail`. */
@@ -53,7 +55,7 @@ const CONNECTOR_KEYWORDS: Record<string, string[]> = {
 export function propose(
   input: string,
   cfg: AgentConfig,
-  available: ConnectorChoice[] = [],
+  available: ConnectorOption[] = [],
 ): Proposal {
   const t = input.toLowerCase();
   const changes: Change[] = [];
@@ -66,23 +68,30 @@ export function propose(
    * Proposed only from what the user has actually connected. Suggesting a
    * connection they do not have would put an id in the config that the backend
    * rejects on save, so the account's own catalogue is the candidate list. */
-  const connectors = new Set(cfg.connectors);
+  // A stored connection is either a bare id or `{id, mode, tools}`. The rule
+  // table only ever *adds* one, so it keeps whatever entry is already there and
+  // appends bare ids — narrowing a connection to read-only is a judgement this
+  // keyword matcher has no business making.
+  const chosen = new Map<number, ConnectorChoice>(
+    cfg.connectors.map((c) => [typeof c === 'number' ? c : c.id, c]),
+  );
   for (const choice of available) {
     const words = CONNECTOR_KEYWORDS[choice.iconSlug ?? ''];
-    if (words && has(t, ...words)) connectors.add(choice.id);
+    if (words && has(t, ...words) && !chosen.has(choice.id)) {
+      chosen.set(choice.id, choice.id);
+    }
   }
-  if (connectors.size !== cfg.connectors.length) {
-    add('connectors', 'Connections', [...connectors].sort((a, b) => a - b),
+  if (chosen.size !== cfg.connectors.length) {
+    add('connectors', 'Connections',
+        [...chosen.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c),
         'Named a source it has to reach.');
   }
 
   // --- how it should be invoked --------------------------------------------
   if (has(t, 'every day', 'daily', 'every monday', 'weekly', 'every week',
              'schedule', 'each morning', 'hourly', 'keep', 'monitor', 'watch')) {
-    if (cfg.trigger !== 'maintenance') {
-      add('trigger', 'Trigger', 'maintenance',
-          'Standing job, not a one-off request.');
-    }
+    // No `trigger` to set any more: an agent with a schedule *is* a standing
+    // job, and the schedule below is the whole statement.
     const cron =
       has(t, 'monday') ? '0 9 * * 1'
       : has(t, 'hourly') ? '0 * * * *'

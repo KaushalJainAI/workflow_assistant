@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bot, Brain, Cpu, Timer, FolderLock, Wrench, Plug,
   ShieldCheck, Clock, Layers, Save, RotateCcw, Check, Globe, Loader2, Trash2,
+  FileOutput,
   History,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,8 +29,9 @@ import MultiSelect from '../components/ui/MultiSelect';
 import Select from '../components/ui/Select';
 import {
   DEFAULT_AGENT, TRIGGER_COPY, AUTONOMY_COPY, FILE_ACCESS_COPY,
-  EGRESS_COPY,
-  type AgentConfig, type TriggerMode, type Autonomy, type FileAccess, type Egress,
+  STATUS_COPY, CONTRACT_COPY, CONNECTOR_MODE_COPY,
+  type AgentConfig, type Autonomy, type FileAccess, type AgentStatus,
+  type OutputContract, type ConnectorChoice, type ConnectorMode,
 } from '../types/agentConfig';
 import RevisionEntry from '../components/agents/RevisionEntry';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
@@ -182,6 +184,86 @@ function Choice<T extends string>({ value, onChange, options }: {
   );
 }
 
+/* ---------- the connector union ----------
+ *
+ * A stored connection is either a bare id (every agent saved before the mode
+ * existed) or `{id, mode, tools}`. These four keep that difference in one
+ * place instead of at every call site — and keep the bare form when nothing
+ * narrower was chosen, so two agents that picked the same thing store the same
+ * thing.
+ */
+const connectorId = (choice: ConnectorChoice): number =>
+  typeof choice === 'number' ? choice : choice.id;
+
+const connectorMode = (choice: ConnectorChoice): ConnectorMode =>
+  typeof choice === 'number' ? 'all' : choice.mode;
+
+function setConnectorMode(
+  choices: ConnectorChoice[], id: number, mode: ConnectorMode,
+): ConnectorChoice[] {
+  return choices.map((choice) => {
+    if (connectorId(choice) !== id) return choice;
+    // `all` with no named tools is the bare form: one spelling per meaning.
+    if (mode === 'all') return id;
+    const tools = typeof choice === 'number' ? [] : choice.tools;
+    return { id, mode, tools };
+  });
+}
+
+/** Apply a MultiSelect's id list, keeping the mode already chosen for each. */
+function reconcileConnectors(
+  current: ConnectorChoice[], selectedIds: string[],
+): ConnectorChoice[] {
+  const byId = new Map(current.map((c) => [connectorId(c), c]));
+  return selectedIds
+    .map(Number)
+    .filter((id) => !Number.isNaN(id))
+    .map((id) => byId.get(id) ?? id);
+}
+
+function TagInput({ value, onChange }: {
+  value: string[]; onChange: (next: string[]) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const commit = () => {
+    const tag = draft.trim().replace(/\s+/g, ' ');
+    // Case-insensitive de-duplication, matching what the serializer does on
+    // save — otherwise a tag looks accepted and comes back missing.
+    if (tag && !value.some((t) => t.toLowerCase() === tag.toLowerCase())) {
+      onChange([...value, tag]);
+    }
+    setDraft('');
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {value.map((tag) => (
+        <span key={tag}
+          className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded border border-border bg-card text-[12px]">
+          {tag}
+          <button type="button" onClick={() => onChange(value.filter((t) => t !== tag))}
+            title={`Remove ${tag}`}
+            className="w-4 h-4 rounded-sm text-muted-foreground hover:text-foreground">
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit(); }
+          if (e.key === 'Backspace' && !draft && value.length) {
+            onChange(value.slice(0, -1));
+          }
+        }}
+        onBlur={commit}
+        placeholder={value.length ? 'Add another…' : 'finance, weekly'}
+        className="flex-1 min-w-[8rem] h-7 px-2 rounded border border-input bg-background text-[12px]"
+      />
+    </div>
+  );
+}
+
 function Toggle({ on, onChange, label, hint }: {
   on: boolean; onChange: (v: boolean) => void; label: string; hint?: string;
 }) {
@@ -244,6 +326,19 @@ export default function AgentBuilder() {
     queryFn: async () => (await nodeService.getAIModels()).providers,
     staleTime: 5 * 60 * 1000,
   });
+  /* The delegation candidates: the user's other agents. Fetched rather than
+     derived from anything on this page — an id only exists on the server, and
+     the picker has to show what `search_agents` will actually see. */
+  const { data: allAgents = [] } = useQuery({
+    queryKey: ['agent-builder', 'agents'],
+    queryFn: () => agentsService.list(),
+    staleTime: 60 * 1000,
+  });
+  const otherAgents = useMemo(
+    () => allAgents.filter((a) => String(a.id) !== String(id)),
+    [allAgents, id],
+  );
+
   const { data: skills = [] } = useQuery({
     queryKey: ['agent-builder', 'skills'],
     queryFn: () => skillsService.list(),
@@ -543,6 +638,29 @@ export default function AgentBuilder() {
                   rows={3} placeholder="Reads invoices from Gmail and chases anything overdue…"
                   className="w-full px-3 py-2 rounded border border-input bg-background text-sm resize-none" />
               </Knob>
+              {/* Not the same field as the brief, and the difference matters:
+                  the brief is what the agent is *told*, this is what another
+                  agent reads when choosing which one to hand a job to. It has
+                  been on the model since the start and reachable only through
+                  Django admin, so every agent built here was blank to the
+                  parent trying to pick one. */}
+              <Knob path="description" touched={touched} label="One-line summary"
+                    hint="how other agents recognise it">
+                <input value={cfg.description}
+                  onChange={(e) => set('description', e.target.value)}
+                  placeholder="Chases overdue invoices and reports what is stuck."
+                  className="w-full h-9 px-3 rounded border border-input bg-background text-sm" />
+              </Knob>
+              <Knob path="tags" touched={touched} label="Tags" hint="for grouping and search">
+                <TagInput value={cfg.tags} onChange={(v) => set('tags', v)} />
+              </Knob>
+              <Knob path="status" touched={touched} label="Status">
+                <Choice<AgentStatus>
+                  value={cfg.status} onChange={(v) => set('status', v)}
+                  options={(Object.keys(STATUS_COPY) as AgentStatus[]).map((id) => ({
+                    id, label: STATUS_COPY[id].label, hint: STATUS_COPY[id].hint,
+                  }))} />
+              </Knob>
             </Section>
 
             <Section icon={Brain} title="Model">
@@ -672,14 +790,41 @@ export default function AgentBuilder() {
                 has, so a run that runs long still returns something. Work it delegates
                 shares this budget — a sub-agent cannot outlive the run that called it.
               </p>
-              {/* Kept, but honestly labelled. The section's blanket "not yet
-                  enforced" notice went with the CPU and memory fields, and the
-                  time limit above genuinely is enforced — so this one carries
-                  its own caveat rather than borrowing a badge that no longer
-                  applies to its neighbours. */}
-              <Toggle on={cfg.venv} onChange={(v) => set('venv', v)}
-                label="Isolated Python environment"
-                hint="Saved, but not yet enforced — Python currently runs in the shared sandbox." />
+            </Section>
+
+            <Section icon={FileOutput} title="What it returns">
+              {/* Both of these have been read by the runtime since the agent
+                  model landed — `contracts.resolve` at the top and tail of
+                  every run, `run_fanout` when a parent delegates a list — and
+                  until now only the seeded stock agents could set either. */}
+              <Knob path="outputContract" touched={touched} label="Result shape">
+                <Choice<OutputContract>
+                  value={cfg.outputContract} onChange={(v) => set('outputContract', v)}
+                  options={(Object.keys(CONTRACT_COPY) as OutputContract[]).map((id) => ({
+                    id, label: CONTRACT_COPY[id].label, hint: CONTRACT_COPY[id].hint,
+                  }))} />
+                <p className="mt-1.5 px-2 text-[11px] text-muted-foreground">
+                  A shape other than prose is checked on the way out: an answer
+                  that does not fit is reported as a failure rather than quietly
+                  reshaped.
+                </p>
+              </Knob>
+              <Knob path="fanoutParallel" touched={touched} label="Fan-out width"
+                    hint="when another agent hands it a list">
+                <div className="flex items-center gap-1.5">
+                  {[null, 2, 4, 8].map((n) => (
+                    <button key={String(n)} type="button"
+                      onClick={() => set('fanoutParallel', n)}
+                      className={`h-7 px-2.5 rounded border text-[12px] transition-colors ${
+                        cfg.fanoutParallel === n
+                          ? 'border-primary text-primary bg-primary/10'
+                          : 'border-input text-muted-foreground hover:text-foreground'
+                      }`}>
+                      {n === null ? 'One at a time' : `${n} at once`}
+                    </button>
+                  ))}
+                </div>
+              </Knob>
             </Section>
 
             <Section icon={Wrench} title="Tools">
@@ -696,6 +841,7 @@ export default function AgentBuilder() {
                 ['fileOps', 'Read and write files', 'Your own files, within the access level set above.'],
                 ['rag', 'Knowledge base search', 'Retrieve from your indexed documents.'],
                 ['mcp', 'MCP servers (Plugins)', 'The tools from your connected plugins (MCP servers), using your connectors.'],
+                ['subAgents', 'Delegate to other agents', 'Hand whole tasks to agents you have built. Narrow which ones below.'],
               ] as const).map(([k, label, hint]) => (
                 <Knob key={k} path={`tools.${k}`} touched={touched} label="">
                   <Toggle on={cfg.tools[k]} onChange={(v) => setTool(k, v)} label={label} hint={hint} />
@@ -711,13 +857,66 @@ export default function AgentBuilder() {
                     hint={cfg.connectors.length ? `${cfg.connectors.length} selected` : undefined}>
                 <MultiSelect
                   options={connectorOptions.map((c) => ({ id: String(c.id), label: c.label }))}
-                  value={cfg.connectors.map(String)}
-                  onChange={(v) => set('connectors', v.map(Number).filter((n) => !Number.isNaN(n)))}
+                  value={cfg.connectors.map((c) => String(connectorId(c)))}
+                  onChange={(v) => set('connectors', reconcileConnectors(cfg.connectors, v))}
                   placeholder="Every connection — narrow it to what this agent needs"
                   searchPlaceholder="Search connections…"
                   emptyText="None yet — add one on Connections first."
                 />
+                {/* The second half of the choice, and the one that was missing:
+                    picking a mailbox used to hand over sending and deleting
+                    along with reading, because the connection was the finest
+                    thing there was to pick. */}
+                {cfg.connectors.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {cfg.connectors.map((choice) => {
+                      const id = connectorId(choice);
+                      const label = connectorOptions.find((c) => c.id === id)?.label
+                        ?? `Connection ${id}`;
+                      return (
+                        <div key={id}
+                          className="flex flex-wrap items-center gap-2 px-2 py-1.5 rounded border border-border bg-card">
+                          <span className="text-[12px] font-medium mr-auto">{label}</span>
+                          {(['all', 'read'] as ConnectorMode[]).map((mode) => (
+                            <button key={mode} type="button"
+                              onClick={() => set('connectors', setConnectorMode(cfg.connectors, id, mode))}
+                              title={CONNECTOR_MODE_COPY[mode].hint}
+                              className={`h-6 px-2 rounded border text-[11px] transition-colors ${
+                                connectorMode(choice) === mode
+                                  ? 'border-primary text-primary bg-primary/10'
+                                  : 'border-input text-muted-foreground hover:text-foreground'
+                              }`}>
+                              {CONNECTOR_MODE_COPY[mode].label}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })}
+                    <p className="px-2 text-[11px] text-muted-foreground">
+                      {CONNECTOR_MODE_COPY.read.hint}
+                    </p>
+                  </div>
+                )}
               </Knob>
+              {cfg.tools.subAgents && (
+                <Knob path="delegatesTo" touched={touched} label="Delegates to"
+                      hint={cfg.delegatesTo.length ? `${cfg.delegatesTo.length} selected` : undefined}>
+                  <MultiSelect
+                    options={otherAgents.map((a) => ({
+                      id: String(a.id), label: a.name, hint: a.description,
+                    }))}
+                    value={cfg.delegatesTo.map(String)}
+                    onChange={(v) => set('delegatesTo', v.map(Number))}
+                    placeholder="Any of your agents — narrow it to the ones it needs"
+                    searchPlaceholder="Search agents…"
+                    emptyText="No other agents yet."
+                  />
+                  <p className="mt-1.5 px-2 text-[11px] text-muted-foreground">
+                    An agent that can delegate to an agent with wider tools has
+                    those tools by proxy. Naming a few is the narrower statement.
+                  </p>
+                </Knob>
+              )}
               <Knob path="skills" touched={touched} label="Skills"
                     hint={cfg.skills.length ? `${cfg.skills.length} selected` : undefined}>
                 <MultiSelect
@@ -733,9 +932,6 @@ export default function AgentBuilder() {
                   emptyText="None yet — write one in Skills first."
                 />
               </Knob>
-              <Toggle on={cfg.useOrgContext} onChange={(v) => set('useOrgContext', v)}
-                label="Organisation context"
-                hint="Coming soon — doesn't affect runs today." />
               <Knob path="useEnvironment" touched={touched} label="">
                 <Toggle on={cfg.useEnvironment} onChange={(v) => set('useEnvironment', v)}
                   label="Environment" hint="Current time and place, for anything schedule- or locale-aware." />
@@ -743,13 +939,16 @@ export default function AgentBuilder() {
             </Section>
 
             <Section icon={Clock} title="When it runs">
-              <Knob path="trigger" touched={touched} label="Trigger">
-                <Choice<TriggerMode>
-                  value={cfg.trigger} onChange={(v) => set('trigger', v)}
-                  options={(Object.keys(TRIGGER_COPY) as TriggerMode[]).map((id) => ({
-                    id, label: TRIGGER_COPY[id].label, hint: TRIGGER_COPY[id].hint,
-                  }))} />
-              </Knob>
+              {/* Stated, not chosen. This was a three-way radio whose value
+                  nothing in the runtime ever read, and whose only rule — a
+                  maintenance agent needs a schedule — meant the schedule below
+                  was already the answer. Two places to say one thing is one
+                  place to contradict yourself. */}
+              <p className="px-2 -mt-1 mb-1 text-[12px] text-muted-foreground">
+                {cfg.schedule
+                  ? TRIGGER_COPY.maintenance.hint
+                  : TRIGGER_COPY.goal.hint}
+              </p>
               {/* Offered for any invocation mode, not just `maintenance`: the
                   backend has always created a Trigger for a non-blank cron
                   whatever the mode said, so hiding the control behind one
@@ -832,26 +1031,17 @@ export default function AgentBuilder() {
                     id, label: AUTONOMY_COPY[id].label, hint: AUTONOMY_COPY[id].hint,
                   }))} />
               </Knob>
-              <Knob path="egress" touched={touched} label="Network access"
-                    hint="separate from web search">
-                <p className="mb-2 text-[12px] text-muted-foreground">
-                  Partially active: the agent is told this in its instructions, and
-                  shell-plus-open-network is refused on save — but nothing blocks
-                  traffic at the network layer yet.
-                </p>
-                <Choice<Egress>
-                  value={cfg.egress} onChange={(v) => set('egress', v)}
-                  options={(Object.keys(EGRESS_COPY) as Egress[]).map((id) => ({
-                    id, label: EGRESS_COPY[id].label, hint: EGRESS_COPY[id].hint,
-                  }))} />
-                {cfg.tools.shell && cfg.egress === 'full' && (
-                  <p className="mt-2 flex items-start gap-1.5 text-[12px] text-destructive">
-                    <Globe className="w-3.5 h-3.5 mt-px shrink-0" />
-                    For security, you can't enable both shell access and open network together — anything the agent
-                    reads, it can also send. Narrow one of the two.
-                  </p>
-                )}
-              </Knob>
+              {/* A fact, not a setting. This was a three-way choice whose two
+                  wider values the sandbox could never have honoured — it runs
+                  as a sidecar container on an internal-only network — so the
+                  control offered a promise nothing could keep. */}
+              <div className="flex items-start gap-2 px-2 py-1 text-[12px] text-muted-foreground">
+                <Globe className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  Sandboxed code has no network access. Web search and page reading
+                  go through us and are logged; the sandbox itself cannot dial out.
+                </span>
+              </div>
               {/* The hint says what "off" leaves behind on purpose. The switch
                   silences the pings, never the queue — a paused run always waits
                   in the Inbox, or turning notifications off would quietly mean

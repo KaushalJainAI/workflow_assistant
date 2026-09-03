@@ -7,15 +7,48 @@
  * board, the chat, and (eventually) the backend.
  */
 
-export type TriggerMode = 'goal' | 'maintenance' | 'template';
+/** Derived from whether the agent has a schedule; read-only on the wire. */
+export type TriggerMode = 'goal' | 'maintenance';
 export type Autonomy = 'plan' | 'review' | 'ask' | 'auto' | 'full';
 export type FileAccess = 'none' | 'readonly' | 'scoped' | 'read_all_write_own' | 'full';
-export type Egress = 'none' | 'allowlist' | 'full';
+/** Lifecycle. `archived` exists on the server and is not offered as a save. */
+export type AgentStatus = 'draft' | 'active' | 'paused';
+/** The closed registry in `agents/contracts.py`. Blank is prose. */
+export type OutputContract = '' | 'research' | 'extraction';
+
+/**
+ * How much of one connection an agent may use.
+ *
+ * `all` is everything that connection offers — which is what choosing it used
+ * to mean, and still means for every agent saved before the mode existed.
+ * `read` is derived per turn from the tool's own name, so it survives a
+ * catalogue change; `selected` names tools, and is only offered once the live
+ * tool list has loaded.
+ */
+export type ConnectorMode = 'all' | 'read' | 'selected';
+
+/** A bare id is the legacy shape and means `all`. */
+export type ConnectorChoice =
+  | number
+  | { id: number; mode: ConnectorMode; tools: string[] };
 
 export interface AgentConfig {
   // Identity
   name: string;
   brief: string;
+  /**
+   * One line saying what this agent is *for*.
+   *
+   * Not decoration: `search_agents` reads it, so it is what another agent sees
+   * when deciding which one to delegate a job to. It was on the model from the
+   * start and never on the wire, so every agent built here was blank to the
+   * parent trying to choose.
+   */
+  description: string;
+  /** Short labels for grouping; also matched by agent search. */
+  tags: string[];
+  /** draft | active | paused. Paused stops schedules without deleting. */
+  status: AgentStatus;
 
   // Model
   provider: string;
@@ -34,9 +67,12 @@ export interface AgentConfig {
   effort: string;
 
   // Sandbox
+  //
+  // `workdir` and `venv` were removed (2026-09-03) alongside `cpu`/`memoryMb`
+  // before them: stored, validated, round-tripped and read by nothing. The
+  // sandbox is a fixed image, and where an agent's files live is `fileAccess`
+  // plus the virtual filesystem.
   fileAccess: FileAccess;
-  workdir: string;
-  venv: boolean;
 
   // Tools
   tools: {
@@ -49,6 +85,10 @@ export interface AgentConfig {
     /** The user's own configured MCP servers. Off by default: these reach
      *  real systems under the user's credentials. */
     mcp: boolean;
+    /** May it hand work to the user's other agents. Scoped by `delegatesTo`:
+     *  an agent that can delegate to one with wider tools has those tools by
+     *  proxy, so the grant alone was never the whole answer. */
+    subAgents: boolean;
   };
 
   // Context the agent is given
@@ -60,15 +100,36 @@ export interface AgentConfig {
    *  this was enforced carries: the field existed here long before the runtime
    *  read it, so treating an empty list as "no connectors" would silently strip
    *  the toolbox of every agent that never made a choice. */
-  connectors: number[];
+  connectors: ConnectorChoice[];
   knowledgeBases: number[];
+  /**
+   * Which of the user's other agents this one may delegate to.
+   *
+   * The second axis to the `subAgents` grant, and the last one to get one:
+   * `search_agents` and `run_agent` filtered on owner alone, so an agent that
+   * could delegate could run every agent on the account — including ones with
+   * grants it had been refused. Empty means any of them.
+   */
+  delegatesTo: number[];
   /** Skill ids, not titles — a title is not a stable reference. */
   skills: number[];
-  useOrgContext: boolean;
   useEnvironment: boolean;   // time / place
 
+  /**
+   * What the answer has to come back as, from the closed registry the runtime
+   * validates against. Blank is prose. Read by `contracts.resolve` since the
+   * agent model landed; settable only since 2026-09-03.
+   */
+  outputContract: OutputContract;
+  /**
+   * How many pieces of a delegated list this agent works on at once. Null is
+   * one at a time — only meaningful for an agent others delegate to.
+   */
+  fanoutParallel: number | null;
+
   // Invocation
-  trigger: TriggerMode;
+  /** Read-only: derived from whether a schedule is set. */
+  trigger?: TriggerMode;
   /**
    * The agent's own schedule, as cron. One field, and therefore one schedule:
    * it round-trips the single `origin='builder'` Trigger row and deliberately
@@ -110,13 +171,11 @@ export interface AgentConfig {
    * run genuinely holds, so it is the one with a knob.
    */
   maxRunSeconds: number;
-  /**
-   * Whether the sandbox can reach the network. Separate from the web-search
-   * tool: search goes through us and is logged, egress is the agent opening its
-   * own socket. An agent that can run code but cannot dial out is a very
-   * different thing to hand a stranger.
-   */
-  egress: Egress;
+  // `egress` was removed (2026-09-03). It was read in one place — to add a
+  // sentence to the system prompt — and its other two values could never have
+  // been honoured: the sandbox is a sidecar container on an internal-only
+  // network. The prompt now says "no network access" unconditionally, which is
+  // the true statement.
 
   // Context lifecycle
   /**
@@ -135,6 +194,9 @@ export interface AgentConfig {
 export const DEFAULT_AGENT: AgentConfig = {
   name: '',
   brief: '',
+  description: '',
+  tags: [],
+  status: 'draft',
 
   provider: 'openrouter',
   model: '',
@@ -144,8 +206,6 @@ export const DEFAULT_AGENT: AgentConfig = {
   // Default to the cautious end of every dial. An agent that turns out to need
   // more can be widened deliberately; one that starts wide is never narrowed.
   fileAccess: 'scoped',
-  workdir: '/workspace',
-  venv: true,
 
   tools: {
     codeExecution: false,
@@ -155,15 +215,18 @@ export const DEFAULT_AGENT: AgentConfig = {
     fileOps: false,
     rag: true,
     mcp: false,
+    subAgents: false,
   },
 
   connectors: [],
   knowledgeBases: [],
   skills: [],
-  useOrgContext: true,
+  delegatesTo: [],
   useEnvironment: false,
 
-  trigger: 'goal',
+  outputContract: '',
+  fanoutParallel: null,
+
   schedule: '',
   scheduleTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   allowUnattended: false,
@@ -173,7 +236,6 @@ export const DEFAULT_AGENT: AgentConfig = {
   reviewAgent: false,
   spendCapRupees: 500,
   maxRunSeconds: 15 * 60,
-  egress: 'none',
 
   summaryModel: '',
   summaryProvider: '',
@@ -182,10 +244,38 @@ export const DEFAULT_AGENT: AgentConfig = {
   indexing: true,
 };
 
+// Derived rather than chosen: an agent with a schedule is a standing job, and
+// that is the whole of what the retired `trigger` field meant.
 export const TRIGGER_COPY: Record<TriggerMode, { label: string; hint: string }> = {
-  goal: { label: 'Goal', hint: 'Runs when you ask it to do a specific thing.' },
-  maintenance: { label: 'Maintenance', hint: 'Runs on a schedule to keep something true.' },
-  template: { label: 'Template', hint: 'Instantiated from a known shape, with parameters.' },
+  goal: { label: 'On request', hint: 'Runs when you ask it to do a specific thing.' },
+  maintenance: { label: 'Scheduled', hint: 'Runs on its schedule to keep something true.' },
+};
+
+export const STATUS_COPY: Record<AgentStatus, { label: string; hint: string }> = {
+  draft: { label: 'Draft', hint: 'Not finished. Still runnable by you.' },
+  active: { label: 'Active', hint: 'Runs on its schedule, and other agents may delegate to it.' },
+  paused: { label: 'Paused', hint: 'Schedules stop firing and no agent may delegate to it. Nothing is lost.' },
+};
+
+// The closed registry in `agents/contracts.py`. Closed because the UI renders
+// these shapes — a free-form schema would let an agent declare one nothing can
+// display, which is a promise the product cannot keep.
+export const CONTRACT_COPY: Record<OutputContract, { label: string; hint: string }> = {
+  '': { label: 'Prose', hint: 'A written answer. The default.' },
+  research: {
+    label: 'Research',
+    hint: 'Findings, plus the queries it ran and every source it used.',
+  },
+  extraction: {
+    label: 'Extracted rows',
+    hint: 'Records as a table, plus the field names and what it could not find.',
+  },
+};
+
+export const CONNECTOR_MODE_COPY: Record<ConnectorMode, { label: string; hint: string }> = {
+  all: { label: 'Everything', hint: 'Every tool this connection offers, including the ones that send and delete.' },
+  read: { label: 'Read only', hint: 'Only tools that look things up. Judged per run, so new tools are covered too.' },
+  selected: { label: 'Chosen tools', hint: 'Only the tools you pick. Anything added later stays out.' },
 };
 
 // Key order is the order the radio list renders in, and it runs strictest to
@@ -205,11 +295,7 @@ export const AUTONOMY_COPY: Record<Autonomy, { label: string; hint: string }> = 
   full: { label: 'Runs unattended', hint: 'No approval gate at all, including tools using your credentials.' },
 };
 
-export const EGRESS_COPY: Record<Egress, { label: string; hint: string }> = {
-  none: { label: 'No network', hint: 'The sandbox cannot dial out at all. The safe default.' },
-  allowlist: { label: 'Allowlist', hint: 'Only hosts you have named.' },
-  full: { label: 'Open network', hint: 'Anything it likes. Not allowed together with shell access.' },
-};
+
 
 // Describes the virtual filesystem in `Backend/inference/vfs.py`, which is a
 // view over the user's own document tree — not a disk. Files an agent writes

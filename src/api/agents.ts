@@ -13,7 +13,6 @@ import type { AgentConfig } from '../types/agentConfig';
 /** An agent as the server returns it: the config, plus what actually happened. */
 export interface Agent extends AgentConfig {
   id: number;
-  status: string;
   /** Counted from the execution log, not stored — see orchestrator/agents.py. */
   runs: number;
   /** Runs that raised no approval request, i.e. nobody had to be involved. */

@@ -54,9 +54,15 @@ function grants(agent: Agent, names: Map<number, string>) {
   const tools = Object.entries(agent.tools ?? {})
     .filter(([, on]) => on)
     .map(([k]) => TOOL_NAMES[k] ?? k);
-  const conns = (agent.connectors ?? []).map(
-    (id) => names.get(id) ?? 'Unavailable connection'
-  );
+  // A stored connection is either a bare id or `{id, mode, tools}`; a
+  // read-only one says so here, because "Gmail" and "Gmail (read only)" are
+  // different amounts of trust and this list is where they are compared.
+  const conns = (agent.connectors ?? []).map((choice) => {
+    const id = typeof choice === 'number' ? choice : choice.id;
+    const label = names.get(id) ?? 'Unavailable connection';
+    const mode = typeof choice === 'number' ? 'all' : choice.mode;
+    return mode === 'all' ? label : `${label} (${mode === 'read' ? 'read only' : 'limited'})`;
+  });
   return [...conns, ...tools];
 }
 
@@ -192,7 +198,7 @@ export default function Agents() {
 
                   <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mb-3">
                     <Clock className="w-3 h-3" />
-                    {TRIGGER_COPY[a.trigger].label}
+                    {TRIGGER_COPY[a.schedule ? 'maintenance' : 'goal'].label}
                     {a.schedule && <span className="font-mono">· {a.schedule}</span>}
                   </div>
 

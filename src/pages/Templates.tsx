@@ -47,10 +47,8 @@ import templatesService, {
 } from '../api/templates';
 import {
   AUTONOMY_COPY,
-  EGRESS_COPY,
   FILE_ACCESS_COPY,
   type Autonomy,
-  type Egress,
   type FileAccess,
 } from '../types/agentConfig';
 
@@ -218,7 +216,6 @@ function InstallDialog({
   );
   const config = template.config;
   const fileAccess = (config.fileAccess ?? 'scoped') as FileAccess;
-  const egress = (config.egress ?? 'none') as Egress;
   const autonomy = (config.autonomy ?? 'ask') as Autonomy;
 
   return (
@@ -336,9 +333,11 @@ function InstallDialog({
                 <ShieldCheck className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
                 {AUTONOMY_COPY[autonomy].hint}
               </li>
+              {/* A fact about every agent, not a per-template setting: the
+                  sandbox runs on an internal-only network. */}
               <li className="flex items-start gap-2">
                 <Globe className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                {EGRESS_COPY[egress].hint}
+                Sandboxed code cannot reach the network.
               </li>
               <li className="flex items-start gap-2">
                 <LayoutGrid className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
