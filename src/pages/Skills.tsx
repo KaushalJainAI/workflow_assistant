@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { 
   Zap, 
   Search, 
@@ -11,12 +12,14 @@ import {
   Edit3,
   Eye,
   Check,
-  Download
+  Download,
+  ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import apiClient from '../api/client';
+import MarkdownMessage from '../components/chat/MarkdownMessage';
 
 interface Skill {
     id: string;
@@ -31,8 +34,8 @@ interface Skill {
 
 export default function Skills() {
     const queryClient = useQueryClient();
-    const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState<'mine' | 'public'>('mine');
+    const [searchQuery, setSearchQuery] = usePersistedState('skills.search', '', { storage: 'session' });
+    const [activeTab, setActiveTab] = usePersistedState<'mine' | 'public'>('skills.tab', 'mine');
     
     // Skills Data from React Query
     const { data: skillsData, isLoading } = useQuery({
@@ -64,7 +67,7 @@ export default function Skills() {
     const [editTitle, setEditTitle] = useState('');
     const [editDescription, setEditDescription] = useState('');
     const [editCategory, setEditCategory] = useState('General');
-    const [editorMode, setEditorMode] = useState<'split' | 'edit' | 'preview'>('split');
+    const [editorMode, setEditorMode] = usePersistedState<'split' | 'edit' | 'preview'>('skills.editorMode', 'split');
 
 
 
@@ -146,21 +149,6 @@ export default function Skills() {
         }
     };
 
-    // Simple Markdown to HTML-ish renderer (basic support for headers, lists, code)
-    const renderMarkdown = (text: string) => {
-        // This is a very basic renderer for UI purposes
-        const lines = text.split('\n');
-        return lines.map((line, i) => {
-            if (line.startsWith('# ')) return <h1 key={i} className="text-3xl font-bold mb-4 mt-6">{line.substring(2)}</h1>;
-            if (line.startsWith('## ')) return <h2 key={i} className="text-2xl font-bold mb-3 mt-5">{line.substring(3)}</h2>;
-            if (line.startsWith('### ')) return <h3 key={i} className="text-xl font-bold mb-2 mt-4">{line.substring(4)}</h3>;
-            if (line.startsWith('- ')) return <li key={i} className="ml-6 list-disc mb-1">{line.substring(2)}</li>;
-            if (line.startsWith('```')) return null; // Simple skip for code block markers
-            if (line.trim() === '') return <br key={i} />;
-            return <p key={i} className="mb-2 leading-relaxed text-foreground/80">{line}</p>;
-        });
-    };
-
     return (
         <div className="flex flex-col h-screen bg-background text-foreground animate-in fade-in duration-500">
             {/* Header */}
@@ -182,7 +170,7 @@ export default function Skills() {
                         className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all hover:bg-primary/90 active:scale-95"
                     >
                         <Plus className="w-4 h-4" />
-                        Create Skill
+                        Create skill
                     </button>
                 </div>
 
@@ -251,7 +239,7 @@ export default function Skills() {
                                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
                             >
                                 <Plus className="w-4 h-4" />
-                                Create Your First Skill
+                                Create your first skill
                             </button>
                         )}
                     </div>
@@ -306,7 +294,7 @@ export default function Skills() {
                                     {skill.description}
                                 </p>
                                 
-                                <div className="pt-4 border-t border-border/60 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                                <div className="pt-4 border-t border-border/60 flex items-center justify-between text-[11px] font-bold ">
                                     <span className="text-primary/70">{skill.category}</span>
                                     <span className="text-muted-foreground">By {skill.author}</span>
                                 </div>
@@ -333,34 +321,37 @@ export default function Skills() {
                                 <div className="p-2 bg-primary/10 rounded-lg">
                                     <Edit3 className="w-5 h-5 text-primary" />
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <input 
                                         value={editTitle}
                                         onChange={(e) => setEditTitle(e.target.value)}
                                         className="bg-transparent border-none p-0 text-xl font-bold focus:ring-0 w-full placeholder:text-muted-foreground"
                                         placeholder="Skill Title"
                                     />
-                                    <div className="flex items-center gap-4 mt-1">
+                                    <div className="flex items-center gap-3 mt-1 min-w-0">
                                         <input 
                                             value={editDescription}
                                             onChange={(e) => setEditDescription(e.target.value)}
-                                            className="bg-transparent border-none p-0 text-sm text-muted-foreground focus:ring-0 flex-1"
+                                            className="bg-transparent border-none p-0 text-sm text-muted-foreground focus:ring-0 flex-1 min-w-0"
                                             placeholder="Short description..."
                                         />
-                                        <select
-                                            value={editCategory}
-                                            onChange={(e) => setEditCategory(e.target.value)}
-                                            className="bg-muted text-[10px] font-bold uppercase px-2 py-1 rounded-md border-none focus:ring-1 focus:ring-primary/20 cursor-pointer"
-                                        >
-                                            <option value="General">General</option>
-                                            <option value="Data Science">Data Science</option>
-                                            <option value="Automation">Automation</option>
-                                            <option value="Development">Development</option>
-                                            <option value="Marketing">Marketing</option>
-                                            <option value="Security">Security</option>
-                                            <option value="Finance">Finance</option>
-                                            <option value="Communication">Communication</option>
-                                        </select>
+                                        <div className="relative shrink-0">
+                                            <select
+                                                value={editCategory}
+                                                onChange={(e) => setEditCategory(e.target.value)}
+                                                className="appearance-none bg-secondary text-secondary-foreground text-xs font-semibold pl-3 pr-8 py-1.5 rounded-full border border-border/50 hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 cursor-pointer transition-colors leading-none h-7"
+                                            >
+                                                <option value="General">General</option>
+                                                <option value="Data Science">Data science</option>
+                                                <option value="Automation">Automation</option>
+                                                <option value="Development">Development</option>
+                                                <option value="Marketing">Marketing</option>
+                                                <option value="Security">Security</option>
+                                                <option value="Finance">Finance</option>
+                                                <option value="Communication">Communication</option>
+                                            </select>
+                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -403,7 +394,7 @@ export default function Skills() {
                                     className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/20 active:scale-95 flex items-center gap-2"
                                 >
                                     <Check className="w-4 h-4" />
-                                    Save Skill
+                                    Save skill
                                 </button>
                                 <button 
                                     onClick={() => setIsEditing(false)}
@@ -430,9 +421,10 @@ export default function Skills() {
                                 </div>
                             )}
                             {(editorMode === 'preview' || editorMode === 'split') && (
-                                <div className="flex-1 overflow-auto bg-card p-4 md:p-10 prose prose-invert max-w-none">
+                                <div className="flex-1 overflow-auto bg-card p-4 md:p-10 max-w-none">
                                     <div className="max-w-3xl mx-auto">
-                                        {renderMarkdown(editContent)}
+                                        {/* Full markdown via the shared renderer. */}
+                                        <MarkdownMessage content={editContent} variant="full" />
                                     </div>
                                 </div>
                             )}

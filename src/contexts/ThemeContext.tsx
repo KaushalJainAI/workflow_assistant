@@ -1,18 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 
-export type Theme = 'light' | 'dark' | 'system';
-export type ColorTheme = 'blue' | 'magenta';
-
-interface ThemeContextType {
-  theme: Theme;
-  resolvedTheme: 'light' | 'dark';
-  colorTheme: ColorTheme;
-  setTheme: (theme: Theme) => void;
-  setColorTheme: (colorTheme: ColorTheme) => void;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+import { ThemeContext, type ColorTheme, type Theme } from './themeState';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -97,22 +85,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setTheme(newTheme);
   }, [resolvedTheme, setTheme]);
 
-  const value = {
-    theme,
-    resolvedTheme,
-    colorTheme,
-    setTheme,
-    setColorTheme,
-    toggleTheme,
-  };
+  // A fresh object here meant every consumer of the theme re-rendered whenever
+  // this provider rendered for any reason at all — and the theme provider wraps
+  // the entire app.
+  const value = useMemo(
+    () => ({
+      theme,
+      resolvedTheme,
+      colorTheme,
+      setTheme,
+      setColorTheme,
+      toggleTheme,
+    }),
+    [theme, resolvedTheme, colorTheme, setTheme, setColorTheme, toggleTheme],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
-export function useThemeContext() {
-  const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error('useThemeContext must be used within a ThemeProvider');
-  }
-  return context;
-}

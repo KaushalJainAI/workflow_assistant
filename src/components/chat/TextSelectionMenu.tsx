@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Copy, Quote } from 'lucide-react';
 
 interface Position {
@@ -14,15 +14,11 @@ interface TextSelectionMenuProps {
 }
 
 export function TextSelectionMenu({ position, onCopy, onReference, onClose }: TextSelectionMenuProps) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    if (position) {
-      setIsVisible(true);
-    } else {
-      setIsVisible(false);
-    }
-  }, [position]);
+  // `isVisible` used to be state, set from an effect to exactly `position !==
+  // null` — a whole render pass to compute something already known during the
+  // first one. Its only real job was the one-frame gap that let the opacity
+  // transition run, so the entrance is a CSS enter animation now and the state
+  // is gone. (`react-hooks/set-state-in-effect` is what flagged it.)
 
   useEffect(() => {
     // Listen for mousedown outside the menu or selection changes to close it
@@ -40,13 +36,11 @@ export function TextSelectionMenu({ position, onCopy, onReference, onClose }: Te
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [onClose]);
 
-  if (!position && !isVisible) return null;
+  if (!position) return null;
 
   return (
     <div
-      className={`fixed z-50 transition-all duration-200 ease-out origin-bottom ${
-        isVisible && position ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
-      }`}
+      className="fixed z-50 origin-bottom animate-in fade-in-0 zoom-in-95 duration-200 ease-out"
       style={{
         left: position?.x || 0,
         top: position?.y || 0,

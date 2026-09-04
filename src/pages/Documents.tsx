@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import {
   FileText,
   Upload,
@@ -12,80 +13,94 @@ import {
   AlertCircle,
   Globe,
   Download,
-  Database,
-  Plus,
-  ChevronRight,
-  Layers,
+  BookOpen,
+  FolderPlus,
+  FolderInput,
+  RotateCcw,
 } from 'lucide-react';
-import { documentsService, kbService, type Document, type KnowledgeBase } from '../api';
-import { toast } from '../components/ui/Toast';
+import {
+  documentsService,
+  foldersService,
+  type Document,
+  type Folder,
+} from '../api';
+
+import { toast } from '../lib/toastStore';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
-import { useAssistant } from '../contexts/AssistantContext';
-import { MediaPreview } from '../components/chat/MediaPreview';
+import { useAssistant } from '../contexts/assistantState';
+import { DocumentGridCard } from '../components/documents/DocumentGridCard';
+import ExtractionPanel from '../components/extraction/ExtractionPanel';
+import Breadcrumbs from '../components/documents/Breadcrumbs';
+import FolderPickerModal from '../components/documents/FolderPickerModal';
+import FolderTile from '../components/documents/FolderTile';
+import { apiErrorMessage } from '../lib/apiError';
+
+type DocumentsTab = 'personal' | 'public' | 'extraction' | 'trash';
+
+/** What is being dragged, so a drop knows what to move. */
+type DragPayload =
+  | { kind: 'folder'; id: number }
+  | { kind: 'document'; id: number }
+  | null;
 
 export default function Documents() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'personal' | 'public'>('personal');
+  const [searchQuery, setSearchQuery] = usePersistedState('documents.search', '', { storage: 'session' });
+  const [activeTab, setActiveTab] = usePersistedState<DocumentsTab>('documents.tab', 'personal');
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = usePersistedState<'grid' | 'list'>('documents.view', 'grid');
   const [localUploadingDocs, setLocalUploadingDocs] = useState<Document[]>([]);
-  const [showCreateKb, setShowCreateKb] = useState(false);
-  const [newKbName, setNewKbName] = useState('');
-  const [newKbDesc, setNewKbDesc] = useState('');
-  const [kbCreating, setKbCreating] = useState(false);
-  const [deletingKbId, setDeletingKbId] = useState<number | null>(null);
+  // Where the user is standing in their tree. `null` is the root — the server
+  // has no root row, so null is the location rather than "unset". Persisted so
+  // a reload puts you back where you were, like the tab and view mode.
+  const [folderId, setFolderId] = usePersistedState<number | null>('documents.folder', null);
+  const [dragging, setDragging] = useState<DragPayload>(null);
+  const [movePicker, setMovePicker] = useState<{ open: boolean; payload: DragPayload }>({
+    open: false,
+    payload: null,
+  });
+  const [isMoving, setIsMoving] = useState(false);
+  const [isDropTarget, setIsDropTarget] = useState(false);
   const { isAssistantOpen } = useAssistant();
   const queryClient = useQueryClient();
 
-  const { data: kbsData, isLoading: kbsLoading } = useQuery({
-    queryKey: ['knowledge-bases'],
-    queryFn: () => kbService.list(),
-    staleTime: 30_000,
+  // Folders live in their own query: they come back capped rather than
+  // cursored (folder rows are tiny), so mixing them into the document
+  // infinite query would mean two pagination schemes in one list.
+  const inTree = activeTab === 'personal';
+  const { data: folderPage } = useQuery({
+    queryKey: ['folders', folderId],
+    queryFn: () => foldersService.list(folderId),
+    enabled: inTree,
+    staleTime: 60 * 1000,
   });
-  const kbs: KnowledgeBase[] = kbsData ?? [];
 
-  const handleCreateKb = async () => {
-    if (!newKbName.trim()) return;
-    setKbCreating(true);
-    try {
-      await kbService.create(newKbName.trim(), newKbDesc.trim());
-      queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] });
-      toast.success('Knowledge base created');
-      setNewKbName('');
-      setNewKbDesc('');
-      setShowCreateKb(false);
-    } catch (err) {
-      toast.error('Failed to create KB', err instanceof Error ? err.message : '');
-    } finally {
-      setKbCreating(false);
-    }
-  };
+  const { data: trashPage, isLoading: trashLoading } = useQuery({
+    queryKey: ['trash'],
+    queryFn: () => foldersService.trash.list(),
+    enabled: activeTab === 'trash',
+  });
 
-  const handleDeleteKb = async (kb: KnowledgeBase) => {
-    if (!window.confirm(`Delete knowledge base "${kb.name}"? This removes all indexed vectors but keeps your documents.`)) return;
-    setDeletingKbId(kb.id);
-    try {
-      await kbService.delete(kb.id);
-      queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] });
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
-      toast.success(`KB "${kb.name}" deleted`);
-    } catch (err) {
-      toast.error('Failed to delete KB', err instanceof Error ? err.message : '');
-    } finally {
-      setDeletingKbId(null);
-    }
+  const refreshTree = () => {
+    queryClient.invalidateQueries({ queryKey: ['documents'] });
+    queryClient.invalidateQueries({ queryKey: ['folders'] });
+    queryClient.invalidateQueries({ queryKey: ['trash'] });
   };
 
   const { data: documentsData, isLoading, error: queryError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['documents', activeTab],
+    queryKey: ['documents', activeTab, activeTab === 'personal' ? folderId : null],
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => documentsService.list({
       limit: 50,
       cursor: pageParam,
-      scope: activeTab,
+      // The extraction and trash tabs are not the doc stream — keep the
+      // personal scope warm so the tab switch never re-fetches a new scope.
+      scope: activeTab === 'personal' ? 'personal' : activeTab === 'public' ? 'public' : 'personal',
+      // Only the personal tab is a tree. The Public Library is a flat
+      // platform-wide list and is never narrowed by folder.
+      ...(activeTab === 'personal' ? { folder_id: folderId ?? ('root' as const) } : {}),
     }),
     getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
     // Poll every 5 seconds if any doc is pending or processing
@@ -137,9 +152,10 @@ export default function Documents() {
     const uploadPromises = newFiles.map(async (file, index) => {
       const tempId = optimisticDocs[index].id;
       try {
-        await documentsService.upload(file);
+        await documentsService.upload(file, folderId);
         successCount++;
       } catch (err) {
+        console.error('Failed to upload ${file.name}', err);
         toast.error(`Failed to upload ${file.name}`);
       } finally {
         setLocalUploadingDocs(prev => prev.filter(d => d.id !== tempId));
@@ -149,7 +165,7 @@ export default function Documents() {
     await Promise.allSettled(uploadPromises);
     if (successCount > 0) {
       toast.success('Upload initiated', `${successCount} files are being processed.`);
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      refreshTree();
     }
   };
 
@@ -159,14 +175,127 @@ export default function Documents() {
       return;
     }
 
-    if (!window.confirm('Are you sure you want to delete this document?')) return;
-    
+    if (!window.confirm('Move this document to Trash? You can restore it later.')) return;
+
     try {
-      await documentsService.delete(id);
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
-      toast.success('Document deleted');
+      const result = await documentsService.delete(id);
+      refreshTree();
+      toast.success(
+        'Moved to Trash',
+        `You can restore it for ${result.purges_after_days} days.`
+      );
     } catch (err) {
       toast.error('Delete failed', err instanceof Error ? err.message : 'Failed to delete document');
+    }
+  };
+
+  // ---- Folder operations ---------------------------------------------------
+
+  const breadcrumbs = folderPage?.breadcrumbs ?? [];
+  const currentFolder = folderPage?.folder ?? null;
+
+  // The `inTree` conditional lives inside the memo rather than above it. As a
+  // separate `const folders = ...` it minted a fresh array literal on every
+  // render, so it was never equal to itself and the memo below recomputed each
+  // time — a `useMemo` whose dependency changes every render is just overhead.
+  const filteredFolders = useMemo(() => {
+    const folders = inTree ? folderPage?.folders ?? [] : [];
+    const query = searchQuery.toLowerCase();
+    return folders.filter((f) => f.name.toLowerCase().includes(query));
+  }, [inTree, folderPage?.folders, searchQuery]);
+
+  const handleCreateFolder = async () => {
+    const name = window.prompt('Folder name');
+    if (!name?.trim()) return;
+    try {
+      await foldersService.create(name.trim(), folderId);
+      refreshTree();
+      toast.success('Folder created');
+    } catch (err: unknown) {
+      toast.error('Could not create folder', apiErrorMessage(err, 'Please try again.'));
+    }
+  };
+
+  const handleRenameFolder = async (folder: Folder) => {
+    const name = window.prompt('Rename folder', folder.name);
+    if (!name?.trim() || name.trim() === folder.name) return;
+    try {
+      await foldersService.update(folder.id, { name: name.trim() });
+      refreshTree();
+    } catch (err: unknown) {
+      toast.error('Could not rename', apiErrorMessage(err, 'Please try again.'));
+    }
+  };
+
+  const handleDeleteFolder = async (folder: Folder) => {
+    if (!window.confirm(`Move “${folder.name}” and everything in it to Trash?`)) return;
+    try {
+      const result = await foldersService.remove(folder.id);
+      refreshTree();
+      toast.success(
+        'Moved to Trash',
+        `You can restore it for ${result.purges_after_days} days.`
+      );
+    } catch (err: unknown) {
+      toast.error('Could not delete', apiErrorMessage(err, 'Please try again.'));
+    }
+  };
+
+  /** The one path every move goes through, whether dragged or picked. */
+  const performMove = async (payload: DragPayload, targetFolderId: number | null) => {
+    if (!payload) return;
+    if (payload.kind === 'folder' && payload.id === targetFolderId) return;
+
+    setIsMoving(true);
+    try {
+      await foldersService.move({
+        folder_ids: payload.kind === 'folder' ? [payload.id] : [],
+        document_ids: payload.kind === 'document' ? [payload.id] : [],
+        target_folder_id: targetFolderId,
+      });
+      refreshTree();
+      toast.success('Moved');
+    } catch (err: unknown) {
+      // The server refuses cycles and foreign ids; surface its wording rather
+      // than inventing our own.
+      toast.error('Could not move', apiErrorMessage(err, 'Please try again.'));
+    } finally {
+      setIsMoving(false);
+      setDragging(null);
+      setMovePicker({ open: false, payload: null });
+    }
+  };
+
+  const handleRestore = async (payload: { folder_ids?: number[]; document_ids?: number[] }) => {
+    try {
+      const result = await foldersService.trash.restore(payload);
+      refreshTree();
+      const refused = result.refused[0];
+      if (refused?.reason === 'parent_still_trashed') {
+        toast.error('Restore the folder first', 'This item lives inside a folder that is also in Trash.');
+      } else {
+        const renamed = result.restored.find((r) => r.renamed_to);
+        toast.success(
+          'Restored',
+          renamed ? `A name was taken, so it came back as “${renamed.renamed_to}”.` : undefined
+        );
+      }
+    } catch (err: unknown) {
+      toast.error('Could not restore', apiErrorMessage(err, 'Please try again.'));
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    if (!window.confirm('Permanently delete everything in Trash? This cannot be undone.')) return;
+    try {
+      const result = await foldersService.trash.empty();
+      refreshTree();
+      toast.success(
+        'Trash emptied',
+        `${result.purged_documents} file(s) and ${result.purged_folders} folder(s) removed.`
+      );
+    } catch (err: unknown) {
+      toast.error('Could not empty Trash', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
@@ -246,6 +375,7 @@ export default function Documents() {
             case 'uploading': return { color: 'text-blue-500', icon: <Loader2 className="w-4 h-4 animate-spin text-blue-500" />, label: 'Uploading...' };
             case 'pending': return { color: 'text-yellow-500', icon: <Loader2 className="w-4 h-4 animate-spin text-yellow-500" />, label: 'Queued' };
             case 'processing': return { color: 'text-orange-500', icon: <Loader2 className="w-4 h-4 animate-spin text-orange-500" />, label: 'Indexing...' };
+            case 'stored': return { color: 'text-emerald-500', icon: <BookOpen className="w-4 h-4 text-emerald-500" />, label: 'Stored' };
             case 'failed': return { color: 'text-destructive', icon: <AlertCircle className="w-4 h-4 text-destructive" />, label: 'Failed' };
             default: return null;
         }
@@ -256,16 +386,41 @@ export default function Documents() {
       {/* Header */}
       <PageHeader 
         title="Documents"
-        subtitle="Manage your knowledge base assets and RAG sources"
+        subtitle={
+          activeTab === 'extraction'
+            ? "Extraction schemas and the rows they produce"
+            : "Manage your knowledge base assets and RAG sources"
+        }
         icon={FileText}
         actions={
-          <button 
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all shadow-lg shadow-primary/20 active:scale-95 hover:bg-primary/90"
-          >
-            <Upload className="w-4 h-4" />
-            Upload Files
-          </button>
+          activeTab === 'trash' ? (
+            <button
+              onClick={handleEmptyTrash}
+              className="flex items-center gap-2 px-6 py-2.5 bg-destructive/10 text-destructive rounded-xl font-semibold transition-all active:scale-95 hover:bg-destructive/20"
+            >
+              <Trash2 className="w-4 h-4" />
+              Empty Trash
+            </button>
+          ) : activeTab !== 'extraction' ? (
+          <div className="flex items-center gap-2">
+            {activeTab === 'personal' && (
+              <button
+                onClick={handleCreateFolder}
+                className="flex items-center gap-2 px-4 py-2.5 border border-border/60 rounded-xl font-semibold transition-all active:scale-95 hover:bg-muted"
+              >
+                <FolderPlus className="w-4 h-4" />
+                New folder
+              </button>
+            )}
+            <button 
+              onClick={() => setShowUploadModal(true)}
+              className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all shadow-lg shadow-primary/20 active:scale-95 hover:bg-primary/90"
+            >
+              <Upload className="w-4 h-4" />
+              Upload files
+            </button>
+          </div>
+          ) : null
         }
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -290,8 +445,30 @@ export default function Documents() {
               Public Library ({publicDocuments.length})
               {activeTab === 'public' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
             </button>
+            <button
+              onClick={() => setActiveTab('extraction')}
+              className={cn(
+                "pb-3 text-sm font-semibold transition-all relative",
+                activeTab === 'extraction' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Extraction
+              {activeTab === 'extraction' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+            </button>
+            <button
+              onClick={() => setActiveTab('trash')}
+              className={cn(
+                "pb-3 text-sm font-semibold transition-all relative flex items-center gap-1.5",
+                activeTab === 'trash' ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Trash
+              {activeTab === 'trash' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+            </button>
           </div>
 
+          {activeTab !== 'extraction' && activeTab !== 'trash' && (
           <div className="flex items-center gap-4 w-full md:w-auto">
             <div className="relative w-full md:w-[400px] group">
               <SearchInput
@@ -321,164 +498,116 @@ export default function Documents() {
               </button>
             </div>
           </div>
+          )}
         </div>
+
+        {/* Location trail. Personal tab only — the Public Library is a flat
+            platform-wide list, not a place in anyone's tree. */}
+        {inTree && (
+          <div className="pt-1">
+            <Breadcrumbs
+              trail={breadcrumbs}
+              current={currentFolder}
+              onNavigate={setFolderId}
+              onDropOn={(target) => performMove(dragging, target)}
+            />
+          </div>
+        )}
       </PageHeader>
 
       <div className={cn(
         "flex-1 overflow-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-white/5 z-10",
         isAssistantOpen && "xl:p-6"
       )}>
+        {activeTab === 'extraction' ? (
+          <ExtractionPanel mode="manage" />
+        ) : activeTab === 'trash' ? (
+          <div className="max-w-4xl mx-auto">
+            <p className="text-sm text-muted-foreground mb-6">
+              Items here are removed permanently after{' '}
+              {trashPage?.purges_after_days ?? 30} days.
+            </p>
 
-        {/* ---- Knowledge Bases section ---- */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Knowledge Bases</h2>
-              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{kbs.length}</span>
-            </div>
-            <button
-              onClick={() => setShowCreateKb(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              New KB
-            </button>
+            {trashLoading ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="w-6 h-6 animate-spin text-primary/50" />
+              </div>
+            ) : (trashPage?.folders.length ?? 0) + (trashPage?.documents.length ?? 0) === 0 ? (
+              <div className="text-center py-20">
+                <Trash2 className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                <p className="text-muted-foreground">Trash is empty.</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border/60 rounded-xl border border-border/60 overflow-hidden">
+                {trashPage?.folders.map((f) => (
+                  <li key={`folder-${f.id}`} className="flex items-center gap-3 px-4 py-3 bg-card">
+                    <FolderInput className="w-5 h-5 text-amber-500 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{f.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Folder · deleted {f.deleted_at ? new Date(f.deleted_at).toLocaleDateString() : ''}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRestore({ folder_ids: [f.id] })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:bg-muted"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Restore
+                    </button>
+                  </li>
+                ))}
+                {trashPage?.documents.map((d) => (
+                  <li key={`doc-${d.id}`} className="flex items-center gap-3 px-4 py-3 bg-card">
+                    <File className="w-5 h-5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{d.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        File · deleted {d.deleted_at ? new Date(d.deleted_at).toLocaleDateString() : ''}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRestore({ document_ids: [d.id] })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:bg-muted"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-
-          {kbsLoading ? (
-            <div className="flex gap-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="flex-1 h-24 bg-card/50 border border-border/40 rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : kbs.length === 0 ? (
-            <div className="flex items-center gap-3 p-4 bg-card/40 border border-dashed border-border/60 rounded-xl text-sm text-muted-foreground">
-              <Database className="w-5 h-5 shrink-0 opacity-50" />
-              No knowledge bases yet — one will be created automatically when you upload a file, or click <strong className="text-foreground mx-1">New KB</strong> to create one.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {kbs.map(kb => (
-                <div
-                  key={kb.id}
-                  className={cn(
-                    "group relative bg-card border border-border/60 rounded-xl p-4 hover:border-primary/40 hover:shadow-lg transition-all flex flex-col gap-3",
-                    kb.is_default && "ring-1 ring-primary/20"
-                  )}
-                >
-                  {kb.is_default && (
-                    <span className="absolute top-2 right-2 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Default</span>
-                  )}
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-primary/10 rounded-lg shrink-0">
-                      <Database className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-foreground truncate">{kb.name}</p>
-                      {kb.description && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{kb.description}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-background/60 rounded-lg p-2">
-                      <p className="text-base font-bold text-foreground">{kb.doc_count}</p>
-                      <p className="text-[10px] text-muted-foreground">docs</p>
-                    </div>
-                    <div className="bg-background/60 rounded-lg p-2">
-                      <p className="text-base font-bold text-foreground">{kb.vector_count.toLocaleString()}</p>
-                      <p className="text-[10px] text-muted-foreground">vectors</p>
-                    </div>
-                    <div className="bg-background/60 rounded-lg p-2">
-                      <p className="text-base font-bold text-foreground">{kb.size_human}</p>
-                      <p className="text-[10px] text-muted-foreground">index</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between pt-1 border-t border-border/40">
-                    <span className="text-[10px] text-muted-foreground">{kb.embedding_model}</span>
-                    {!kb.is_default && (
-                      <button
-                        onClick={() => handleDeleteKb(kb)}
-                        disabled={deletingKbId === kb.id}
-                        className="p-1 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        {deletingKbId === kb.id
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <Trash2 className="w-3.5 h-3.5" />
-                        }
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ---- Create KB modal ---- */}
-        {showCreateKb && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-md">
-              <div className="flex items-center justify-between p-6 border-b border-border/40">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    <Database className="w-5 h-5 text-primary" />
-                  </div>
-                  <h2 className="text-lg font-bold">New Knowledge Base</h2>
-                </div>
-                <button onClick={() => setShowCreateKb(false)} className="text-muted-foreground hover:text-foreground">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Name *</label>
-                  <input
-                    type="text"
-                    value={newKbName}
-                    onChange={e => setNewKbName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleCreateKb()}
-                    placeholder="e.g. Research Papers"
-                    autoFocus
-                    className="w-full bg-background border border-border/60 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Description</label>
-                  <input
-                    type="text"
-                    value={newKbDesc}
-                    onChange={e => setNewKbDesc(e.target.value)}
-                    placeholder="Optional description"
-                    className="w-full bg-background border border-border/60 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <ChevronRight className="w-3 h-3" />
-                  Uses <strong className="text-foreground">clip-ViT-B-32</strong> (512-dim, text + image embeddings)
-                </p>
-              </div>
-              <div className="p-6 border-t border-border/40 flex justify-end gap-3">
-                <button
-                  onClick={() => setShowCreateKb(false)}
-                  className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateKb}
-                  disabled={kbCreating || !newKbName.trim()}
-                  className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
-                >
-                  {kbCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Create
-                </button>
-              </div>
-            </div>
+        ) : (
+        <>
+        {/* Folders sit above the files, in whichever layout is active. */}
+        {inTree && filteredFolders.length > 0 && (
+          <div className={cn(
+            'mb-6',
+            viewMode === 'grid'
+              ? cn('grid gap-4',
+                  isAssistantOpen
+                    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                    : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6')
+              : 'rounded-xl border border-border/60 overflow-hidden bg-card'
+          )}>
+            {filteredFolders.map((folder) => (
+              <FolderTile
+                key={folder.id}
+                folder={folder}
+                viewMode={viewMode}
+                onOpen={(f) => setFolderId(f.id)}
+                onRename={handleRenameFolder}
+                onDelete={handleDeleteFolder}
+                onDropInto={(f) => performMove(dragging, f.id)}
+                onDragStartFolder={(f) => setDragging({ kind: 'folder', id: f.id })}
+              />
+            ))}
           </div>
         )}
-
+        {folderPage?.truncated && (
+          <p className="text-xs text-muted-foreground mb-4">
+            Showing the first {folderPage.count} folders in this location.
+          </p>
+        )}
         {isLoading && allDocuments.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
@@ -492,101 +621,27 @@ export default function Documents() {
           </div>
         ) : viewMode === 'grid' ? (
           <div className={cn(
-            "grid gap-4 md:gap-6 stagger-children",
+            "grid gap-4 md:gap-5 stagger-children",
             isAssistantOpen 
-              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
-              : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6"
+              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" 
+              : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
           )}>
-            {filteredDocuments.map((doc) => {
-                const status = getStatusParams(doc.status);
-                const isFailed = doc.status === 'failed';
-                
-                return (
-              <div
+            {filteredDocuments.map((doc) => (
+              <DocumentGridCard
                 key={doc.id}
-                className={cn(
-                  "group relative bg-card border border-border/60 rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col h-full",
-                  doc.is_shared && "ring-1 ring-primary/20 shadow-sm bg-primary/5",
-                  isFailed && "border-destructive/50 bg-destructive/5"
-                )}
-              >
-                <div className="flex flex-col items-center text-center mt-2">
-                <div className="mb-5 relative w-full aspect-video">
-                  <MediaPreview 
-                    url={`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/inference/documents/${doc.id}/download/`}
-                    type={doc.file_type.includes('image') ? 'image' : doc.file_type.includes('pdf') ? 'pdf' : 'link'}
-                    title={doc.title}
-                    source={doc.filename}
-                    className="w-full h-full shadow-none border-none bg-transparent"
-                  />
-                  {status && (
-                      <div className="absolute -bottom-1 -right-1 bg-card rounded-full p-1 border border-border/60 shadow-sm z-10">
-                          {status.icon}
-                      </div>
-                  )}
-                </div>
-                  
-                  <h4 className="font-bold text-foreground text-sm truncate w-full mb-1 px-2" title={doc.title}>
-                      {doc.title}
-                  </h4>
-                  
-                  {status ? (
-                      <div className={cn(
-                          "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted",
-                          status.color
-                      )}>
-                          {status.label}
-                      </div>
-                  ) : (
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 justify-center">
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">{formatSize(doc.file_size)}</span>
-                            <span className="w-1 h-1 rounded-full bg-border" />
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">{doc.chunk_count} chunks</span>
-                        </div>
-                        {activeTab === 'public' && doc.author_name && (
-                           <div className="text-[9px] font-bold text-primary uppercase tracking-tight">
-                             By {doc.author_name}
-                           </div>
-                        )}
-                    </div>
-                  )}
-                </div>
-                
-                {/* Actions Overlay */}
-                <div className="mt-6 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-200">
-                  <button 
-                    className="p-2 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 rounded-lg border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all"
-                    onClick={(e) => { e.stopPropagation(); handleDownload(doc); }}
-                    title="Download"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                  {activeTab === 'personal' && (
-                    <>
-                      <button 
-                        className={cn(
-                            "p-2 rounded-lg border transition-all",
-                            doc.is_shared ? "bg-primary/20 border-primary/40 text-primary" : "bg-card border-border/60 text-muted-foreground hover:text-primary"
-                        )}
-                        onClick={(e) => { e.stopPropagation(); handleShare(doc); }}
-                        title={doc.is_shared ? "Unshare" : "Share"}
-                        disabled={!!status}
-                      >
-                        <Globe className="w-4 h-4" />
-                      </button>
-                      <button 
-                        className="p-2 bg-destructive/10 hover:bg-destructive/20 rounded-lg border border-destructive/20 text-destructive hover:text-destructive transition-all"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )})}
+                doc={doc}
+                onDownload={handleDownload}
+                onShare={handleShare}
+                onDelete={handleDelete}
+                draggable={inTree && doc.id > 0}
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', `document:${doc.id}`);
+                  setDragging({ kind: 'document', id: doc.id });
+                }}
+                onDragEnd={() => setDragging(null)}
+              />
+            ))}
           </div>
         ) : (
           <div className="space-y-3 max-w-6xl mx-auto">
@@ -607,7 +662,7 @@ export default function Documents() {
                   <div className="flex items-center gap-3 mb-0.5">
                     <p className="font-bold text-foreground tracking-tight truncate">{doc.title}</p>
                     {doc.is_shared && activeTab === 'personal' && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-primary/20 text-primary rounded border border-primary/30 uppercase tracking-wider">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-primary/20 text-primary rounded border border-primary/30 ">
                         Shared
                       </span>
                     )}
@@ -622,7 +677,7 @@ export default function Documents() {
                 
                 {status ? (
                     <div className={cn(
-                        "text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 px-3 py-1.5 bg-background rounded-lg",
+                        "text-[10px] font-bold  flex items-center gap-2 px-3 py-1.5 bg-background rounded-lg",
                         status.color
                     )}>
                         {status.icon}
@@ -630,13 +685,13 @@ export default function Documents() {
                     </div>
                 ) : (
                     <div className="hidden md:flex items-center gap-8">
-                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-20">
+                        <div className="text-[11px] text-muted-foreground w-20">
                           {formatSize(doc.file_size)}
                         </div>
-                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-24">
+                        <div className="text-[11px] text-muted-foreground w-24">
                           {doc.chunk_count} chunks
                         </div>
-                        <div className="text-[10px] font-semibold text-muted-foreground uppercase w-24">
+                        <div className="text-[11px] text-muted-foreground w-24">
                           {formatDate(doc.created_at)}
                         </div>
                     </div>
@@ -652,6 +707,17 @@ export default function Documents() {
                   </button>
                   {activeTab === 'personal' && (
                     <>
+                      {/* The menu is the contract for moving; dragging the card
+                          is the accelerator. Drag-only would be untestable and
+                          unusable on touch. */}
+                      <button
+                        className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-primary"
+                        onClick={() => setMovePicker({ open: true, payload: { kind: 'document', id: doc.id } })}
+                        title="Move to…"
+                        disabled={doc.id < 0}
+                      >
+                        <FolderInput className="w-4 h-4" />
+                      </button>
                       <button 
                         className={cn(
                             "p-2 rounded-lg transition-all",
@@ -695,7 +761,7 @@ export default function Documents() {
                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
               >
                 <Upload className="w-4 h-4" />
-                Upload Your First File
+                Upload your first file
               </button>
             )}
           </div>
@@ -712,7 +778,19 @@ export default function Documents() {
             </button>
           </div>
         )}
+        </>
+        )}
       </div>
+
+      <FolderPickerModal
+        isOpen={movePicker.open}
+        excludeFolderIds={
+          movePicker.payload?.kind === 'folder' ? [movePicker.payload.id] : []
+        }
+        isBusy={isMoving}
+        onCancel={() => setMovePicker({ open: false, payload: null })}
+        onConfirm={(target) => performMove(movePicker.payload, target)}
+      />
 
       {/* Upload Modal */}
       {showUploadModal && (
@@ -720,7 +798,7 @@ export default function Documents() {
           <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
             <div className="p-6 border-b border-border/60 flex items-center justify-between">
               <div>
-                  <h2 className="text-xl font-bold text-foreground">Upload Documents</h2>
+                  <h2 className="text-xl font-bold text-foreground">Upload documents</h2>
                   <p className="text-xs text-muted-foreground mt-1">Add files to your private registry</p>
               </div>
               <button 
@@ -731,7 +809,27 @@ export default function Documents() {
               </button>
             </div>
             <div className="p-8">
-              <label className="group border-2 border-dashed border-border/60 hover:border-primary/50 bg-background/50 hover:bg-primary/5 rounded-2xl p-12 text-center transition-all cursor-pointer block">
+              {/* The copy has always said "drag files here"; until now this was
+                  a bare <label> with no drop handler, so dragging did nothing. */}
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'copy';
+                  setIsDropTarget(true);
+                }}
+                onDragLeave={() => setIsDropTarget(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDropTarget(false);
+                  if (e.dataTransfer.files?.length) handleUpload(e.dataTransfer.files);
+                }}
+                className={cn(
+                  "group border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer block",
+                  isDropTarget
+                    ? "border-primary bg-primary/10"
+                    : "border-border/60 hover:border-primary/50 bg-background/50 hover:bg-primary/5"
+                )}
+              >
                 <input
                   type="file"
                   multiple
@@ -749,6 +847,11 @@ export default function Documents() {
                 <p className="text-xs text-muted-foreground">
                   PDF, JSON, CSV, TXT, or Markdown
                 </p>
+                {currentFolder && (
+                  <p className="text-xs text-primary mt-2">
+                    Uploading into “{currentFolder.name}”
+                  </p>
+                )}
               </label>
             </div>
           </div>
@@ -770,7 +873,7 @@ export default function Documents() {
                 <Globe className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-foreground">Share Document</h2>
+                <h2 className="text-xl font-bold text-foreground">Share document</h2>
                 <p className="text-xs text-muted-foreground mt-1">Make this file available to everyone</p>
               </div>
             </div>
@@ -784,7 +887,7 @@ export default function Documents() {
               </div>
 
               <div className="space-y-3">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Before you share:</p>
+                <p className="text-xs font-bold text-muted-foreground ">Before you share:</p>
                 <ul className="space-y-2">
                   {[
                       "Ensure the file contains no sensitive data",
@@ -812,7 +915,7 @@ export default function Documents() {
                 className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm transition-all hover:bg-primary/90 active:scale-95 flex items-center gap-2"
               >
                 <Globe className="w-4 h-4" />
-                Share Document
+                Share document
               </button>
             </div>
           </div>

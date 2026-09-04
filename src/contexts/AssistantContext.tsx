@@ -1,36 +1,58 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { credentialsService } from '../api';
 import { useAIModels } from '../hooks/useAIModels';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../hooks/useChatModelSelection';
+import { useAuth } from './authState';
 import { tokenManager } from '../api/client';
 
-interface AssistantContextType {
-  isAssistantOpen: boolean;
-  toggleAssistant: () => void;
-  openAssistant: () => void;
-  closeAssistant: () => void;
-  llmProvider: string;
-  setLlmProvider: (provider: string) => void;
-  llmModel: string;
-  setLlmModel: (model: string) => void;
-  llmCredential: string | null;
-  setLlmCredential: (credential: string | null) => void;
-  syncLlmSettings: (provider: string, model: string, credential?: string | null) => Promise<void>;
-  hasCredentials: boolean | null;
-  refreshCredentials: () => Promise<void>;
-}
-
-const AssistantContext = createContext<AssistantContextType | undefined>(undefined);
+import { AssistantContext } from './assistantState';
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const [llmProvider, setLlmProvider] = useState(localStorage.getItem('orchestrator_llm_provider') || 'openrouter');
-  const [llmModel, setLlmModel] = useState(localStorage.getItem('orchestrator_llm_model') || 'google/gemini-2.0-flash-exp:free');
+  // **Inherit the account default, then diverge.** A stored local choice wins;
+  // with none, this falls back to the profile's model (the Settings page), and
+  // only to the shipped constants if the profile has not loaded or says
+  // nothing. That ordering is the whole rule: the account default seeds this
+  // place, and the moment someone chooses here it is independent for good.
+  //
+  // What it deliberately no longer does is write *back* to the profile.
+  // `updateLlmProvider` / `updateLlmModel` / `syncLlmSettings` each used to
+  // POST `/orchestrator/settings/update/`, which writes
+  // `UserProfile.llm_provider` and `llm_model` — so choosing a model here
+  // silently rewrote the account default that Settings edits, and every place
+  // seeded from it. Two surfaces writing one row is not two settings.
+  // The credential is still synced, because that genuinely is account-level:
+  // it says which stored key to use, not which model this surface prefers.
+  const { user } = useAuth();
+  const [llmProvider, setLlmProvider] = useState(
+    () => localStorage.getItem('orchestrator_llm_provider') || '',
+  );
+  const [llmModel, setLlmModel] = useState(
+    () => localStorage.getItem('orchestrator_llm_model') || '',
+  );
+  // Blank means the model's own default, so `??` rather than `||` — see
+  // `useEffortSelection`, where the same distinction is load-bearing.
+  const [llmEffort, setLlmEffort] = useState(
+    () => localStorage.getItem('orchestrator_llm_effort') ?? '',
+  );
+
+  // Derived, never written into state: an effect that copied the profile in
+  // would race the profile load and could overwrite a local choice made before
+  // it landed. Falling back at read time cannot.
+  const effectiveProvider = llmProvider || user?.llm_provider || DEFAULT_PROVIDER;
+  const effectiveModel = llmModel || user?.llm_model || DEFAULT_MODEL;
   const [llmCredential, setLlmCredential] = useState<string | null>(localStorage.getItem('orchestrator_llm_credential'));
 
-  const toggleAssistant = () => setIsAssistantOpen(prev => !prev);
-  const openAssistant = () => setIsAssistantOpen(true);
-  const closeAssistant = () => setIsAssistantOpen(false);
+  // Every function on the context value is memoised. They are all listed in the
+  // `useMemo` at the bottom, so a fresh identity per render made that memo
+  // recompute every render — which meant the context value changed identity
+  // every render, and *every consumer of this provider re-rendered on every
+  // render of it*. A `useMemo` whose dependencies are rebuilt each time is not
+  // a memo, it is overhead.
+  const toggleAssistant = useCallback(() => setIsAssistantOpen(prev => !prev), []);
+  const openAssistant = useCallback(() => setIsAssistantOpen(true), []);
+  const closeAssistant = useCallback(() => setIsAssistantOpen(false), []);
 
   const { providers: dynamicProviders, isLoading: isModelsLoading } = useAIModels();
 
@@ -83,33 +105,22 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const updateLlmProvider = async (provider: string) => {
+  // Local only. Changing the provider here must not move the account default —
+  // see the note above the state declarations.
+  const updateLlmProvider = useCallback((provider: string) => {
     setLlmProvider(provider);
     localStorage.setItem('orchestrator_llm_provider', provider);
-    
-    // Get default model for this provider
-    const prov = dynamicProviders.find(p => p.slug === provider);
-    const defaultModel = prov?.models[0]?.value;
-    
+
+    // The old model almost certainly belongs to the old provider, so both move
+    // together rather than leaving a pair that cannot be routed.
+    const defaultModel = dynamicProviders.find(p => p.slug === provider)?.models[0]?.value;
     if (defaultModel) {
       setLlmModel(defaultModel);
       localStorage.setItem('orchestrator_llm_model', defaultModel);
     }
-    
-    // Sync with backend
-    try {
-      const { apiClient } = await import('../api');
-      await apiClient.post('/orchestrator/settings/update/', {
-        llm_provider: provider,
-        ...(defaultModel ? { llm_model: defaultModel } : {}),
-        llm_credential: llmCredential,
-      });
-    } catch (err) {
-      console.warn('Failed to sync Assistant provider change to backend:', err);
-    }
-  };
+  }, [dynamicProviders]);
 
-  const updateLlmCredential = async (credential: string | null) => {
+  const updateLlmCredential = useCallback(async (credential: string | null) => {
     setLlmCredential(credential);
     if (credential) {
       localStorage.setItem('orchestrator_llm_credential', credential);
@@ -117,37 +128,35 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('orchestrator_llm_credential');
     }
     
-    // Sync with backend
+    // Credential only. The endpoint writes each field it is given, so sending
+    // the provider/model alongside is what used to drag the account default
+    // along with a credential change.
     try {
       const { apiClient } = await import('../api');
       await apiClient.post('/orchestrator/settings/update/', {
-        llm_provider: llmProvider,
-        llm_model: llmModel,
-        llm_credential: credential,
+        llm_credential: credential ?? '',
       });
     } catch (err) {
       console.warn('Failed to sync Assistant credential change to backend:', err);
     }
-  };
+  }, []);
 
-  const updateLlmModel = async (model: string) => {
+  const updateLlmModel = useCallback((model: string) => {
     setLlmModel(model);
     localStorage.setItem('orchestrator_llm_model', model);
-    
-    // Sync with backend
-    try {
-      const { apiClient } = await import('../api');
-      await apiClient.post('/orchestrator/settings/update/', {
-        llm_provider: llmProvider,
-        llm_model: model,
-        llm_credential: llmCredential,
-      });
-    } catch (err) {
-      console.warn('Failed to sync Assistant model change to backend:', err);
-    }
-  };
+  }, []);
 
-  const syncLlmSettings = async (provider: string, model: string, credential?: string | null) => {
+  const updateLlmEffort = useCallback((level: string) => {
+    setLlmEffort(level);
+    // `''` is a real choice — the model's own default — so it is stored as an
+    // empty string rather than removed, which would read as "never chose" and
+    // fall back to the account default on the next load.
+    localStorage.setItem('orchestrator_llm_effort', level);
+  }, []);
+
+  const syncLlmSettings = useCallback(async (
+    provider: string, model: string, credential?: string | null,
+  ) => {
     setLlmProvider(provider);
     setLlmModel(model);
     if (credential !== undefined) setLlmCredential(credential);
@@ -159,44 +168,56 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       else localStorage.removeItem('orchestrator_llm_credential');
     }
     
-    // Sync with backend (single call)
-    try {
-      const { apiClient } = await import('../api');
-      await apiClient.post('/orchestrator/settings/update/', {
-        llm_provider: provider,
-        llm_model: model,
-        llm_credential: credential !== undefined ? credential : llmCredential,
-      });
-    } catch (err) {
-      console.warn('Failed to sync Assistant settings batch update to backend:', err);
+    // Only the credential reaches the account; provider and model stay local.
+    if (credential !== undefined) {
+      try {
+        const { apiClient } = await import('../api');
+        await apiClient.post('/orchestrator/settings/update/', {
+          llm_credential: credential ?? '',
+        });
+      } catch (err) {
+        console.warn('Failed to sync Assistant credential to backend:', err);
+      }
     }
-  };
+  }, []);
 
-  return (
-    <AssistantContext.Provider value={{ 
-      isAssistantOpen, 
-      toggleAssistant, 
-      openAssistant, 
+  const refreshCredentials = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
+
+  // The object literal was rebuilt on every render of this provider, so every
+  // consumer re-rendered with it — including the whole chat panel, on a
+  // provider that also owns model-selection state that changes while typing.
+  const value = useMemo(
+    () => ({
+      isAssistantOpen,
+      toggleAssistant,
+      openAssistant,
       closeAssistant,
-      llmProvider,
+      // The *effective* pair, so a consumer never has to know that a blank
+      // local choice means "use the account default".
+      llmProvider: effectiveProvider,
       setLlmProvider: updateLlmProvider,
-      llmModel,
+      llmModel: effectiveModel,
       setLlmModel: updateLlmModel,
+      llmEffort,
+      setLlmEffort: updateLlmEffort,
       llmCredential,
       setLlmCredential: updateLlmCredential,
       syncLlmSettings,
       hasCredentials,
-      refreshCredentials: async () => { await refetch(); }
-    }}>
+      refreshCredentials,
+    }),
+    [isAssistantOpen, toggleAssistant, openAssistant, closeAssistant,
+     effectiveProvider, updateLlmProvider, effectiveModel, updateLlmModel,
+     llmEffort, updateLlmEffort, llmCredential,
+     updateLlmCredential, syncLlmSettings, hasCredentials, refreshCredentials],
+  );
+
+  return (
+    <AssistantContext.Provider value={value}>
       {children}
     </AssistantContext.Provider>
   );
 }
 
-export function useAssistant() {
-  const context = useContext(AssistantContext);
-  if (context === undefined) {
-    throw new Error('useAssistant must be used within an AssistantProvider');
-  }
-  return context;
-}

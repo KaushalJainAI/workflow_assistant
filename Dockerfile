@@ -8,14 +8,10 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_API_URL=http://localhost:8000/api
-ARG VITE_WS_URL=ws://localhost:8000/ws
-ARG VITE_GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
-
-ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_WS_URL=$VITE_WS_URL
-ENV VITE_GOOGLE_REDIRECT_URI=$VITE_GOOGLE_REDIRECT_URI
-
+# No VITE_* build args: the app uses same-origin relative URLs, which nginx.conf
+# proxies. These used to default to localhost, and because Vite applies real
+# process env *after* .env files, an image built without --build-arg silently
+# shipped a production bundle pointed at localhost:8000.
 RUN npm run build
 
 FROM nginx:1.27-alpine

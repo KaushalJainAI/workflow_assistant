@@ -75,8 +75,8 @@ export function normalizeToItems(data: unknown): NodeItem[] {
     if ('json' in data) {
       return [data as NodeItem];
     }
-    if ('items' in data && Array.isArray((data as any).items)) {
-      return normalizeToItems((data as any).items);
+    if ('items' in data && Array.isArray((data as { items?: unknown }).items)) {
+      return normalizeToItems((data as { items: unknown }).items);
     }
     return [{ json: data as Record<string, unknown> }];
   }

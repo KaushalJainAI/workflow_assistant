@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authState';
 import { Loader2 } from 'lucide-react';
-import { toast } from '../components/ui/Toast';
+import { toast } from '../lib/toastStore';
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();

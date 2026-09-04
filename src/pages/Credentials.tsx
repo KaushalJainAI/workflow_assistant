@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -17,7 +18,8 @@ import {
   EyeOff,
   Check,
   Copy,
-  AlertCircle
+  AlertCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import { credentialsService } from '../api/credentials';
 import type { Credential, CredentialType } from '../api/credentials';
@@ -28,7 +30,9 @@ import SearchInput from '../components/ui/SearchInput';
 import { cn } from '../lib/utils';
 
 // Icon mapper
-const IconMap: Record<string, any> = {
+// Keyed by the `icon` string the backend stores, so a new credential type
+// is a fixture row rather than a code change here.
+const IconMap: Record<string, LucideIcon> = {
   'Mail': Mail,
   'Database': Database,
   'MessageSquare': MessageSquare,
@@ -39,8 +43,8 @@ const IconMap: Record<string, any> = {
 };
 
 export default function Credentials() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'verified' | 'unverified'>('verified');
+  const [searchQuery, setSearchQuery] = usePersistedState('credentials.search', '', { storage: 'session' });
+  const [activeTab, setActiveTab] = usePersistedState<'verified' | 'unverified'>('credentials.tab', 'verified');
   const [showModal, setShowModal] = useState(false);
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
   const [viewingCredential, setViewingCredential] = useState<Credential | null>(null);
@@ -148,7 +152,7 @@ export default function Credentials() {
             <h3 className="font-bold text-lg text-foreground mb-1 group-hover:text-primary transition-colors line-clamp-1">
               {credential.name}
             </h3>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{credential.credential_type_display}</p>
+            <p className="text-xs font-medium text-muted-foreground ">{credential.credential_type_display}</p>
           </div>
         </div>
         <div className="relative">
@@ -455,7 +459,7 @@ export default function Credentials() {
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
-            <h3 className="text-lg font-semibold mb-2">Delete Credential?</h3>
+            <h3 className="text-lg font-semibold mb-2">Delete credential?</h3>
             <p className="text-muted-foreground mb-4">
               This action cannot be undone. Workflows using this credential will stop working.
             </p>

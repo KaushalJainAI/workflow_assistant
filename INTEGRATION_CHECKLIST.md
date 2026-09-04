@@ -4,9 +4,9 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-## 📍 Pages & Components Overview
+## Pages & Components Overview
 
-### 🔐 Authentication Pages
+### Authentication Pages
 
 #### Login.tsx
 - **Components Used**: None (self-contained)
@@ -14,7 +14,7 @@ This document maps all frontend pages, their components, and required backend AP
   - [x] `POST /api/auth/login/` - User login
   - [x] `POST /api/auth/token/refresh/` - Token refresh
   - [x] `GET /api/auth/google/login/` - Google OAuth initiation
-  - [ ] `POST /api/auth/forgot-password/` - Password reset ⚠️ **MISSING**
+ - [ ] `POST /api/auth/forgot-password/` - Password reset **MISSING**
 
 #### Signup.tsx
 - **Components Used**: None (self-contained)
@@ -29,7 +29,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 📊 Dashboard Pages
+### Dashboard Pages
 
 #### WorkflowsDashboard.tsx
 - **Components Used**: None (self-contained)
@@ -41,7 +41,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### ✏️ Workflow Editor Page
+### Workflow Editor Page
 
 #### WorkflowEditor.tsx
 - **Components Used**:
@@ -80,7 +80,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 🤖 Orchestrator Page
+### Orchestrator Page
 
 #### Orchestrator.tsx
 - **Components Used**:
@@ -100,7 +100,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 📄 Documents Page
+### Documents Page
 
 #### Documents.tsx
 - **Components Used**: None (self-contained)
@@ -114,7 +114,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 🔑 Credentials Page
+### Credentials Page
 
 #### Credentials.tsx
 - **Components Used**:
@@ -130,7 +130,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 📋 Executions Page
+### Executions Page
 
 #### Executions.tsx
 - **Components Used**:
@@ -146,18 +146,23 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 📝 Logs Page
+### Logs Page
 
 #### Logs.tsx
 - **Components Used**: None (self-contained)
-- **API Dependencies**:
-  - [x] `GET /api/logs/` - List logs (with filters)
-  - [x] `GET /api/logs/{id}/` - Log details
-  - [ ] `GET /api/logs/export/` - Export logs (CSV/JSON) ⚠️ **MISSING**
+- **API Dependencies** (per `api/logs.ts`):
+  - [x] `GET /api/logs/insights/stats/` - Execution statistics
+  - [x] `GET /api/logs/insights/workflow/{id}/` - Per-agent metrics
+  - [x] `GET /api/logs/insights/costs/` - Cost breakdown
+  - [x] `GET /api/logs/executions/` - Execution history (keyset-paginated)
+  - [x] `GET /api/logs/executions/{id}/` - Run detail (turns + steps)
+  - [x] `GET /api/logs/agents/{id}/revisions/` - Config change timeline
+  - [x] `GET /api/logs/agents/{id}/revisions/{n}/` - One revision's snapshot
+  - The old audit/export/narrative routes were retired 2026-08-19 and are not part of the contract
 
 ---
 
-### 👤 Profile Page
+### Profile Page
 
 #### Profile.tsx
 - **Components Used**: None (self-contained)
@@ -170,32 +175,32 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### ⚙️ Settings Page
+### Settings Page
 
 #### Settings.tsx
 - **Components Used**: None (self-contained)
 - **API Dependencies**:
   - [x] `GET /api/settings/` - Get settings
   - [x] `PATCH /api/settings/` - Update settings
-  - [ ] `GET /api/settings/notifications/` - Get notification prefs ⚠️ **MISSING**
-  - [ ] `PATCH /api/settings/notifications/` - Update notification prefs ⚠️ **MISSING**
+ - [ ] `GET /api/settings/notifications/` - Get notification prefs **MISSING**
+ - [ ] `PATCH /api/settings/notifications/` - Update notification prefs **MISSING**
 
 ---
 
-### 💰 Billing Page
+### Billing Page
 
 #### Billing.tsx
 - **Components Used**:
   - `InsightsDashboard` - Usage insights & charts
 - **API Dependencies**:
-  - [ ] `GET /api/billing/usage/` - Current usage stats ⚠️ **MISSING**
-  - [ ] `GET /api/billing/plan/` - Current plan info ⚠️ **MISSING**
-  - [ ] `POST /api/billing/upgrade/` - Plan upgrade ⚠️ **MISSING**
+ - [ ] `GET /api/billing/usage/` - Current usage stats **MISSING**
+ - [ ] `GET /api/billing/plan/` - Current plan info **MISSING**
+ - [ ] `POST /api/billing/upgrade/` - Plan upgrade **MISSING**
   - [x] `GET /api/insights/stats/` - Execution statistics
 
 ---
 
-### 📊 Insights Page
+### Insights Page
 
 #### Insights.tsx
 - **Components Used**:
@@ -203,11 +208,11 @@ This document maps all frontend pages, their components, and required backend AP
 - **API Dependencies**:
   - [x] `GET /api/insights/stats/` - Dashboard statistics
   - [x] `GET /api/insights/cost/` - Cost breakdown
-  - [ ] `GET /api/insights/charts/` - Chart data ⚠️ **MISSING**
+ - [ ] `GET /api/insights/charts/` - Chart data **MISSING**
 
 ---
 
-### 📚 Templates Page
+### Templates Page
 
 #### Templates.tsx
 - **Components Used**: None (self-contained)
@@ -219,7 +224,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 💬 AI Chat Page
+### AI Chat Page
 
 #### AIChat.tsx
 - **Components Used**:
@@ -231,20 +236,20 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-### 🎨 Imagine Page
+### Imagine Page
 
 #### Imagine.tsx
 - **Components Used**:
   - `MediaPreview` - Media previewer
 - **API Dependencies**:
-  - [ ] `POST /api/imagine/generate/` - Imagine generation (image/video/audio) ⚠️ **MISSING**
+ - [ ] `POST /api/imagine/generate/` - Imagine generation (image/video/audio) **MISSING**
   - [ ] `GET /api/skills/search/` - Fetch skills (partially implemented)
   - [x] `GET /api/skills/search/?tab=mine` - Fetch user skills
-  - [ ] `GET /api/imagine/history/` - Get generation history ⚠️ **MISSING**
+ - [ ] `GET /api/imagine/history/` - Get generation history **MISSING**
 
 ---
 
-## 🧩 Shared Components
+## Shared Components
 
 ### Layout Components
 | Component | Used By | API Dependencies |
@@ -313,14 +318,13 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-## ⚠️ Missing Backend Endpoints Summary
+## Missing Backend Endpoints Summary
 
 | Endpoint | Page | Priority |
 |----------|------|----------|
 | `POST /api/imagine/generate/` | Imagine | High |
 | `GET /api/imagine/history/` | Imagine | Medium |
 | `POST /api/auth/forgot-password/` | Login | High |
-| `GET /api/logs/export/` | Logs | Medium |
 | `GET /api/settings/notifications/` | Settings | Medium |
 | `PATCH /api/settings/notifications/` | Settings | Medium |
 | `GET /api/billing/usage/` | Billing | Medium |
@@ -330,7 +334,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-## 📡 WebSocket Connections
+## WebSocket Connections
 
 | Endpoint | Used By | Purpose |
 |----------|---------|---------|
@@ -339,7 +343,7 @@ This document maps all frontend pages, their components, and required backend AP
 
 ---
 
-## 📊 Summary
+## Summary
 
 | Category | Pages | Components | API Endpoints |
 |----------|-------|------------|---------------|

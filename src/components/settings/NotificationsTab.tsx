@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Bell, CheckCircle, Clock, ShieldAlert, AlertTriangle, Info } from 'lucide-react';
 import { notificationsService, type Notification } from '../../api/notifications';
+import ReminderPreferences from './ReminderPreferences';
 import { cn } from '../../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -61,10 +62,14 @@ export default function NotificationsTab() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <ReminderPreferences />
+
+      <div className="border-t border-border/50 pt-6" />
+
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-medium">Notifications</h3>
-          <p className="text-sm text-muted-foreground mt-1">Manage your platform alerts and updates.</p>
+          <h3 className="text-lg font-medium">Recent notifications</h3>
+          <p className="text-sm text-muted-foreground mt-1">Everything the platform has alerted you about.</p>
         </div>
         {unreadCount > 0 && (
           <button 
@@ -80,7 +85,7 @@ export default function NotificationsTab() {
         <div className="text-center py-12 border border-dashed border-border/60 rounded-xl bg-card/30">
           <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-50" />
           <p className="text-muted-foreground font-medium">No notifications yet</p>
-          <p className="text-xs text-muted-foreground/70 mt-1">You're all caught up!</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">Nothing new</p>
         </div>
       ) : (
         <div className="space-y-3">

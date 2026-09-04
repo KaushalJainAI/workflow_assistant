@@ -1,10 +1,10 @@
 # Beginner's Guide to the n8n Clone Frontend
 
-Welcome! This guide explains everything about this project in simple terms. If you're a beginner software engineer, this is for you! 🚀
+Welcome! This guide explains everything about this project in simple terms. If you're a beginner software engineer, this is for you! 
 
 ---
 
-## 📖 What is This Project?
+## What is This Project?
 
 This is a **workflow automation tool** frontend, similar to [n8n](https://n8n.io/). Think of it like a visual programming tool where you:
 
@@ -21,7 +21,7 @@ This would: Start manually → Fetch data from API → Transform it → Email th
 
 ---
 
-## 🛠️ Technologies Used
+## Technologies Used
 
 | Technology | What It Does | Why We Use It |
 |------------|--------------|---------------|
@@ -34,7 +34,7 @@ This would: Start manually → Fetch data from API → Transform it → Email th
 
 ---
 
-## 📁 Project Structure Explained
+## Project Structure Explained
 
 ```
 src/
@@ -49,7 +49,7 @@ src/
 │       └── NodePanel.tsx   # Panel showing available nodes
 │
 ├── pages/                 # Full page components
-│   ├── WorkflowEditor.tsx # The main canvas editor ⭐
+│   ├── WorkflowEditor.tsx # The main canvas editor
 │   ├── WorkflowsDashboard.tsx # List of all workflows
 │   ├── Executions.tsx     # Workflow run history
 │   ├── Credentials.tsx    # API keys/passwords storage
@@ -58,14 +58,14 @@ src/
 │   ├── AIChat.tsx         # AI workflow builder
 │   └── Logs.tsx           # System logs
 │
-├── hooks/                 # Custom React hooks (empty now)
+├── hooks/                 # Custom React hooks (shortcuts, sockets, page state)
 ├── lib/                   # Utility functions
 └── types/                 # TypeScript type definitions
 ```
 
 ---
 
-## 🔑 Key Concepts
+## Key Concepts
 
 ### 1. What is a Node?
 
@@ -79,7 +79,7 @@ A **node** is a single step in a workflow. It's represented as a box on the canv
   position: { x: 100, y: 200 }, // Position on canvas
   data: {
     label: 'HTTP Request',    // Display name
-    icon: '🌐',               // Emoji icon
+  icon: '',  // Emoji icon
     color: '#7b68ee',         // Background color
     nodeType: 'http_request'  // What kind of node
   }
@@ -152,7 +152,7 @@ function CustomNode({ data, selected }) {
 
 ---
 
-## 🎨 Styling with TailwindCSS
+## Styling with TailwindCSS
 
 Instead of writing CSS files, we use utility classes directly in HTML:
 
@@ -184,7 +184,7 @@ Instead of writing CSS files, we use utility classes directly in HTML:
 
 ---
 
-## 🔧 What We're Building
+## What We're Building
 
 ### Feature 1: Node Configuration Panel
 
@@ -281,7 +281,7 @@ const customNode = {
 
 ---
 
-## 🚀 How to Run the Project
+## How to Run the Project
 
 1. **Install dependencies:**
    ```bash
@@ -298,7 +298,7 @@ const customNode = {
 
 ---
 
-## 📝 Common Patterns You'll See
+## Common Patterns You'll See
 
 ### 1. State Management with useState
 
@@ -338,7 +338,7 @@ const filteredItems = useMemo(() => {
 
 ---
 
-## 🐛 Debugging Tips
+## Debugging Tips
 
 1. **React DevTools:** Install browser extension to inspect components
 2. **Console.log:** Add logs to see what's happening
@@ -347,7 +347,7 @@ const filteredItems = useMemo(() => {
 
 ---
 
-## 🎯 Next Steps for Beginners
+## Next Steps for Beginners
 
 1. **Read the code:** Start with `WorkflowEditor.tsx` - it's the heart of the app
 2. **Make small changes:** Try changing a color or text
@@ -356,7 +356,7 @@ const filteredItems = useMemo(() => {
 
 ---
 
-## 📚 Resources to Learn More
+## Resources to Learn More
 
 - [React Docs](https://react.dev/)
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
@@ -366,7 +366,7 @@ const filteredItems = useMemo(() => {
 
 ---
 
-## ❓ Glossary
+## Glossary
 
 | Term | Definition |
 |------|------------|
@@ -381,4 +381,4 @@ const filteredItems = useMemo(() => {
 
 ---
 
-Happy coding! 🎉 Don't be afraid to experiment and break things - that's how we learn!
+Happy coding!  Don't be afraid to experiment and break things - that's how we learn!

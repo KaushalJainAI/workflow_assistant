@@ -1,111 +1,289 @@
 /**
- * Logs Service
- * 
- * Execution logs, insights, and audit trail.
+ * Logs Service — what an agent did, thought, and was configured as.
+ *
+ * A run is a loop of **turns**, not a list of steps: each turn is one pass of
+ * the model, carrying the reasoning behind it, and the tool calls it issued
+ * hang off it. Calls sharing a turn were decided together; calls in different
+ * turns were not. Render them that way or the trace claims a causality the run
+ * never had.
+ *
+ * `workflow_id` / `workflow_name` are frozen wire names. What they identify is
+ * a SubAgent — the backend renames the column on the way out so that this app
+ * and BrowserOS, which ship their own builds, do not have to move together.
  */
 
 import apiClient from './client';
 
 // Execution types
-export interface ExecutionLog {
+
+/** Who started a run. `trigger_type` says how; this says what. */
+export type RunCaller = 'api' | 'chat' | 'orchestrator' | 'trigger';
+
+export interface ExecutionLog extends CostFields {
   id?: number;
   execution_id: string;
   workflow_id: number;
-  workflow_name: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  workflow_name: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused';
   trigger_type: string;
+  caller: RunCaller;
+  /** Delegation depth. 0 is a run the user started. */
+  depth: number;
+  is_delegated: boolean;
   duration_ms: number | null;
+  nodes_executed: number;
+  tokens_used: number;
   error_message: string | null;
-  node_count: number;
+  started_at: string | null;
   created_at: string;
   completed_at: string | null;
+}
+
+/** One tool call, belonging to the turn that issued it. */
+export interface AgentStep {
+  id: number;
+  /** The provider's tool-call id — what an approval resumes on. */
+  call_id: string;
+  tool: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  order: number;
+  args: Record<string, unknown>;
+  result: Record<string, unknown>;
+  error_message: string | null;
+  duration_ms: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  /** Non-empty only on delegating steps (`invoke_subagent`, `run_agent`). */
+  delegated_runs: DelegatedRun[];
+}
+
+/**
+ * Where a cost figure came from.
+ *
+ * `unpriced` is not a zero — it means no price is on record for the model, and
+ * rendering it as a number would claim a run was free when we simply do not
+ * know. `formatCost` in `lib/cost.ts` is what enforces that distinction.
+ */
+export type CostSource = 'billed' | 'estimated' | 'unpriced';
+
+/**
+ * What a run or a turn consumed, in the buckets it was actually billed in.
+ *
+ * `input_tokens` EXCLUDES the cached ones, so the four are disjoint and sum to
+ * the prompt plus the completion. `cost_usd` is a decimal string, never a
+ * number: JSON has no decimal type and a cost that picks up binary drift on
+ * the way here will not add up against the one the spend cap enforced.
+ */
+export interface CostFields {
+  input_tokens: number;
+  output_tokens: number;
+  cached_read_tokens: number;
+  cached_write_tokens: number;
+  cost_usd: string;
+  cost_source: CostSource;
+}
+
+export interface DelegatedRun {
+  execution_id: string;
+  workflow_id: number | null;
+  workflow_name: string | null;
+  status: string;
+  /** The instruction the worker was given — it exists nowhere else. */
+  task: string;
+  index: number;
+  tokens_used: number;
+  duration_ms: number | null;
+}
+
+/** One pass of the model: what it thought, and what it decided to do next. */
+export interface AgentTurn extends CostFields {
+  index: number;
+  decision: 'tools' | 'answer' | 'paused' | 'error';
+  /** The model's reasoning for THIS turn. Capped; see `reasoning_truncated`. */
+  reasoning: string;
+  reasoning_truncated: boolean;
+  content: string;
+  content_truncated: boolean;
+  provider: string;
+  model_id: string;
+  tokens: number;
+  /** Reasoning tokens, a subset of `output_tokens`. Never billed separately. */
+  reasoning_tokens: number;
+  duration_ms: number | null;
+  created_at: string;
+  steps: AgentStep[];
+}
+
+/** The orchestrator's side of a delegated run: who asked, and why. */
+export interface DelegatedBy {
+  execution_id: string;
+  workflow_id: number | null;
+  workflow_name: string | null;
+  tool: string;
+  call_id: string;
+  task: string;
+  index: number;
+  /** What the orchestrator was thinking when it handed this work over. */
+  reasoning: string;
+  turn_index: number | null;
+}
+
+export interface RevisionSummary {
+  id: number;
+  number: number;
+  summary: string;
+  source: 'create' | 'update' | 'backfill';
+  created_at: string;
 }
 
 export interface ExecutionDetail extends ExecutionLog {
-  node_logs: NodeLog[];
-  input_data: Record<string, unknown>;
-  output_data: Record<string, unknown>;
+  turns: AgentTurn[];
+  /** Steps whose turn row is missing — a backfilled run, or a failed write. */
+  unattributed_steps: AgentStep[];
+  step_total: number;
+  steps_truncated: boolean;
+  turn_total: number;
+  turns_truncated: boolean;
+  credits_used: number;
   supervision_level?: string;
-}
-
-export interface NodeLog {
-  id: number;
-  node_id: string;
-  node_name?: string;
-  node_type: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
   input_data: Record<string, unknown>;
   output_data: Record<string, unknown>;
-  error_message: string | null;
-  duration_ms: number;
-  started_at: string;
-  completed_at: string | null;
+  error_node_id: string;
+  /** The configuration this run actually executed under. */
+  revision: RevisionSummary | null;
+  delegated_by: DelegatedBy | null;
+  /** How many runs this one delegated, at any depth. */
+  delegated_run_count: number;
+  /**
+   * This run's cost WITH its delegated workers. Separate from `cost_usd`
+   * because an orchestrator's own spend is a rounding error next to its
+   * workers', and one blended figure would hide which you are looking at.
+   */
+  cost_usd_total: string;
+  cost_source_total: CostSource;
+  tokens_used_total: number;
 }
 
-export interface OrchestratorThought {
+// Configuration history
+
+export interface RevisionDiff {
+  [field: string]: { from: unknown; to: unknown };
+}
+
+export interface AgentRevision {
   id: number;
-  execution?: string;
-  node_id: string;
-  node_name?: string;
-  category: 'workflow' | 'idle' | 'system';
-  thought_type: 'thinking' | 'thought' | 'narrative' | 'status' | 'error';
-  content: string;
-  reasoning: string;
-  model_id?: string;
-  model_name?: string;
-  metadata: Record<string, unknown>;
+  number: number;
+  summary: string;
+  source: 'create' | 'update' | 'backfill';
+  diff: RevisionDiff;
+  changed_by: string | null;
+  /** Runs that executed under this revision — has it been tried enough to judge? */
+  run_count: number;
   created_at: string;
+}
+
+export interface AgentRevisionDetail extends AgentRevision {
+  config: Record<string, unknown>;
 }
 
 export interface CursorPage<T> {
   results: T[];
-  count?: number | null;
+  /** Only the uncursored first page carries a total; later pages send null. */
+  count: number | null;
   limit: number;
-  offset?: number;
   next_cursor: string | null;
   has_more: boolean;
 }
 
 // Insights types
+
+/**
+ * Mirrors `logs.views.execution_statistics`. The scalars live under `summary` —
+ * they are NOT flat on the response, and `daily_trend` carries a per-day
+ * `success` count alongside the total.
+ */
 export interface ExecutionStatistics {
-  total_executions: number;
+  summary: {
+    total_executions: number;
+    successful: number;
+    failed: number;
+    /** Already a percentage (0-100), not a fraction. */
+    success_rate: number;
+    avg_duration_ms: number;
+    total_nodes_executed: number;
+    total_tokens_used: number;
+  };
   by_status: Record<string, number>;
   by_trigger: Record<string, number>;
-  daily_trend: { date: string; count: number }[];
-  avg_duration_ms: number;
-  success_rate: number;
+  by_caller: Record<RunCaller, number>;
+  daily_trend: DailyTrendPoint[];
 }
 
+export interface DailyTrendPoint {
+  /** null when the row's created_at was null; skip those points. */
+  date: string | null;
+  count: number;
+  success: number;
+}
+
+/**
+ * Mirrors `logs.queries.agent_metrics`. `success_rate` is already a percentage,
+ * and `tool_success_rates` is keyed by tool name, mapping to an object.
+ */
 export interface WorkflowMetrics {
   workflow_id: number;
   workflow_name: string;
   total_executions: number;
-  success_count: number;
-  failure_count: number;
+  success_rate: number;
   avg_duration_ms: number;
+  total_tokens_used: number;
   recent_executions: ExecutionLog[];
-  node_success_rates: Record<string, number>;
-  error_hotspots: { node_id: string; error_count: number }[];
+  revision_count: number;
+  /** Keyed by tool name: "read_url fails half the time" is the actionable read. */
+  tool_success_rates: Record<
+    string,
+    { success_rate: number; total_runs: number }
+  >;
+  error_hotspots: { tool: string; error_count: number }[];
 }
 
+/**
+ * Mirrors `logs.views.cost_breakdown`. `by_workflow` keeps the `workflow_id` /
+ * `workflow_name` wire names used everywhere else in `/api/logs/`, and
+ * `by_tool` is a list, not a mapping.
+ */
 export interface CostBreakdown {
+  period_days: number;
+  /**
+   * Always 0. `credits_used` is a column nothing has ever written, so this was
+   * structurally zero for the life of the endpoint; it is kept on the wire so
+   * an older client does not read `undefined`. Use `total_cost_usd`.
+   */
   total_credits: number;
   total_tokens: number;
-  by_workflow: { workflow_id: number; workflow_name: string; credits: number }[];
-  by_node_type: Record<string, number>;
-  daily_usage: { date: string; credits: number; tokens: number }[];
-}
-
-// Audit types
-export interface AuditEntry {
-  id: number;
-  action: string;
-  resource_type: string;
-  resource_id: string;
-  details: Record<string, unknown>;
-  ip_address: string;
-  user_agent: string;
-  created_at: string;
+  total_cost_usd: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cached_read_tokens: number;
+  by_workflow: {
+    workflow_id: number;
+    workflow_name: string;
+    tokens: number;
+    cost_usd: string;
+    /** `unpriced` when any of this agent's runs was — see `lib/cost.ts`. */
+    cost_source: CostSource;
+    executions: number;
+  }[];
+  /** Which model the money actually went to — `by_workflow` says which agent. */
+  by_model: {
+    model_id: string;
+    provider: string;
+    tokens: number;
+    cost_usd: string;
+    turns: number;
+  }[];
+  by_tool: { tool: string; count: number }[];
+  daily_usage: { date: string | null; cost_usd: string; tokens: number }[];
 }
 
 export const logsService = {
@@ -146,11 +324,11 @@ export const logsService = {
   /**
    * List executions
    */
-  async listExecutions(params?: {
+async listExecutions(params?: {
     workflow_id?: number;
     status?: string;
+    caller?: RunCaller;
     limit?: number;
-    offset?: number;
     cursor?: string | null;
   }): Promise<CursorPage<ExecutionLog>> {
     const response = await apiClient.get<CursorPage<ExecutionLog>>(
@@ -168,51 +346,37 @@ export const logsService = {
     return response.data;
   },
 
-  // ========== Audit ==========
+  // ========== Configuration history ==========
+
+/**
+ * One page of an agent's configuration changes, newest first, with its diff.
+ *
+ * Keyset-paged like the execution list: the history grows for the life of the
+ * agent, so the builder asks for a handful and the history page walks the rest
+ * with `next_cursor`. Only the uncursored first page carries a `count`.
+ */
+async listRevisions(
+  agentId: number,
+  params: { limit?: number; cursor?: string | null } = {}
+): Promise<CursorPage<AgentRevision>> {
+  const response = await apiClient.get<CursorPage<AgentRevision>>(
+    `/logs/agents/${agentId}/revisions/`,
+    {
+      params: {
+        ...(params.limit != null ? { limit: params.limit } : {}),
+        ...(params.cursor ? { cursor: params.cursor } : {}),
+      },
+    }
+  );
+  return response.data;
+},
 
   /**
-   * List audit entries
+   * One revision's full configuration snapshot.
    */
-  async listAudit(params?: {
-    action_type?: string;
-    workflow_id?: number;
-    limit?: number;
-    cursor?: string | null;
-  }): Promise<CursorPage<AuditEntry>> {
-    const response = await apiClient.get<CursorPage<AuditEntry>>(
-      '/logs/audit/',
-      { params }
-    );
-    return response.data;
-  },
-
-  /**
-   * Export audit log
-   */
-  async exportAudit(format: 'json' | 'csv', days?: number): Promise<Blob> {
-    const response = await apiClient.get('/logs/audit/export/', {
-      params: { format, days },
-      responseType: 'blob',
-    });
-    return response.data;
-  },
-
-  /**
-   * Get orchestrator activity logs for an execution
-   */
-  async getActivityLogs(executionId: string): Promise<OrchestratorThought[]> {
-    const response = await apiClient.get<OrchestratorThought[]>(
-      `/logs/executions/${executionId}/activities/`
-    );
-    return response.data;
-  },
-
-  /**
-   * Get synthesized narrative for an execution
-   */
-  async getNarrative(executionId: string): Promise<OrchestratorThought> {
-    const response = await apiClient.get<OrchestratorThought>(
-      `/logs/executions/${executionId}/narrative/`
+  async getRevision(agentId: number, number: number): Promise<AgentRevisionDetail> {
+    const response = await apiClient.get<AgentRevisionDetail>(
+      `/logs/agents/${agentId}/revisions/${number}/`
     );
     return response.data;
   },

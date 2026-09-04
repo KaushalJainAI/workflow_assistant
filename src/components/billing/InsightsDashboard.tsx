@@ -1,215 +1,89 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  Activity, 
-  Clock, 
-  Search,
+import {
+  Activity,
+  Clock,
   DollarSign,
-  Cpu,
-  ArrowLeft,
   CheckCircle2,
-  XCircle,
-  AlertTriangle
+  Zap,
 } from 'lucide-react';
 import { authService, type UsageInsight } from '../../api/auth';
 
-// Types and Mock Data
-type TimeRange = '7d' | '14d' | '30d';
-
-interface WorkflowMetric {
-  id: string;
-  name: string;
-  executions: number;
-  failures: number;
-  avgRuntime: string;
-  timeSaved: string;
-  lastRun: string;
-}
+// How many days of daily_stats each range shows. The backend returns up to the
+// last 30 days; the toggle slices that window client-side.
+const RANGE_DAYS = { '7d': 7, '14d': 14, '30d': 30 } as const;
+type TimeRange = keyof typeof RANGE_DAYS;
 
 interface ChartDataPoint {
   date: string;
-  successful: number;
-  failed: number;
+  executions: number;
 }
-
-const MOCK_WORKFLOWS: WorkflowMetric[] = [
-  { id: '1', name: 'Lead Enrichment Pipeline', executions: 12450, failures: 124, avgRuntime: '240ms', timeSaved: '45h', lastRun: '2 mins ago' },
-  { id: '2', name: 'Daily Slack Report', executions: 30, failures: 0, avgRuntime: '1.2s', timeSaved: '5h', lastRun: '4 hrs ago' },
-  { id: '3', name: 'Customer Onboarding', executions: 850, failures: 42, avgRuntime: '450ms', timeSaved: '12h 30m', lastRun: '10 mins ago' },
-  { id: '4', name: 'Invoice Processing', executions: 240, failures: 12, avgRuntime: '3.5s', timeSaved: '8h 15m', lastRun: '1 day ago' },
-  { id: '5', name: 'Support Ticket Routing', executions: 4500, failures: 85, avgRuntime: '180ms', timeSaved: '22h', lastRun: '5 mins ago' },
-];
-
-const SYSTEM_HEALTH = {
-  cpu: 42,
-  memory: 65,
-  storage: 28,
-  activeStreams: 12,
-  pendingApprovals: 3
-};
-
-const WorkflowDetailView = ({ workflow, onClose }: { workflow: WorkflowMetric; onClose: () => void }) => {
-  const navigate = useNavigate();
-  
-  // Mock API cost for this workflow
-  const estimatedApiCost = (workflow.executions * 0.0042).toFixed(2);
-
-  return (
-    <div className="space-y-6 animate-in slide-in-from-right-10 duration-500">
-      <button 
-        onClick={onClose}
-        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Dashboard
-      </button>
-
-      <div className="flex justify-between items-start">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{workflow.name}</h2>
-          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-             <span className="flex items-center gap-1">
-               <Clock className="w-4 h-4" />
-               Last run: {workflow.lastRun}
-             </span>
-             <span className="flex items-center gap-1">
-               <Activity className="w-4 h-4" />
-               Avg Runtime: {workflow.avgRuntime}
-             </span>
-          </div>
-        </div>
-        <div className="flex gap-2">
-           <button 
-             onClick={() => navigate(`/workflows`)} 
-             className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 flex items-center gap-2"
-           >
-             Edit Workflow
-           </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-           <p className="text-sm font-medium text-muted-foreground mb-1">Total Executions</p>
-           <h3 className="text-3xl font-bold">{workflow.executions.toLocaleString()}</h3>
-        </div>
-        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-           <p className="text-sm font-medium text-muted-foreground mb-1">Success Rate</p>
-           <h3 className="text-3xl font-bold text-green-500">
-             {((1 - (workflow.failures / workflow.executions)) * 100).toFixed(1)}%
-           </h3>
-        </div>
-        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-           <p className="text-sm font-medium text-muted-foreground mb-1">Total Time Saved</p>
-           <h3 className="text-3xl font-bold text-blue-500">{workflow.timeSaved}</h3>
-        </div>
-        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-           <p className="text-sm font-medium text-muted-foreground mb-1">Est. API Cost</p>
-           <h3 className="text-3xl font-bold text-purple-500">${estimatedApiCost}</h3>
-        </div>
-      </div>
-
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col max-h-[400px]">
-        <div className="p-4 border-b border-border bg-muted/30 shrink-0">
-          <h3 className="font-semibold">Recent Executions</h3>
-        </div>
-        <div className="overflow-y-auto">
-          <table className="w-full text-sm text-left">
-             <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border sticky top-0 bg-card z-10">
-                <tr>
-                  <th className="px-6 py-3 bg-muted/50">Status</th>
-                  <th className="px-6 py-3 bg-muted/50">Started</th>
-                  <th className="px-6 py-3 bg-muted/50">Duration</th>
-                  <th className="px-6 py-3 bg-muted/50">Cost (Est.)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                 {Array.from({ length: 15 }).map((_, i) => (
-                   <tr key={i} className="hover:bg-muted/30">
-                      <td className="px-6 py-4">
-                        {i % 5 === 2 ? (
-                          <span className="flex items-center gap-2 text-red-500 font-medium select-none">
-                             <XCircle className="w-4 h-4" /> Failed
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-2 text-green-500 font-medium select-none">
-                             <CheckCircle2 className="w-4 h-4" /> Success
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                        {new Date(Date.now() - i * 1000 * 60 * 15).toLocaleTimeString()}
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                         {Math.floor(Math.random() * 500 + 100)}ms
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                         ${(Math.random() * 0.05).toFixed(4)}
-                      </td>
-                   </tr>
-                 ))}
-              </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export default function InsightsDashboard() {
   const [timeRange, setTimeRange] = useState<TimeRange>('14d');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowMetric | null>(null);
   const [insights, setInsights] = useState<UsageInsight | null>(null);
-  const [, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchInsights = async () => {
       setIsLoading(true);
+      setError(false);
       try {
         const data = await authService.getUsageInsights();
-        setInsights(data);
-      } catch (error) {
-        console.error('Failed to fetch insights:', error);
+        if (!cancelled) setInsights(data);
+      } catch (err) {
+        console.error('Failed to fetch insights:', err);
+        if (!cancelled) setError(true);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
     fetchInsights();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Derived Data
-  const chartData = useMemo(() => {
-    if (!insights?.daily_stats || insights.daily_stats.length === 0) {
-      // Generate some dummy data if nothing exists
-      return Array.from({ length: 14 }).map((_, i) => ({
-        date: new Date(Date.now() - (13 - i) * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        successful: Math.floor(Math.random() * 50) + 10,
-        failed: Math.floor(Math.random() * 5),
-      }));
-    }
-    
-    return insights.daily_stats.map(stat => ({
-      date: new Date(stat.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      successful: stat.execute_count,
-      failed: 0, // Backend doesn't split success/fail in UsageTracking yet
-    })).reverse();
-  }, [insights]);
-  
-  const totalExecutions = insights?.total_executions || 0;
-  const estimatedTimeSaved = Math.round(insights?.hours_saved || 0);
-  const totalApiCost = parseFloat(insights?.total_cost || '0');
-  const successRate = insights?.success_rate || 100;
+  // daily_stats arrives newest-first; oldest-first reads left-to-right on the
+  // chart. Slice to the selected window, then order for display.
+  const chartData: ChartDataPoint[] = useMemo(() => {
+    const stats = insights?.daily_stats ?? [];
+    return stats
+      .slice(0, RANGE_DAYS[timeRange])
+      .map((stat) => ({
+        date: new Date(stat.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        executions: stat.execute_count,
+      }))
+      .reverse();
+  }, [insights, timeRange]);
 
-  // Max value for chart scaling
-  const maxChartValue = Math.max(...chartData.map((d: ChartDataPoint) => d.successful + d.failed), 10);
+  const totalExecutions = insights?.total_executions ?? 0;
+  const estimatedTimeSaved = Math.round(insights?.hours_saved ?? 0);
+  const totalApiCost = parseFloat(insights?.total_cost ?? '0');
+  const successRate = insights?.success_rate ?? 100;
+  const tier = insights?.tier ?? 'free';
+  const creditsRemaining = insights?.credits_remaining ?? 0;
 
-  const filteredWorkflows = MOCK_WORKFLOWS.filter(w => 
-    w.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const maxChartValue = Math.max(...chartData.map((d) => d.executions), 10);
+  const hasChartData = chartData.some((d) => d.executions > 0);
 
-  if (selectedWorkflow) {
-    return <WorkflowDetailView workflow={selectedWorkflow} onClose={() => setSelectedWorkflow(null)} />;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-muted-foreground animate-in fade-in duration-500">
+        <Activity className="w-5 h-5 mr-2 animate-pulse" />
+        Loading insights…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-2 animate-in fade-in duration-500">
+        <p>Could not load usage insights.</p>
+        <p className="text-xs">Please try again later.</p>
+      </div>
+    );
   }
 
   return (
@@ -217,18 +91,18 @@ export default function InsightsDashboard() {
       {/* Header Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card/50 p-6 rounded-xl border border-border/60 backdrop-blur-sm">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">System Insights</h2>
-          <p className="text-muted-foreground">Detailed metrics on performance, costs, and system health</p>
+          <h2 className="text-2xl font-bold tracking-tight">Insights</h2>
+          <p className="text-muted-foreground">Your usage, cost, and execution activity</p>
         </div>
-        
+
         <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg border border-border">
-          {(['7d', '14d', '30d'] as TimeRange[]).map((range) => (
+          {(Object.keys(RANGE_DAYS) as TimeRange[]).map((range) => (
             <button
               key={range}
               onClick={() => setTimeRange(range)}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                timeRange === range 
-                  ? 'bg-background text-primary shadow-sm border border-border/50' 
+                timeRange === range
+                  ? 'bg-background text-primary shadow-sm border border-border/50'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
@@ -246,200 +120,117 @@ export default function InsightsDashboard() {
             <div className="p-2 bg-primary/10 rounded-lg text-primary">
               <Activity className="w-5 h-5" />
             </div>
-            <span className="flex items-center gap-1 text-xs font-medium text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
-              Live
-            </span>
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Total Executions</p>
+          <p className="text-sm font-medium text-muted-foreground">Total executions</p>
           <h3 className="text-2xl font-bold mt-1">{totalExecutions.toLocaleString()}</h3>
         </div>
 
         {/* Time Saved */}
         <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
           <div className="flex justify-between items-start mb-2">
-             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
               <Clock className="w-5 h-5" />
             </div>
             <span className="flex items-center gap-1 text-xs font-medium text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">
               ROI
             </span>
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Hours Saved</p>
+          <p className="text-sm font-medium text-muted-foreground">Time saved</p>
           <h3 className="text-2xl font-bold mt-1">{estimatedTimeSaved}h</h3>
         </div>
 
         {/* Total Cost */}
         <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
-           <div className="flex justify-between items-start mb-2">
-             <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
+          <div className="flex justify-between items-start mb-2">
+            <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
               <DollarSign className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Est. API Cost</p>
+          <p className="text-sm font-medium text-muted-foreground">Est. API cost</p>
           <h3 className="text-2xl font-bold mt-1">${totalApiCost.toFixed(4)}</h3>
         </div>
 
         {/* Success Rate */}
-         <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
-           <div className="flex justify-between items-start mb-2">
-             <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
+        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
+          <div className="flex justify-between items-start mb-2">
+            <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-sm font-medium text-muted-foreground">Success Rate</p>
+          <p className="text-sm font-medium text-muted-foreground">Success rate</p>
           <h3 className="text-2xl font-bold mt-1">{successRate.toFixed(1)}%</h3>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Performance Chart */}
+        {/* Execution Trends Chart */}
         <div className="lg:col-span-2 bg-card border border-border/60 rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-semibold flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary" />
-              Execution Trends
+              Execution trends
             </h3>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500/80"></span>
-                <span className="text-muted-foreground">Volume</span>
-              </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="w-3 h-3 rounded-full bg-emerald-500/80"></span>
+              <span className="text-muted-foreground">Executions</span>
             </div>
           </div>
-          
-          <div className="h-72 flex items-end justify-between gap-1 relative pl-10 pb-6">
-            {/* Y-Axis Labels */}
-            <div className="absolute left-0 top-0 bottom-6 w-8 flex flex-col justify-between text-xs text-muted-foreground text-right pr-2">
-              <span>{maxChartValue}</span>
-              <span>{Math.round(maxChartValue * 0.5)}</span>
-              <span>0</span>
-            </div>
-            
-            {/* Chart Bars */}
-            {chartData.map((data, i) => {
-              const successHeight = (data.successful / maxChartValue) * 100;
-              
-              return (
-                <div key={i} className="flex-1 flex flex-col justify-end h-full gap-0.5 group relative hover:opacity-90">
-                  <div className="absolute bottom-[100%] left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 bg-popover text-popover-foreground text-xs p-2 rounded shadow-lg border border-border whitespace-nowrap">
-                    <div className="font-semibold mb-1">{data.date}</div>
-                    <div className="text-emerald-500">Executions: {data.successful}</div>
+
+          {hasChartData ? (
+            <div className="h-72 flex items-end justify-between gap-1 relative pl-10 pb-6">
+              {/* Y-Axis Labels */}
+              <div className="absolute left-0 top-0 bottom-6 w-8 flex flex-col justify-between text-xs text-muted-foreground text-right pr-2">
+                <span>{maxChartValue}</span>
+                <span>{Math.round(maxChartValue * 0.5)}</span>
+                <span>0</span>
+              </div>
+
+              {/* Chart Bars */}
+              {chartData.map((data, i) => {
+                const height = (data.executions / maxChartValue) * 100;
+                return (
+                  <div key={i} className="flex-1 flex flex-col justify-end h-full gap-0.5 group relative hover:opacity-90">
+                    <div className="absolute bottom-[100%] left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 bg-popover text-popover-foreground text-xs p-2 rounded shadow-lg border border-border whitespace-nowrap">
+                      <div className="font-semibold mb-1">{data.date}</div>
+                      <div className="text-emerald-500">Executions: {data.executions}</div>
+                    </div>
+                    <div className="w-full bg-primary/60 rounded-t-sm min-h-[2px]" style={{ height: `${height}%` }} />
+
+                    {i % Math.ceil(chartData.length / 6) === 0 && (
+                      <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground whitespace-nowrap">
+                        {data.date}
+                      </div>
+                    )}
                   </div>
-                  <div className="w-full bg-primary/60 rounded-t-sm min-h-[2px]" style={{ height: `${successHeight}%` }} />
-                  
-                  {(i % Math.ceil(chartData.length / 6) === 0) && (
-                    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground whitespace-nowrap">
-                      {data.date}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="h-72 flex flex-col items-center justify-center text-muted-foreground gap-2">
+              <Activity className="w-8 h-8 opacity-40" />
+              <p className="text-sm">No execution activity in this period yet.</p>
+            </div>
+          )}
         </div>
 
-        {/* System Health */}
+        {/* Plan & credits */}
         <div className="space-y-6">
-           <div className="bg-card border border-border/60 rounded-xl p-6 shadow-sm">
+          <div className="bg-card border border-border/60 rounded-xl p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <Cpu className="w-4 h-4" />
-              System Status
+              <Zap className="w-4 h-4" />
+              Plan &amp; credits
             </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-secondary/50 rounded-lg text-center border border-border/50">
-                <span className="text-2xl font-bold text-primary">{SYSTEM_HEALTH.cpu}%</span>
-                <p className="text-xs text-muted-foreground">CPU Usage</p>
+            <div className="space-y-4">
+              <div className="p-3 bg-secondary/50 rounded-lg border border-border/50 flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Current plan</span>
+                <span className="text-sm font-semibold capitalize">{tier}</span>
               </div>
-              <div className="p-3 bg-secondary/50 rounded-lg text-center border border-border/50">
-                <span className="text-2xl font-bold text-blue-500">{SYSTEM_HEALTH.activeStreams}</span>
-                <p className="text-xs text-muted-foreground">Active Streams</p>
-              </div>
-              <div className="col-span-2 space-y-2 mt-2">
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Usage Tier Limit</span>
-                  <span>{Math.min(100, (totalExecutions / 50000) * 100).toFixed(1)}%</span>
-                </div>
-                <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                   <div className="h-full bg-green-500" style={{ width: `${Math.min(100, (totalExecutions / 50000) * 100)}%` }} />
-                </div>
+              <div className="p-3 bg-secondary/50 rounded-lg border border-border/50 text-center">
+                <span className="text-2xl font-bold text-primary">{creditsRemaining.toLocaleString()}</span>
+                <p className="text-xs text-muted-foreground mt-1">Credits remaining</p>
               </div>
             </div>
           </div>
-          
-          <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex gap-4 items-start">
-            <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-lg text-blue-600 dark:text-blue-200">
-               <AlertTriangle className="w-4 h-4" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-xs text-blue-900 dark:text-blue-100">Optimization Tip</h4>
-              <p className="text-[10px] text-blue-700 dark:text-blue-300 mt-1">
-                Based on your {totalExecutions} executions, moving to the Pro plan would save you $12/month in overage credits.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Workflow Performance Table */}
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-border flex flex-col md:flex-row justify-between items-center gap-4">
-          <h3 className="font-semibold text-lg">Granular Performance</h3>
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search workflows..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-background border border-border/60 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
-              <tr>
-                <th className="px-6 py-3">Workflow Name</th>
-                <th className="px-6 py-3 text-right">Executions</th>
-                <th className="px-6 py-3 text-right">Failure Rate</th>
-                <th className="px-6 py-3 text-right">Avg Runtime</th>
-                <th className="px-6 py-3 text-right">Time Saved</th>
-                <th className="px-6 py-3 text-right">Last Run</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {filteredWorkflows.map((workflow) => (
-                <tr 
-                  key={workflow.id} 
-                  className="hover:bg-muted/30 transition-colors cursor-pointer"
-                  onClick={() => setSelectedWorkflow(workflow)}
-                >
-                  <td className="px-6 py-4 font-medium flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] text-primary">
-                      {workflow.name[0]}
-                    </div>
-                    {workflow.name}
-                  </td>
-                  <td className="px-6 py-4 text-right">{workflow.executions.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      workflow.failures > 0 
-                        ? 'bg-red-500/10 text-red-500' 
-                        : 'bg-green-500/10 text-green-500'
-                    }`}>
-                      {workflow.failures > 0 ? `${((workflow.failures / workflow.executions) * 100).toFixed(1)}%` : '0.00%'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right text-muted-foreground">{workflow.avgRuntime}</td>
-                  <td className="px-6 py-4 text-right font-semibold text-primary">{workflow.timeSaved}</td>
-                  <td className="px-6 py-4 text-right text-muted-foreground">{workflow.lastRun}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>

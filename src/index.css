@@ -1,92 +1,154 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Segoe UI first (Windows gets the real thing); Open Sans is the web fallback —
+   Steve Matteson drew both, so the humanist feel survives everywhere else. */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
  
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — Fluent 2 geometry and neutrals.
+
+   THE RULE THAT MATTERS: colour encodes agency.
+     --agent (violet) = the agent did this on its own
+     --primary (blue) = you did this, or it is waiting on you
+   Every surface in the app must honour this. A violet control
+   means "dispatch an agent"; a blue control means "you act".
+   ───────────────────────────────────────────────────────────── */
 @layer base {
   :root {
     font-size: 14px;
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
- 
+
+    /* neutrals — Fluent grey ramp */
+    --background: 0 0% 100%;          /* #ffffff */
+    --foreground: 0 0% 14.1%;         /* #242424 neutralForeground1 */
+
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
- 
+    --card-foreground: 0 0% 14.1%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
- 
-    /* VIBRANT BLUE for light mode instead of near-black */
-    --primary: 217 91% 60%;
-    --primary-foreground: 210 40% 98%;
-    --primary-rgb: 59, 130, 246;
- 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
- 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
- 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
- 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
- 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 217 91% 60%;
- 
-    --sidebar-bg: 0 0% 100%;
-    --sidebar-border: 214.3 31.8% 91.4%;
-    --radius: 1rem;
-  }
- 
-  .dark {
-    --background: 228 18% 5.5%;
-    --foreground: 210 40% 98%;
- 
-    --card: 228 16% 7.5%;
-    --card-foreground: 210 40% 98%;
- 
-    --popover: 228 16% 7.5%;
-    --popover-foreground: 210 40% 98%;
- 
-    --primary: 217 92% 62%;
-    --primary-foreground: 228 18% 5.5%;
-    --primary-rgb: 45, 120, 255;
- 
-    --secondary: 222 14% 14%;
-    --secondary-foreground: 210 40% 98%;
- 
-    --muted: 222 14% 14%;
-    --muted-foreground: 218 14% 55%;
- 
-    --accent: 222 14% 16%;
-    --accent-foreground: 210 40% 98%;
- 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
- 
-    --border: 222 14% 16%;
-    --input: 222 14% 18%;
-    --ring: 217 92% 62%;
- 
-    --sidebar-bg: 228 16% 7.5%;
-    --sidebar-border: 222 14% 16%;
+    --popover-foreground: 0 0% 14.1%;
+
+    /* human / primary — Fluent communication blue #0f6cbd */
+    --primary: 208 85% 40%;
+    --primary-foreground: 0 0% 100%;
+    --primary-rgb: 15, 108, 189;
+    --primary-subtle: 212 71% 95%;    /* #ebf3fc */
+    --primary-line: 210 84% 84%;      /* #b4d6fa */
+
+    /* agent — violet #6b4fbb */
+    --agent: 256 44% 52%;
+    --agent-foreground: 0 0% 100%;
+    --agent-rgb: 107, 79, 187;
+    --agent-subtle: 256 58% 96%;      /* #f3f0fb */
+    --agent-line: 256 46% 88%;        /* #d6cdf2 */
+
+    --secondary: 0 0% 96.1%;          /* #f5f5f5 */
+    --secondary-foreground: 0 0% 14.1%;
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 38%;     /* #616161 neutralForeground2 */
+
+    --accent: 0 0% 92.2%;             /* #ebebeb */
+    --accent-foreground: 0 0% 14.1%;
+
+    --success: 120 78% 25%;           /* #0e700e */
+    --success-subtle: 120 44% 94%;
+    --warning: 22 91% 39%;            /* #bc4b09 */
+    --warning-subtle: 33 87% 95%;
+    --destructive: 355 85% 37%;       /* #b10e1c */
+    --destructive-foreground: 0 0% 100%;
+    --destructive-subtle: 355 78% 97%;
+
+    /* Chart marks. Deliberately separate from --agent/--destructive: a fill
+       sitting in a plot has to clear the OKLCH lightness band and adjacent-pair
+       CVD separation for its own surface, which the UI tokens do not in dark
+       mode. Light steps happen to equal the UI ones; dark steps are re-stepped.
+       Validated: light #6b4fbb/#af0e1c, dark #9074dc/#e0525d — all checks pass. */
+    --chart-work: 256 44% 52%;        /* #6b4fbb — a run the agent completed */
+    --chart-fail: 355 85% 37%;        /* #af0e1c — a run that did not complete */
+
+    --border: 0 0% 89.8%;             /* #e5e5e5 neutralStroke2 */
+    --border-strong: 0 0% 82%;        /* #d1d1d1 neutralStroke1 */
+    --input: 0 0% 82%;
+    --ring: 208 85% 40%;
+
+    --sidebar-bg: 0 0% 98%;           /* #fafafa */
+    --sidebar-border: 0 0% 89.8%;
+
+    /* Fluent shape scale — controls 4px, cards 6px, surfaces 8px */
+    --radius: 6px;
   }
 
-  /* --- MAGENTA THEME OVERRIDES --- */
+  .dark {
+    --background: 0 0% 7.8%;          /* #141414 canvas */
+    --foreground: 0 0% 96%;
+
+    --card: 0 0% 12.2%;               /* #1f1f1f */
+    --card-foreground: 0 0% 96%;
+
+    --popover: 0 0% 16.1%;            /* #292929 */
+    --popover-foreground: 0 0% 96%;
+
+    --primary: 210 90% 62%;           /* #479ef5 */
+    --primary-foreground: 0 0% 7.8%;
+    --primary-rgb: 71, 158, 245;
+    --primary-subtle: 210 60% 16%;
+    --primary-line: 210 50% 30%;
+
+    --agent: 256 65% 74%;
+    --agent-foreground: 0 0% 7.8%;
+    --agent-rgb: 168, 148, 232;
+    --agent-subtle: 256 30% 19%;
+    --agent-line: 256 30% 34%;
+
+    --secondary: 0 0% 16.1%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 0 0% 16.1%;
+    --muted-foreground: 0 0% 67.8%;   /* #adadad */
+
+    --accent: 0 0% 20%;
+    --accent-foreground: 0 0% 96%;
+
+    --success: 120 45% 62%;
+    --success-subtle: 120 30% 14%;
+    --warning: 28 85% 62%;
+    --warning-subtle: 28 40% 15%;
+    --destructive: 355 75% 66%;
+    --destructive-foreground: 0 0% 7.8%;
+    --destructive-subtle: 355 35% 16%;
+
+    /* Re-stepped for the dark surface, not flipped from light — the UI tokens
+       (#a894e8 / #e96772) read L .717 / .676, above the .48–.67 dark band. */
+    --chart-work: 256 60% 66%;        /* #9074dc */
+    --chart-fail: 355 70% 60%;        /* #e0525d */
+
+    --border: 0 0% 23.9%;             /* #3d3d3d */
+    --border-strong: 0 0% 30%;
+    --input: 0 0% 30%;
+    --ring: 210 90% 62%;
+
+    --sidebar-bg: 0 0% 10.2%;
+    --sidebar-border: 0 0% 23.9%;
+  }
+
+  /* Alternate accent — swaps the *human* colour only.
+     The agent violet is structural and never changes. */
   :root[data-color-theme='magenta'] {
-    --primary: 322 81% 53%;
-    --primary-rgb: 236, 40, 153;
-    --ring: 322 81% 53%;
+    --primary: 322 68% 42%;
+    --primary-rgb: 178, 34, 111;
+    --primary-subtle: 322 60% 96%;
+    --primary-line: 322 50% 86%;
+    --ring: 322 68% 42%;
   }
 
   .dark[data-color-theme='magenta'] {
-    --primary: 322 81% 60%;
-    --primary-rgb: 244, 71, 172;
-    --ring: 322 81% 60%;
+    --primary: 322 75% 68%;
+    --primary-rgb: 232, 121, 184;
+    --primary-subtle: 322 30% 18%;
+    --primary-line: 322 30% 34%;
+    --ring: 322 75% 68%;
   }
 }
  
@@ -100,6 +162,15 @@
 }
 
 @layer utilities {
+  /* ── App-shell height ──
+     100vh on mobile browsers includes the area behind the collapsing URL bar /
+     gesture bar, clipping the bottom of the layout (chat composer). 100dvh
+     tracks the *visible* viewport; keep 100vh first as a fallback. */
+  .h-viewport {
+    height: 100vh;
+    height: 100dvh;
+  }
+
   /* ── Entrance Animations ── */
   .animate-fade-in {
     animation: fade-in 0.5s ease-out both;
@@ -136,69 +207,92 @@
     animation: scanning-beam 2s ease-in-out infinite;
   }
 
+  /* ── Route transition ──
+     Applied by `RouteTransition` to the element keyed on the pathname, so it
+     replays on every navigation. Deliberately short and translate-only: a
+     page switch should feel continuous, not staged, and anything longer than
+     ~200ms reads as latency on a fast route. */
+  .page-enter {
+    animation: page-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
 
-  /* ── Glassmorphism ── */
+  /* Skeleton block for content that has not arrived yet. */
+  .skeleton {
+    @apply rounded-md bg-muted/60;
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
+  }
+
+
+  /* ── Acrylic ──
+     Fluent's acrylic, not glassmorphism: heavier blur, a saturation boost so
+     colour bleeds through, and an opaque-enough base that text stays readable.
+     Kept under the old `.glass` name so existing call sites don't break. */
   .glass {
-    @apply backdrop-blur-xl bg-card/60 shadow-xl;
-    border: 1px solid hsl(var(--border) / 0.5);
+    background: hsl(var(--card) / 0.72);
+    backdrop-filter: blur(30px) saturate(140%);
+    -webkit-backdrop-filter: blur(30px) saturate(140%);
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .14), 0 0 2px rgba(0, 0, 0, .12);
   }
 
   .dark .glass {
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: hsl(var(--card) / 0.78);
+    border: 1px solid hsl(var(--border));
   }
 
   .glass-hover {
-    @apply hover:bg-card/80 hover:shadow-2xl transition-all duration-300;
+    @apply transition-colors duration-150;
+  }
+  .glass-hover:hover {
+    background: hsl(var(--card) / 0.88);
   }
 
-  /* ── Glow Effects ── */
-  .glow-sm {
-    box-shadow: 0 0 15px -3px rgba(var(--primary-rgb), 0.15);
-  }
+  /* ── Depth ──
+     Was a coloured bloom around the primary hue. Fluent elevation is neutral
+     and tight; a glow reads as decoration, a shadow reads as height. */
+  .glow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12); }
+  .glow-md { box-shadow: 0 2px 4px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12); }
+  .glow-lg { box-shadow: 0 4px 8px rgba(0,0,0,.14), 0 0 2px rgba(0,0,0,.12); }
 
-  .glow-md {
-    box-shadow: 0 0 25px -5px rgba(var(--primary-rgb), 0.2);
-  }
-
-  .glow-lg {
-    box-shadow: 0 0 40px -8px rgba(var(--primary-rgb), 0.3);
-  }
-
-  /* ── Card Hover Effect ── */
+  /* ── Card hover ──
+     No lift, no coloured ring. Rows and cards in a dense console should
+     acknowledge the pointer, not animate away from it. */
   .card-hover {
-    @apply transition-all duration-300 ease-out;
+    @apply transition-colors duration-150 ease-out;
   }
   .card-hover:hover {
-    @apply shadow-lg border-primary/30;
-    box-shadow: 0 8px 30px -8px hsl(var(--primary) / 0.12),
-                0 0 0 1px hsl(var(--primary) / 0.08);
-    transform: translateY(-1px);
+    background: hsl(var(--secondary));
+    border-color: hsl(var(--border-strong));
   }
 
-  /* ── Stagger Children (for grids) ── */
+  /* ── Stagger Children (for grids) ──
+     Delays cut ~5×. At 450ms the last tile in a grid arrived after the user had
+     already started reading the first — the animation was costing time, not
+     covering latency. */
   .stagger-children > * {
-    animation: slide-up 0.4s ease-out both;
+    animation: slide-up 0.18s cubic-bezier(0.33, 0, 0.67, 1) both;
   }
   .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-  .stagger-children > *:nth-child(2) { animation-delay: 50ms; }
-  .stagger-children > *:nth-child(3) { animation-delay: 100ms; }
-  .stagger-children > *:nth-child(4) { animation-delay: 150ms; }
-  .stagger-children > *:nth-child(5) { animation-delay: 200ms; }
-  .stagger-children > *:nth-child(6) { animation-delay: 250ms; }
-  .stagger-children > *:nth-child(7) { animation-delay: 300ms; }
-  .stagger-children > *:nth-child(8) { animation-delay: 350ms; }
-  .stagger-children > *:nth-child(9) { animation-delay: 400ms; }
-  .stagger-children > *:nth-child(n+10) { animation-delay: 450ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 12ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 24ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 36ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 48ms; }
+  .stagger-children > *:nth-child(6) { animation-delay: 60ms; }
+  .stagger-children > *:nth-child(7) { animation-delay: 72ms; }
+  .stagger-children > *:nth-child(8) { animation-delay: 84ms; }
+  .stagger-children > *:nth-child(n+9) { animation-delay: 96ms; }
 
-  /* ── Smooth Interactive Elements ── */
+  /* ── Interactive ──
+     Scaling on hover makes dense list rows wobble and misaligns hit targets.
+     Fluent acknowledges the pointer with a background state layer instead. */
   .interactive {
-    @apply transition-all duration-200 ease-out;
+    @apply transition-colors duration-150 ease-out;
   }
   .interactive:hover {
-    @apply scale-[1.02];
+    background: hsl(var(--secondary));
   }
   .interactive:active {
-    @apply scale-[0.98];
+    background: hsl(var(--accent));
   }
 
   .ease-in-out-back {
@@ -253,6 +347,16 @@
   50% { transform: translateY(120%); opacity: 1; }
 }
 
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 @keyframes indeterminate-slide {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(200%); }
@@ -286,32 +390,31 @@
 .ai-chat-prose strong {
   @apply font-semibold text-foreground;
 }
+/* Tables the agent returns are data, not marketing. Plain rules, real header
+   weight, no tint on the body, no drop shadow. */
 .ai-chat-prose table {
-  @apply w-full my-4 border-collapse overflow-hidden rounded-2xl border border-primary/20 bg-card/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] text-[13px] block md:table overflow-x-auto;
+  @apply w-full my-4 border-collapse border border-border text-[13px] block md:table overflow-x-auto rounded-lg;
 }
 .ai-chat-prose thead {
-  @apply bg-primary/10 border-b border-primary/20 text-left;
+  @apply bg-secondary border-b border-border-strong text-left;
 }
 .ai-chat-prose thead th {
-  @apply p-4 font-black text-primary/80 uppercase tracking-[0.15em] whitespace-nowrap;
+  @apply px-4 py-2.5 font-semibold text-muted-foreground whitespace-nowrap;
 }
 .ai-chat-prose tbody tr {
-  @apply border-b border-border/40 last:border-0 hover:bg-primary/[0.03] transition-all duration-300;
-}
-.ai-chat-prose tbody tr:nth-child(even) {
-  @apply bg-muted/20;
+  @apply border-b border-border last:border-0 hover:bg-secondary transition-colors duration-150;
 }
 .ai-chat-prose tbody td {
-  @apply p-4 align-middle text-foreground/90 font-medium leading-relaxed;
+  @apply px-4 py-2.5 align-middle text-foreground leading-relaxed;
 }
 .ai-chat-prose h1, .ai-chat-prose h2, .ai-chat-prose h3, .ai-chat-prose h4 {
-  @apply font-bold mt-6 mb-3 text-foreground tracking-tight;
+  @apply font-semibold mt-6 mb-3 text-foreground;
 }
 .ai-chat-prose code {
-  @apply bg-primary/10 text-primary px-1.5 py-0.5 rounded-md text-[0.85em] font-bold font-mono border border-primary/20;
+  @apply bg-secondary text-foreground px-1.5 py-0.5 rounded text-[0.85em] font-mono border border-border;
 }
 .ai-chat-prose pre {
-  @apply bg-zinc-950 text-zinc-50 p-5 rounded-2xl my-6 overflow-x-auto border border-zinc-800 shadow-xl text-[13px] leading-relaxed;
+  @apply bg-secondary text-foreground p-4 rounded-lg my-4 overflow-x-auto border border-border text-[13px] leading-relaxed;
 }
 .ai-chat-prose pre code {
   @apply bg-transparent text-inherit p-0 border-0;
@@ -360,3 +463,18 @@
   background-color: hsl(var(--muted-foreground) / 0.35);
 }
 
+
+
+/* Honour the OS setting: every decorative animation above collapses to a
+   near-instant state change rather than being removed, so nothing that
+   depends on `animationend` stops firing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

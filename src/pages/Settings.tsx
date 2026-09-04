@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { 
   Settings as SettingsIcon,
   User,
   Bell,
-  Shield,
+  // Shield,  // MVP: unused while the Security tab is hidden
   Palette,
   Code,
   ChevronRight,
@@ -21,25 +22,53 @@ import {
 import { cn } from '../lib/utils';
 import InsightsDashboard from '../components/billing/InsightsDashboard';
 import { useTheme } from '../hooks/useTheme';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authState';
 import { authService } from '../api/auth';
 import Select from '../components/ui/Select';
 import NotificationsTab from '../components/settings/NotificationsTab';
+import { useAIModels } from '../hooks/useAIModels';
+import {
+  DEFAULT_EFFORT, EFFORT_LABELS, effortLevelsFor, nearestEffort,
+} from '../hooks/useEffortSelection';
+import { DEFAULT_PROVIDER, DEFAULT_MODEL } from '../hooks/useChatModelSelection';
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
 
 
+/**
+ * The settings form's shape. It was `any`, which meant a typo in a field name
+ * — in the initial value, the `user` sync below, or a `name` attribute — was a
+ * silent no-op rather than a compile error.
+ */
+interface SettingsForm {
+  instance_name: string;
+  timezone: string;
+  language: string;
+  display_name: string;
+  bio: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  llm_provider: string;
+  llm_model: string;
+  llm_effort: string;
+  default_temperature: number;
+  default_max_tokens: number;
+}
+
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [activeTab, setActiveTab] = usePersistedState<SettingsTab>('settings.tab', 'general');
   const { theme, setTheme, colorTheme, setColorTheme } = useTheme();
   const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const { providers: catalogue } = useAIModels();
   
   // Form State
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<SettingsForm>({
     instance_name: '',
     timezone: 'UTC',
     language: 'English',
@@ -48,11 +77,29 @@ export default function Settings() {
     first_name: '',
     last_name: '',
     email: '',
-    llm_provider: 'openrouter',
-    llm_model: 'google/gemini-2.0-flash-exp:free',
+    llm_provider: DEFAULT_PROVIDER,
+    llm_model: DEFAULT_MODEL,
+    llm_effort: DEFAULT_EFFORT,
     default_temperature: 0.7,
     default_max_tokens: 2048,
   });
+
+  // The model list is read from the catalogue rather than written out here.
+  // It used to be eight hardcoded options, and two of them — `gemini-3.6-flash`
+  // and `gemini-3.1-pro-preview` — had since been retired in
+  // `populate_models.py`, so this page offered models the picker in chat no
+  // longer showed and the runtime would refuse. A second copy of a list the
+  // server already publishes is a copy that drifts.
+  const activeProvider = catalogue.find((p) => p.slug === formData.llm_provider);
+  const effortLevels = effortLevelsFor(
+    catalogue, formData.llm_provider, formData.llm_model,
+  );
+  // What the saved level would actually run at on the chosen model, by the same
+  // rule the server applies. Shown rather than the raw stored value so the page
+  // never displays a rung this model does not serve.
+  const effectiveEffort = effortLevels.length
+    ? nearestEffort(formData.llm_effort, effortLevels)
+    : '';
 
   useEffect(() => {
     if (user) {
@@ -65,8 +112,11 @@ export default function Settings() {
         first_name: user.name?.split(' ')[0] || '',
         last_name: user.name?.split(' ').slice(1).join(' ') || '',
         email: user.email || '',
-        llm_provider: user.llm_provider || 'openrouter',
-        llm_model: user.llm_model || 'google/gemini-2.0-flash-exp:free',
+        llm_provider: user.llm_provider || DEFAULT_PROVIDER,
+        llm_model: user.llm_model || DEFAULT_MODEL,
+        // `??` not `||`: '' is a real choice here — the model's own default —
+        // and `||` would silently promote it back to `medium` on every load.
+        llm_effort: user.llm_effort ?? DEFAULT_EFFORT,
         default_temperature: user.default_temperature || 0.7,
         default_max_tokens: user.default_max_tokens || 2048,
       });
@@ -90,11 +140,11 @@ export default function Settings() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSelectChange = (name: string, value: string) => {
-    setFormData((prev: any) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
@@ -188,7 +238,12 @@ export default function Settings() {
     { id: 'insights' as const, label: 'Insights', icon: BarChart3 },
     { id: 'billing' as const, label: 'Billing', icon: CreditCard },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
-    { id: 'security' as const, label: 'Security', icon: Shield },
+    // MVP: Security is the only tab with no `case` in renderContent(), so it
+    // fell through to the "coming soon" default. Hidden rather than built out.
+    // The 'security' member stays on SettingsTab and the default branch stays
+    // below, so a persisted `settings.tab` of 'security' still lands somewhere
+    // instead of crashing.
+    // { id: 'security' as const, label: 'Security', icon: Shield },
     { id: 'appearance' as const, label: 'Appearance', icon: Palette },
     { id: 'api' as const, label: 'API', icon: Code },
   ];
@@ -199,11 +254,11 @@ export default function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium mb-4">General Settings</h3>
+              <h3 className="text-lg font-medium mb-4">General settings</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
-                    <p className="font-medium">Instance Name</p>
+                    <p className="font-medium">Instance name</p>
                     <p className="text-sm text-muted-foreground">Personalize your platform title</p>
                   </div>
                   <input 
@@ -215,25 +270,81 @@ export default function Settings() {
                   />
                 </div>
                 
-                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-primary/10">
-                  <div>
-                    <p className="font-medium flex items-center gap-2">
-                      Default AI Model
-                      <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
-                    </p>
-                    <p className="text-sm text-muted-foreground">The primary model for AI features</p>
+                {/* Provider, model and effort — the same three choices the
+                    chat composer and the agent builder offer, driven by the
+                    same catalogue so none of them can drift from the others. */}
+                <div className="p-4 bg-muted/50 rounded-lg border border-primary/10 space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium flex items-center gap-2">
+                        Default AI provider
+                        <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
+                      </p>
+                      <p className="text-sm text-muted-foreground">Who serves your AI features</p>
+                    </div>
+                    <Select
+                      value={formData.llm_provider}
+                      onChange={(val) => {
+                        // Changing provider invalidates the model, so both move
+                        // together. Leaving the old id in place would save a
+                        // pair the runtime cannot route.
+                        const first = catalogue.find((p) => p.slug === val)?.models?.[0]?.value ?? '';
+                        setFormData((prev) => ({ ...prev, llm_provider: val, llm_model: first }));
+                      }}
+                      options={catalogue.map((p) => ({ value: p.slug, label: p.name }))}
+                      placeholder="Choose a provider"
+                      className="w-[250px]"
+                    />
                   </div>
-                  <Select
-                    value={formData.llm_model}
-                    onChange={(val) => handleSelectChange('llm_model', val)}
-                    options={[
-                      { value: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash' },
-                      { value: 'openai/gpt-4o', label: 'GPT-4o' },
-                      { value: 'anthropic/claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
-                      { value: 'meta-llama/llama-3.1-405b', label: 'Llama 3.1 405B' },
-                    ]}
-                    className="w-[250px]"
-                  />
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium">Default AI model</p>
+                      <p className="text-sm text-muted-foreground">The primary model for AI features</p>
+                    </div>
+                    <Select
+                      value={formData.llm_model}
+                      onChange={(val) => handleSelectChange('llm_model', val)}
+                      showSearch={(activeProvider?.models?.length ?? 0) > 8}
+                      options={(activeProvider?.models ?? []).map((mo) => ({
+                        value: mo.value,
+                        label: mo.is_free ? `${mo.name} · free` : mo.name,
+                        is_free: mo.is_free,
+                      }))}
+                      placeholder="Choose a model"
+                      className="w-[250px]"
+                    />
+                  </div>
+
+                  {/* Always rendered, including for a model with no effort
+                      control — see `EffortPicker` for why. An empty space
+                      cannot say "this model does not support it". */}
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium">Reasoning effort</p>
+                      <p className="text-sm text-muted-foreground">
+                        How hard it thinks before answering
+                      </p>
+                    </div>
+                    {effortLevels.length > 0 ? (
+                      <Select
+                        value={effectiveEffort}
+                        onChange={(val) => handleSelectChange('llm_effort', val)}
+                        options={[
+                          { value: '', label: EFFORT_LABELS[''] },
+                          ...effortLevels.map((level) => ({
+                            value: level,
+                            label: EFFORT_LABELS[level] ?? level,
+                          })),
+                        ]}
+                        className="w-[250px]"
+                      />
+                    ) : (
+                      <p className="w-[250px] text-sm text-muted-foreground/60 text-right">
+                        Not supported by this model
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
@@ -280,7 +391,7 @@ export default function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium mb-4">Account Settings</h3>
+              <h3 className="text-lg font-medium mb-4">Account settings</h3>
               <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4">
                 <div 
                   onClick={handleAvatarClick}
@@ -316,7 +427,7 @@ export default function Settings() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">First Name</label>
+                    <label className="block text-sm font-medium mb-2">First name</label>
                     <input 
                       type="text" 
                       name="first_name"
@@ -326,7 +437,7 @@ export default function Settings() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Last Name</label>
+                    <label className="block text-sm font-medium mb-2">Last name</label>
                     <input 
                       type="text" 
                       name="last_name"
@@ -337,7 +448,7 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Email Address</label>
+                  <label className="block text-sm font-medium mb-2">Email address</label>
                   <input 
                     type="email" 
                     name="email"
@@ -407,11 +518,11 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <p className="font-medium mb-3 text-foreground/90">Accent Palette</p>
+                  <p className="font-medium mb-3 text-foreground/90">Accent palette</p>
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { id: 'blue' as const, label: 'Classic Blue', color: 'bg-blue-500' },
-                      { id: 'magenta' as const, label: 'Quantum Pink', color: 'bg-pink-500' },
+                      { id: 'blue' as const, label: 'Communication blue', color: 'bg-primary' },
+                      { id: 'magenta' as const, label: 'Agent violet', color: 'bg-agent' },
                     ].map(({ id, label, color }) => (
                       <button
                         key={id}
@@ -442,11 +553,11 @@ export default function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium mb-4">API Settings</h3>
+              <h3 className="text-lg font-medium mb-4">API settings</h3>
               <div className="space-y-4">
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="font-medium">API Key</p>
+                    <p className="font-medium">API key</p>
                     <button 
                       onClick={handleRegenerateKey}
                       className="text-sm text-primary hover:underline"
@@ -495,7 +606,7 @@ export default function Settings() {
         return (
           <div className="space-y-8 max-w-7xl">
             <div>
-              <h3 className="text-2xl font-bold tracking-tight">Billing & Plans</h3>
+              <h3 className="text-2xl font-bold tracking-tight">Billing & plans</h3>
               <p className="text-muted-foreground mt-1">Manage your subscription and usage limits</p>
             </div>
 
@@ -506,7 +617,7 @@ export default function Settings() {
                     <Zap className="w-5 h-5 text-blue-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Monthly Executions</p>
+                    <p className="text-sm font-medium text-muted-foreground">Monthly executions</p>
                     <h3 className="text-2xl font-bold">{user?.credits || 0} / 50,000</h3>
                   </div>
                 </div>
@@ -536,7 +647,7 @@ export default function Settings() {
                     <CreditCard className="w-5 h-5 text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Credits Remaining</p>
+                    <p className="text-sm font-medium text-muted-foreground">Credits remaining</p>
                     <h3 className="text-2xl font-bold">{user?.credits || 0}</h3>
                   </div>
                 </div>

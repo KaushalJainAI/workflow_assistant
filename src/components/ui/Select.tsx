@@ -194,9 +194,8 @@ export default function Select({
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleTriggerKeyDown}
         className={cn(
-          "w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-background/50 border border-input rounded-xl hover:bg-accent/50 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20",
-          isOpen && "border-primary/50 ring-2 ring-primary/20",
-          className
+          "w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-background/50 border border-input rounded-xl hover:bg-accent/50 hover:border-primary/30 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20",
+          isOpen && "border-primary/50 ring-2 ring-primary/20"
         )}
         aria-haspopup="listbox"
         aria-expanded={isOpen}

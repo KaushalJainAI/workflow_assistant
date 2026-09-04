@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authState';
+import { googleAuthAvailable, googleAuthorizeUrl } from '../lib/googleAuth';
+import { nextFrom } from '../lib/nextPath';
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -13,6 +15,12 @@ export default function Signup() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const { register, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
+  /* Where this visitor was heading. A public agent link sends people here
+     with `?next=`, and landing them on the dashboard instead loses the page
+     they came for. `nextFrom` refuses anything that is not an in-app path,
+     so the parameter cannot become an open redirect. */
+  const { search } = useLocation();
+  const landing = nextFrom(search);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,31 +41,14 @@ export default function Signup() {
 
     try {
       await register(formData.email, formData.password, formData.name);
-      navigate('/');
+      navigate(landing);
     } catch {
       // Error is handled by AuthContext
     }
   };
 
   const handleGoogleLogin = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    const redirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback';
-    
-    if (!clientId) {
-      console.error('Missing Google Client ID');
-      return;
-    }
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: 'openid email profile',
-      access_type: 'online', 
-      prompt: 'select_account',
-    });
-
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    window.location.href = googleAuthorizeUrl();
   };
 
   const displayError = validationError || error;
@@ -176,12 +167,14 @@ export default function Signup() {
             </button>
           </form>
 
-          <div className="mt-6">
+          {/* Hidden where the built redirect URI does not match this origin —
+              Google would reject it and strand the user on an error page. */}
+          {googleAuthAvailable() && <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border/60" />
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
+              <div className="relative flex justify-center text-xs">
                 <span className="bg-card/60 backdrop-blur px-3 text-muted-foreground">
                   Or continue with
                 </span>
@@ -215,13 +208,13 @@ export default function Signup() {
                 Google
               </button>
             </div>
-          </div>
+          </div>}
 
           <div className="mt-6 text-center text-xs text-muted-foreground">
             By clicking create account, you agree to our{' '}
             <Link to="#" className="underline hover:text-primary transition-colors">Terms of Service</Link>
             {' '}and{' '}
-            <Link to="#" className="underline hover:text-primary transition-colors">Privacy Policy</Link>.
+            <Link to="#" className="underline hover:text-primary transition-colors">Privacy policy</Link>.
           </div>
         </div>
 

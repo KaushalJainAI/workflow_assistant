@@ -4,26 +4,12 @@
  * Global authentication state and methods.
  */
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { authService } from '../api/auth';
-import type { User } from '../api/auth';
 import { tokenManager, setUnauthorizedCallback } from '../api/client';
 
-interface AuthContextType {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
-  googleLogin: (code: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
-  clearError: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from './authState';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -39,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await authService.getProfile();
         return userData;
       } catch (err) {
+        console.error('Operation failed', err);
         tokenManager.clearTokens();
         return null;
       }
@@ -108,28 +95,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
-  const value = {
-    user,
-    isAuthenticated,
-    isLoading,
-    error,
-    login,
-    register,
-    googleLogin,
-    logout,
-    refreshUser,
-    clearError,
-  };
+  // Memoised: this provider sits above every route, so an unstable value made
+  // each of its renders a re-render of every screen that reads auth.
+  const value = useMemo(
+    () => ({
+      user,
+      isAuthenticated,
+      isLoading,
+      error,
+      login,
+      register,
+      googleLogin,
+      logout,
+      refreshUser,
+      clearError,
+    }),
+    [user, isAuthenticated, isLoading, error, login, register, googleLogin,
+     logout, refreshUser, clearError],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
-
-export default AuthContext;

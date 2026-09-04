@@ -10,17 +10,22 @@ import {
   Key, 
   Globe, 
   Shield,
-  Sparkles,
+  Brain,
   Search,
-  ExternalLink
+  ExternalLink,
+  type LucideIcon,
 } from 'lucide-react';
 import { credentialsService, type CredentialType, type Credential } from '../../api/credentials';
+import { handleApiError } from '../../api/client';
 import Select from '../ui/Select';
 
 import { toast } from 'sonner';
+import { apiErrorMessage } from '../../lib/apiError';
 
 // Icon mapper
-const IconMap: Record<string, any> = {
+// Keyed by the `icon` string the backend stores, so a new credential type
+// is a fixture row rather than a code change here.
+const IconMap: Record<string, LucideIcon> = {
   'Mail': Mail,
   'Database': Database,
   'MessageSquare': MessageSquare,
@@ -28,7 +33,7 @@ const IconMap: Record<string, any> = {
   'Key': Key,
   'Globe': Globe,
   'Shield': Shield,
-  'Sparkles': Sparkles,
+  'Brain': Brain,
   'Search': Search
 };
 
@@ -51,6 +56,10 @@ export default function CredentialModal({
   const [name, setName] = useState('');
   const [selectedType, setSelectedType] = useState<CredentialType | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  // Snapshot of what the server handed us. Secrets come back masked
+  // ("********ab12"), so anything still equal to its snapshot was not retyped
+  // and must not be sent back — the backend would store the mask verbatim.
+  const [loadedData, setLoadedData] = useState<Record<string, string>>({});
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,11 +82,13 @@ export default function CredentialModal({
            fields[f.key] = f.value;
         });
         setFormData(fields);
+        setLoadedData(fields);
       } else {
         // Create Mode
         setName('');
         setSelectedType(null);
         setFormData({});
+        setLoadedData({});
         setSearchTerm('');
       }
     }
@@ -91,6 +102,7 @@ export default function CredentialModal({
       newFields[field.name] = field.default || '';
     });
     setFormData(newFields);
+    setLoadedData({});
   };
 
   const toggleFieldVisibility = (fieldKey: string) => {
@@ -106,19 +118,26 @@ export default function CredentialModal({
 
   const handleOAuthConnect = async () => {
     if (!selectedType) return;
-    
-    // We construct the authorize URL. 
-    // In a real app, we might need to save the credential first to get an ID, 
-    // or pass ClientID/Secret as query params if the backend allows ephemeral auth.
-    // For now, we'll try to open the backend authorize endpoint.
-    
+
     const width = 600;
     const height = 700;
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
-    
-    const url = `${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/credentials/oauth/${selectedType.id}/authorize/`;
-    
+
+    // The backend does not expose an /authorize/ redirect; it hands back the
+    // provider URL from /oauth/google/init/ (authenticated, so it has to go
+    // through apiClient rather than a bare window.open on the API host).
+    let url: string;
+    try {
+      const res = await credentialsService.initGoogleOAuth(
+        `${window.location.origin}/oauth/callback`
+      );
+      url = res.url;
+    } catch (err: unknown) {
+      toast.error(handleApiError(err).message || 'Could not start the OAuth flow');
+      return;
+    }
+
     window.open(
       url, 
       'OAuth Authorization', 
@@ -145,6 +164,16 @@ export default function CredentialModal({
        setError('Please select a credential type');
        return;
     }
+    // The backend stores whatever it is given without checking the type's
+    // schema, so required fields have to be enforced here or a credential
+    // saves fine and then fails at run time.
+    const missing = (selectedType?.auth_method === 'oauth2' ? [] : selectedType?.fields_schema || [])
+      .filter(f => f.required && !(formData[f.name] || '').trim())
+      .map(f => f.label);
+    if (missing.length > 0) {
+       setError(`Required: ${missing.join(', ')}`);
+       return;
+    }
 
     try {
       setSaving(true);
@@ -153,16 +182,12 @@ export default function CredentialModal({
       let result: Credential;
 
       if (initialData) {
-        // Update
+        // Update: send only the fields the user actually edited. The backend
+        // merges them over the stored values, so untouched secrets keep their
+        // real value instead of being overwritten with the display mask.
         const updateData: Record<string, string> = {};
-        // Only send fields that have values (to avoid overwriting with empty if not intended, 
-        // though typically we want to support clearing. 
-        // For secrets, usually empty = don't update).
         Object.entries(formData).forEach(([key, value]) => {
-           // Basic logic: if it's a password field and empty, don't send? 
-           // Or just send everything. Let's send everything for now 
-           // but maybe check schema if available.
-           if (value !== undefined) {
+           if (value !== undefined && value !== loadedData[key]) {
              updateData[key] = value;
            }
         });
@@ -186,11 +211,9 @@ export default function CredentialModal({
 
       if (onSave) onSave(result);
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Save failed', err);
-      // Try to extract error message
-      const msg = err.response?.data?.error || err.message || 'Failed to save credential';
-      setError(msg);
+      setError(apiErrorMessage(err, 'Failed to save credential'));
     } finally {
       setSaving(false);
     }
@@ -238,7 +261,7 @@ export default function CredentialModal({
           {!initialData && !selectedType && (
              <div className="space-y-4">
                <div>
-                 <label className="block text-sm font-medium mb-3 text-muted-foreground">Select Credential Type</label>
+                 <label className="block text-sm font-medium mb-3 text-muted-foreground">Select credential type</label>
                  
                  <div className="relative mb-4">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -302,8 +325,30 @@ export default function CredentialModal({
                 />
               </div>
               
+              {/* OAuth types are populated by the provider — the token fields
+                  below are written by the callback, not typed in by hand. */}
+              {selectedType?.auth_method === 'oauth2' && (
+                <div className="p-4 border border-border rounded-lg bg-muted/30 space-y-2">
+                  <p className="text-sm">
+                    Connect your account to authorize access. Tokens are stored
+                    and refreshed automatically.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Callback URL: <code className="bg-muted p-1 rounded">{window.location.origin}/oauth/callback</code>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleOAuthConnect}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-secondary text-secondary-foreground text-xs rounded-md hover:bg-secondary/80 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Connect account
+                  </button>
+                </div>
+              )}
+
               {/* Dynamic Fields */}
-              {selectedType?.fields_schema.map((field) => (
+              {selectedType?.auth_method !== 'oauth2' && selectedType?.fields_schema.map((field) => (
                 <div key={field.name}>
                    <label className="block text-sm font-medium mb-1">
                       {field.label}
@@ -345,22 +390,6 @@ export default function CredentialModal({
                                   {visibleFields.has(field.name) ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                </button>
                            )}
-                       </div>
-                   )}
-                   {/* OAuth Helper */}
-                   {selectedType.auth_method === 'oauth2' && field.name === 'oauth_redirect_uri' && (
-                       <div className="mt-2">
-                           <p className="text-xs text-muted-foreground mb-2">
-                              Callback URL: <code className="bg-muted p-1 rounded">{window.location.origin}/oauth/callback</code>
-                           </p>
-                           <button
-                             type="button"
-                             onClick={handleOAuthConnect}
-                             className="flex items-center gap-2 px-3 py-1.5 bg-secondary text-secondary-foreground text-xs rounded-md hover:bg-secondary/80 transition-colors"
-                           >
-                              <ExternalLink className="w-3 h-3" />
-                              Connect account
-                           </button>
                        </div>
                    )}
                 </div>

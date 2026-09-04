@@ -7,8 +7,12 @@
 import axios from 'axios';
 import type { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-// API base URL from environment
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+/**
+ * Same-origin API base. Both environments already proxy this path — nginx.conf
+ * in the image, and the `/api` rule in vite.config.ts during `npm run dev` — so
+ * a relative URL is correct everywhere and needs no build-time configuration.
+ */
+export const API_URL = '/api';
 
 // Token storage keys
 const ACCESS_TOKEN_KEY = 'access_token';

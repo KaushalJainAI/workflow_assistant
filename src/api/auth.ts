@@ -5,6 +5,7 @@
  */
 
 import apiClient, { tokenManager } from './client';
+import { googleRedirectUri } from '../lib/googleAuth';
 
 export interface LoginCredentials {
   email: string;
@@ -31,6 +32,8 @@ export interface User {
   credits: number;
   llm_provider?: string;
   llm_model?: string;
+  /** Default reasoning effort; `''` means the model's own default. */
+  llm_effort?: string;
   default_temperature?: number;
   default_max_tokens?: number;
   theme_preference?: 'light' | 'dark' | 'system';
@@ -69,6 +72,8 @@ interface BackendProfileResponse {
   credits_remaining: number;
   llm_provider?: string;
   llm_model?: string;
+  /** Default reasoning effort; `''` means the model's own default. */
+  llm_effort?: string;
   default_temperature?: number;
   default_max_tokens?: number;
   theme_preference?: User['theme_preference'];
@@ -110,6 +115,7 @@ function mapProfileResponse(data: BackendProfileResponse): User {
     credits: data.credits_remaining,
     llm_provider: data.llm_provider,
     llm_model: data.llm_model,
+    llm_effort: data.llm_effort,
     default_temperature: data.default_temperature,
     default_max_tokens: data.default_max_tokens,
     theme_preference: data.theme_preference,
@@ -138,8 +144,7 @@ export const authService = {
    * Login with Google OAuth2 code exchange
    */
   async googleLogin(code: string): Promise<AuthResponse> {
-    const redirectUri =
-      import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback';
+    const redirectUri = googleRedirectUri();
     try {
       const response = await apiClient.post<AuthResponse>('/auth/google/', {
         code,
@@ -351,11 +356,35 @@ export const authService = {
   },
 
   /**
-   * Regenerate API Key
+   * Regenerate API Key.
+   *
+   * Rotates the user's existing key via the dedicated `rotate/` route. The old
+   * code POSTed an empty body to the create endpoint, which always 400'd
+   * because `name` is required. If no key exists yet, one is created with a
+   * default name.
    */
   async regenerateApiKey(): Promise<{ key: string; created_at: string }> {
-    const response = await apiClient.post('/auth/api-keys/');
-    return response.data;
+    const listResponse = await apiClient.get('/auth/api-keys/');
+    const raw = listResponse.data as
+      | { id: number; created_at?: string }[]
+      | { results?: { id: number; created_at?: string }[] };
+    const keys = Array.isArray(raw) ? raw : raw.results ?? [];
+
+    if (keys.length > 0) {
+      const { id } = keys[0];
+      const response = await apiClient.post(`/auth/api-keys/${id}/rotate/`);
+      const data = response.data as { new_key: string };
+      return { key: data.new_key, created_at: new Date().toISOString() };
+    }
+
+    const created = await apiClient.post('/auth/api-keys/', {
+      name: 'Default API Key',
+    });
+    const data = created.data as { api_key: string; data?: { created_at?: string } };
+    return {
+      key: data.api_key,
+      created_at: data.data?.created_at ?? new Date().toISOString(),
+    };
   },
 
   /**

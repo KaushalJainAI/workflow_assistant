@@ -7,28 +7,26 @@
 export { default as apiClient, tokenManager, handleApiError, type ApiError } from './client';
 export { default as authService, type User, type AuthResponse } from './auth';
 export { 
-  default as workflowsService, 
-  type Workflow, 
-  type WorkflowListItem, 
-  type WorkflowNode, 
-  type WorkflowEdge,
-  type WorkflowVersion,
-} from './workflows';
-export { 
   default as orchestratorService,
-  type ExecutionStatus,
   type HITLRequest,
   type HITLResponse,
   type ChatMessage,
-  type ThoughtEntry,
-  type GenerateWorkflowRequest,
-  type GenerateWorkflowResponse,
 } from './orchestrator';
 export {
   default as documentsService,
-  kbService,
+  foldersService,
   type Document,
+  type Folder,
+  type Breadcrumb,
+  type FolderListPage,
+  type FolderDetail,
+  type MoveResult,
+  type TrashPage,
+  type TrashResult,
+  type RestoreOutcome,
+  type RestoreResult,
   type KnowledgeBase,
+  type KnowledgeBaseBackend,
   type KnowledgeBaseDetail,
   type SearchResult,
   type RAGQueryResponse,
@@ -41,11 +39,20 @@ export {
 } from './credentials';
 export { 
   default as logsService,
-  type AuditEntry,
-  type OrchestratorThought,
   type ExecutionLog,
   type ExecutionDetail,
-  type NodeLog,
+  type AgentTurn,
+  type AgentStep,
+  type DelegatedRun,
+  type DelegatedBy,
+  type AgentRevision,
+  type AgentRevisionDetail,
+  type RunCaller,
+  type ExecutionStatistics,
+  type DailyTrendPoint,
+  type CostBreakdown,
+  type CostSource,
+  type CostFields,
 } from './logs';
 export { default as nodeService, type NodeSchema, type NodeField, type NodeHandle } from './nodeService';
 export { chatService, type ChatSession, type ChatMessage as StandaloneChatMessage } from './chat';
@@ -55,3 +62,22 @@ export {
   type MCPServerType, 
   type CreateMCPServerData 
 } from './mcp';
+export {
+  default as triggersService,
+  type Trigger,
+  type TriggerInput,
+  type TriggerMode,
+  type TriggerOrigin,
+  type OverlapPolicy,
+  type FireOutcome,
+  type RunNowResult,
+  type SchedulePreview,
+  type PreviewInput,
+} from './triggers';
+export {
+  default as toolsService,
+  type ToolEntry,
+  type ToolCategory,
+  type ToolsCatalogue,
+  type ToolUsage,
+} from './tools';

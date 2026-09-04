@@ -12,7 +12,7 @@ import {
   Check,
   ArrowLeft
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authState';
 import authService from '../api/auth';
 
 export default function Profile() {
@@ -204,14 +204,14 @@ export default function Profile() {
             <div className="p-4 bg-muted/50 rounded-lg">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <CreditCard className="w-4 h-4" />
-                <span className="text-sm">Credits Remaining</span>
+                <span className="text-sm">Credits remaining</span>
               </div>
               <p className="text-2xl font-bold">{user?.credits ?? 0}</p>
             </div>
             <div className="p-4 bg-muted/50 rounded-lg">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <User className="w-4 h-4" />
-                <span className="text-sm">Member Since</span>
+                <span className="text-sm">Member since</span>
               </div>
               <p className="text-2xl font-bold">
                 {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A'}
@@ -278,12 +278,12 @@ export default function Profile() {
         </div>
 
         <div className="bg-card border border-border/60 rounded-xl p-6">
-          <h3 className="text-lg font-semibold mb-4">Change Password</h3>
+          <h3 className="text-lg font-semibold mb-4">Change password</h3>
 
           {passwordStep === 'start' && (
             <form onSubmit={requestPasswordOTP} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1.5" htmlFor="old-password">Current Password</label>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="old-password">Current password</label>
                 <input
                   id="old-password"
                   type="password"
@@ -335,11 +335,11 @@ export default function Profile() {
 
         {/* Danger Zone */}
         <div className="bg-card border border-border/60 rounded-xl p-6">
-          <h3 className="text-lg font-semibold mb-4 text-destructive">Account Actions</h3>
+          <h3 className="text-lg font-semibold mb-4 text-destructive">Account actions</h3>
           
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
             <div>
-              <p className="font-medium">Sign Out</p>
+              <p className="font-medium">Sign out</p>
               <p className="text-sm text-muted-foreground">Sign out of your account on this device</p>
             </div>
             <button
@@ -357,7 +357,7 @@ export default function Profile() {
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
-            <h3 className="text-lg font-semibold mb-2">Sign Out?</h3>
+            <h3 className="text-lg font-semibold mb-2">Sign out?</h3>
             <p className="text-muted-foreground mb-4">
               Are you sure you want to sign out of your account?
             </p>
