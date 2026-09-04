@@ -1,10 +1,14 @@
 /**
- * Agent templates — the gallery you install a starting point from.
+ * Explore — everything installable, and publishing into it.
  *
- * The catalogue is code on the backend (`agents/gallery.py`), not rows, so
- * these are reads against a fixed list. The only write is `install`, which
- * creates an ordinary agent: what comes back is an `Agent`, and from that
- * moment the template has no further hold over it.
+ * Two sources, one shape. A **curated** entry is code on the backend
+ * (`agents/gallery.py`); a **community** entry is an agent another user
+ * published. They differ in provenance and in nothing the installer cares
+ * about, so this file has one type for both and `source` says which it is.
+ *
+ * The only writes are `install`, which creates an ordinary agent that the
+ * entry then has no further hold over, and `publish`, which turns one of your
+ * own agents into a listing.
  *
  * `config` is a partial `AgentConfig` — the same shape the builder speaks —
  * and the install screen renders its permissions straight from it. That is
@@ -47,24 +51,74 @@ export interface TemplateRequirement {
   candidates: RequirementCandidate[];
 }
 
+/** Where an entry came from. Presentation differs; installing does not. */
+export type TemplateSource = 'curated' | 'community';
+
+/** Who may find a published agent. */
+export type ShareVisibility = 'platform' | 'link';
+
 export interface AgentTemplate {
   slug: string;
+  source: TemplateSource;
   name: string;
   tagline: string;
   description: string;
   icon: string;
   tags: string[];
+  /** Community entries only: the publisher's display name, never their email. */
+  author: string | null;
+  /** Community entries only. */
+  install_count: number | null;
+  version: number | null;
+  is_mine?: boolean;
+  visibility?: ShareVisibility;
+  is_listed?: boolean;
+  updated_at?: string;
   requirements: TemplateRequirement[];
   /** The configuration this installs, and what the permissions screen shows. */
   config: Partial<AgentConfig>;
+}
+
+/**
+ * What publishing an agent *would* send, before anything is written.
+ *
+ * The point of previewing is that the author sees the whole payload: the
+ * allow-listed config, and the requirements their row ids became — labelled
+ * with those rows' own names, which is a fact about their account and is
+ * therefore theirs to rewrite before confirming.
+ */
+export interface SharePreview {
+  published: boolean;
+  slug: string | null;
+  visibility: ShareVisibility;
+  is_listed: boolean;
+  version: number;
+  install_count: number;
+  tagline: string;
+  description: string;
+  requirements: Omit<TemplateRequirement, 'candidates'>[];
+  config: Partial<AgentConfig>;
+}
+
+export interface PublishInput {
+  tagline: string;
+  description?: string;
+  visibility?: ShareVisibility;
+  /** Reworded labels only — the server ignores any attempt to change a kind. */
+  requirements?: { key: string; label: string; why: string; optional?: boolean }[];
 }
 
 /** Requirement key -> the id the installer chose for it. */
 export type RequirementChoices = Record<string, number>;
 
 const templatesService = {
-  list: async (): Promise<AgentTemplate[]> => {
-    const { data } = await apiClient.get<AgentTemplate[]>('/orchestrator/templates/');
+  list: async (params: { source?: TemplateSource; mine?: boolean } = {}): Promise<AgentTemplate[]> => {
+    const { data } = await apiClient.get<AgentTemplate[]>('/orchestrator/templates/', {
+      params: {
+        ...(params.source ? { source: params.source } : {}),
+        ...(params.mine ? { mine: 1 } : {}),
+      },
+    });
     return asArray<AgentTemplate>(data);
   },
 
@@ -91,6 +145,31 @@ const templatesService = {
       },
     );
     return data;
+  },
+
+  /** What publishing this agent would send. Writes nothing. */
+  sharePreview: async (agentId: number | string): Promise<SharePreview> => {
+    const { data } = await apiClient.get<SharePreview>(
+      `/orchestrator/agents/${agentId}/share/`,
+    );
+    return data;
+  },
+
+  /** Publish or republish. Republishing keeps the slug and bumps the version. */
+  publish: async (agentId: number | string, body: PublishInput): Promise<AgentTemplate> => {
+    const { data } = await apiClient.post<AgentTemplate>(
+      `/orchestrator/agents/${agentId}/share/`,
+      body,
+    );
+    return data;
+  },
+
+  /**
+   * Withdraw from the listing. Not a delete: copies people already installed
+   * keep working, and relisting reuses the same link.
+   */
+  unpublish: async (agentId: number | string): Promise<void> => {
+    await apiClient.delete(`/orchestrator/agents/${agentId}/share/`);
   },
 };
 

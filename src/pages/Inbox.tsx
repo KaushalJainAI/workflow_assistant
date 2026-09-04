@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { orchestratorService, type HITLRequest } from '../api';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
+import MarkdownMessage from '../components/chat/MarkdownMessage';
 import ExtractionPanel from '../components/extraction/ExtractionPanel';
 
 const typeConfig = {
@@ -200,9 +201,10 @@ export default function Inbox() {
                 )}
 
                 <div className="bg-card border border-border rounded p-4 mb-5">
-                  <p className="text-[15px] leading-relaxed text-foreground whitespace-pre-wrap">
-                    {selected.message}
-                  </p>
+                  {/* HITL question — model-written, so markdown (bold, titles, lists). */}
+                  <div className="text-[15px] leading-relaxed text-foreground">
+                    <MarkdownMessage content={selected.message} variant="compact" />
+                  </div>
                 </div>
 
                 {/* The backend supplies the wording of each choice, so the

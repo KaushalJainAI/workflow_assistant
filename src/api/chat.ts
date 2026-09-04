@@ -1,6 +1,8 @@
 import apiClient from './client';
 import { streamSse, type SseEvent } from './sse';
 
+import type { CostSource } from './logs';
+
 export interface ChatSession {
   id: string;
   title: string;
@@ -25,6 +27,22 @@ export interface ChatSession {
   created_at: string;
   updated_at: string;
   messages: ChatMessage[];
+  /** Every token this conversation has consumed, across all its turns. */
+  total_tokens_used: number;
+  /**
+   * What the conversation has cost so far, in USD, as a decimal string.
+   *
+   * Summed from the assistant messages rather than derived from
+   * `total_tokens_used`: the model can be changed mid-conversation, so there
+   * is no single rate that could be applied to a running token total.
+   */
+  total_cost_usd: string;
+  /**
+   * `billed` | `estimated` | `unpriced` (or `''` on a conversation that has
+   * not answered yet). One unpriced turn makes the whole total `unpriced` —
+   * see `lib/cost.ts`, and never render that as a number.
+   */
+  cost_source: CostSource | '';
 }
 
 /** A model-authored HTML snippet, already clamped server-side. */
@@ -38,6 +56,34 @@ export interface HtmlArtifact {
    */
   width?: number;
   height?: number;
+}
+
+/** One point on a chart. `y` is null where the value is unknown, which the
+ *  renderer draws as a gap — a missing measurement and a measured zero are
+ *  different facts. */
+export interface ChartPoint {
+  x: string;
+  y: number | null;
+}
+
+export interface ChartSeries {
+  name: string;
+  points: ChartPoint[];
+}
+
+/**
+ * A chart the model described as data. The backend validates the spec and the
+ * frontend owns every visual decision, which is why nothing here is a colour,
+ * a size or a piece of markup — see `components/chat/ChartArtifact.tsx`.
+ */
+export interface ChartSpec {
+  kind: 'bar' | 'column' | 'line' | 'area' | 'scatter' | 'pie';
+  title: string;
+  series: ChartSeries[];
+  x_label?: string;
+  y_label?: string;
+  stacked?: boolean;
+  note?: string;
 }
 
 /**
@@ -105,6 +151,7 @@ export interface ChatMessageMetadata {
   has_extracted_text?: boolean;
   file_type?: string;
   html_artifacts?: HtmlArtifact[];
+  charts?: ChartSpec[];
   follow_ups?: string[];
   [key: string]: unknown;
 }
@@ -115,6 +162,20 @@ export interface ChatMessage {
   content: string;
   metadata: ChatMessageMetadata;
   created_at: string;
+  /**
+   * What this one answer cost. Optional because they are absent in two honest
+   * cases: an optimistic message this client just built and has not yet sent,
+   * and a message stored before cost was recorded. From the server an
+   * assistant row always carries them, and a user row carries zeroes with an
+   * empty `cost_source` — which renders as nothing at all either way.
+   */
+  model_id?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_read_tokens?: number;
+  cached_write_tokens?: number;
+  cost_usd?: string;
+  cost_source?: CostSource | '';
 }
 
 /** What `POST /chat/sessions/{id}/upload/` answers. */
@@ -180,7 +241,7 @@ export const chatService = {
    * Stream a message via SSE. Calls onEvent for each parsed event.
    * Event types: the `Event` enum in `Backend/chat/events.py` — status,
    * thinking_chunk, content_chunk, content_reset, agent_trace, sources_update,
-   * images_update, videos_update, html_artifact, attachments_blocked,
+   * images_update, videos_update, html_artifact, chart, attachments_blocked,
    * ask_permission, done, error.
    */
   async sendMessageStream(

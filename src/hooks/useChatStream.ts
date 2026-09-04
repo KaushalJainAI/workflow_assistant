@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useMemo, useReducer } from 'react';
-import type { HtmlArtifact as HtmlArtifactData } from '../api/chat';
+import type { ChartSpec, HtmlArtifact as HtmlArtifactData } from '../api/chat';
 import type { ChatMediaItem, CodeExecutionEntry } from '../api/chat';
 
 /**
@@ -97,6 +97,7 @@ export interface ChatStreamState {
    */
   codeExecutions: CodeExecutionEntry[];
   artifacts: HtmlArtifactData[];
+  charts: ChartSpec[];
   blockedAttachments: { message: string; items: BlockedAttachment[] } | null;
   pendingToolCall: PendingToolCall | null;
 }
@@ -111,6 +112,7 @@ const EMPTY: ChatStreamState = {
   content: '',
   codeExecutions: [],
   artifacts: [],
+  charts: [],
   blockedAttachments: null,
   pendingToolCall: null,
 };
@@ -175,6 +177,14 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
             height: num(event.height),
           },
         ],
+      };
+    case 'chart':
+      // The whole spec is appended as sent. Charts are not merged or deduped:
+      // a turn that draws two charts meant two charts, and the backend has
+      // already validated each one.
+      return {
+        ...state,
+        charts: [...state.charts, event as unknown as ChartSpec],
       };
     case 'attachments_blocked':
       // Persistent, not a transient toast: the user needs to still see this

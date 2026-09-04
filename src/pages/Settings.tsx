@@ -26,6 +26,11 @@ import { useAuth } from '../contexts/authState';
 import { authService } from '../api/auth';
 import Select from '../components/ui/Select';
 import NotificationsTab from '../components/settings/NotificationsTab';
+import { useAIModels } from '../hooks/useAIModels';
+import {
+  DEFAULT_EFFORT, EFFORT_LABELS, effortLevelsFor, nearestEffort,
+} from '../hooks/useEffortSelection';
+import { DEFAULT_PROVIDER, DEFAULT_MODEL } from '../hooks/useChatModelSelection';
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
 
@@ -46,6 +51,7 @@ interface SettingsForm {
   email: string;
   llm_provider: string;
   llm_model: string;
+  llm_effort: string;
   default_temperature: number;
   default_max_tokens: number;
 }
@@ -58,6 +64,8 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const { providers: catalogue } = useAIModels();
   
   // Form State
   const [formData, setFormData] = useState<SettingsForm>({
@@ -69,11 +77,29 @@ export default function Settings() {
     first_name: '',
     last_name: '',
     email: '',
-    llm_provider: 'nvidia',
-    llm_model: 'nvidia/nemotron-3-super-120b-a12b',
+    llm_provider: DEFAULT_PROVIDER,
+    llm_model: DEFAULT_MODEL,
+    llm_effort: DEFAULT_EFFORT,
     default_temperature: 0.7,
     default_max_tokens: 2048,
   });
+
+  // The model list is read from the catalogue rather than written out here.
+  // It used to be eight hardcoded options, and two of them — `gemini-3.6-flash`
+  // and `gemini-3.1-pro-preview` — had since been retired in
+  // `populate_models.py`, so this page offered models the picker in chat no
+  // longer showed and the runtime would refuse. A second copy of a list the
+  // server already publishes is a copy that drifts.
+  const activeProvider = catalogue.find((p) => p.slug === formData.llm_provider);
+  const effortLevels = effortLevelsFor(
+    catalogue, formData.llm_provider, formData.llm_model,
+  );
+  // What the saved level would actually run at on the chosen model, by the same
+  // rule the server applies. Shown rather than the raw stored value so the page
+  // never displays a rung this model does not serve.
+  const effectiveEffort = effortLevels.length
+    ? nearestEffort(formData.llm_effort, effortLevels)
+    : '';
 
   useEffect(() => {
     if (user) {
@@ -86,8 +112,11 @@ export default function Settings() {
         first_name: user.name?.split(' ')[0] || '',
         last_name: user.name?.split(' ').slice(1).join(' ') || '',
         email: user.email || '',
-        llm_provider: user.llm_provider || 'nvidia',
-        llm_model: user.llm_model || 'nvidia/nemotron-3-super-120b-a12b',
+        llm_provider: user.llm_provider || DEFAULT_PROVIDER,
+        llm_model: user.llm_model || DEFAULT_MODEL,
+        // `??` not `||`: '' is a real choice here — the model's own default —
+        // and `||` would silently promote it back to `medium` on every load.
+        llm_effort: user.llm_effort ?? DEFAULT_EFFORT,
         default_temperature: user.default_temperature || 0.7,
         default_max_tokens: user.default_max_tokens || 2048,
       });
@@ -241,29 +270,77 @@ export default function Settings() {
                   />
                 </div>
                 
-                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-primary/10">
-                  <div>
-                    <p className="font-medium flex items-center gap-2">
-                      Default AI Model
-                      <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
-                    </p>
-                    <p className="text-sm text-muted-foreground">The primary model for AI features</p>
+                {/* Provider, model and effort — the same three choices the
+                    chat composer and the agent builder offer, driven by the
+                    same catalogue so none of them can drift from the others. */}
+                <div className="p-4 bg-muted/50 rounded-lg border border-primary/10 space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium flex items-center gap-2">
+                        Default AI provider
+                        <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
+                      </p>
+                      <p className="text-sm text-muted-foreground">Who serves your AI features</p>
+                    </div>
+                    <Select
+                      value={formData.llm_provider}
+                      onChange={(val) => {
+                        // Changing provider invalidates the model, so both move
+                        // together. Leaving the old id in place would save a
+                        // pair the runtime cannot route.
+                        const first = catalogue.find((p) => p.slug === val)?.models?.[0]?.value ?? '';
+                        setFormData((prev) => ({ ...prev, llm_provider: val, llm_model: first }));
+                      }}
+                      options={catalogue.map((p) => ({ value: p.slug, label: p.name }))}
+                      placeholder="Choose a provider"
+                      className="w-[250px]"
+                    />
                   </div>
-                  <Select
-                    value={formData.llm_model}
-                    onChange={(val) => handleSelectChange('llm_model', val)}
-                    options={[
-                      { value: 'nvidia/nemotron-3-super-120b-a12b', label: 'Nemotron 3 Super 120B (Default)' },
-                      { value: 'openrouter/free', label: 'Free Models Router' },
-                      { value: 'google/gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
-                      { value: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
-                      { value: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5' },
-                      { value: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-                      { value: 'anthropic/claude-opus-5', label: 'Claude Opus 5' },
-                      { value: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
-                    ]}
-                    className="w-[250px]"
-                  />
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium">Default AI model</p>
+                      <p className="text-sm text-muted-foreground">The primary model for AI features</p>
+                    </div>
+                    <Select
+                      value={formData.llm_model}
+                      onChange={(val) => handleSelectChange('llm_model', val)}
+                      showSearch={(activeProvider?.models?.length ?? 0) > 8}
+                      options={(activeProvider?.models ?? []).map((mo) => ({
+                        value: mo.value,
+                        label: mo.is_free ? `${mo.name} · free` : mo.name,
+                        is_free: mo.is_free,
+                      }))}
+                      placeholder="Choose a model"
+                      className="w-[250px]"
+                    />
+                  </div>
+
+                  {/* Hidden entirely for a model with no effort control, rather
+                      than shown disabled: nothing would be sent for it, and a
+                      greyed knob reads as "off" instead of "absent". */}
+                  {effortLevels.length > 0 && (
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium">Reasoning effort</p>
+                        <p className="text-sm text-muted-foreground">
+                          How hard it thinks before answering
+                        </p>
+                      </div>
+                      <Select
+                        value={effectiveEffort}
+                        onChange={(val) => handleSelectChange('llm_effort', val)}
+                        options={[
+                          { value: '', label: EFFORT_LABELS[''] },
+                          ...effortLevels.map((level) => ({
+                            value: level,
+                            label: EFFORT_LABELS[level] ?? level,
+                          })),
+                        ]}
+                        className="w-[250px]"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">

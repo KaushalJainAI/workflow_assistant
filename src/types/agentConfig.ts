@@ -200,8 +200,12 @@ export const DEFAULT_AGENT: AgentConfig = {
 
   provider: 'openrouter',
   model: '',
+  // `medium` is the shipped standard, matching the chat composer and the
+  // profile default. A model with no effort control ignores it, and an agent
+  // saved before the field existed still reads back `''` — this is the value a
+  // *new* agent starts at, not a retrofit onto existing ones.
   temperature: 0.2,
-  effort: '',
+  effort: 'medium',
 
   // Default to the cautious end of every dial. An agent that turns out to need
   // more can be widened deliberately; one that starts wide is never narrowed.

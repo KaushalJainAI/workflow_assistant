@@ -57,6 +57,7 @@ import {
 import { orchestratorService } from '../api';
 import { usePersistedState } from '../hooks/usePersistedState';
 import PageHeader from '../components/layout/PageHeader';
+import MarkdownMessage from '../components/chat/MarkdownMessage';
 import { cn } from '../lib/utils';
 import { describeCost, formatCost } from '../lib/cost';
 
@@ -516,7 +517,9 @@ export default function Overview() {
                           </p>
                         )}
                         <div className="bg-card border border-border rounded p-4 mb-4">
-                          <p className="text-[14px] leading-relaxed text-foreground whitespace-pre-wrap">{selected.message}</p>
+                          <div className="text-[14px] leading-relaxed text-foreground">
+                            <MarkdownMessage content={selected.message} variant="compact" />
+                          </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {(selected.options?.length ? selected.options : ['Approve', 'Reject']).map((opt, i) => (
@@ -558,7 +561,9 @@ export default function Overview() {
                 {selected && (
                   <div className="lg:hidden border-t border-border p-4">
                     <h3 className="text-sm font-semibold mb-2">{selected.title}</h3>
-                    <p className="text-[14px] leading-relaxed bg-card border border-border rounded p-3 mb-3 whitespace-pre-wrap">{selected.message}</p>
+                    <div className="text-[14px] leading-relaxed bg-card border border-border rounded p-3 mb-3">
+                      <MarkdownMessage content={selected.message} variant="compact" />
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {(selected.options?.length ? selected.options : ['Approve', 'Reject']).map((opt, i) => (
                         <button

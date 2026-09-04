@@ -32,6 +32,8 @@ export interface User {
   credits: number;
   llm_provider?: string;
   llm_model?: string;
+  /** Default reasoning effort; `''` means the model's own default. */
+  llm_effort?: string;
   default_temperature?: number;
   default_max_tokens?: number;
   theme_preference?: 'light' | 'dark' | 'system';
@@ -70,6 +72,8 @@ interface BackendProfileResponse {
   credits_remaining: number;
   llm_provider?: string;
   llm_model?: string;
+  /** Default reasoning effort; `''` means the model's own default. */
+  llm_effort?: string;
   default_temperature?: number;
   default_max_tokens?: number;
   theme_preference?: User['theme_preference'];
@@ -111,6 +115,7 @@ function mapProfileResponse(data: BackendProfileResponse): User {
     credits: data.credits_remaining,
     llm_provider: data.llm_provider,
     llm_model: data.llm_model,
+    llm_effort: data.llm_effort,
     default_temperature: data.default_temperature,
     default_max_tokens: data.default_max_tokens,
     theme_preference: data.theme_preference,

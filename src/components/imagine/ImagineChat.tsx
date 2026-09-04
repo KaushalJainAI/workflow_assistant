@@ -32,6 +32,7 @@ import { ModelPicker } from './ModelPicker';
 import { SendButton } from '../ui/SendButton';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
+import MarkdownMessage from '../chat/MarkdownMessage';
 
 /** `auto` leaves the modality to the router. */
 type KindChoice = 'auto' | MediaKind;
@@ -355,7 +356,10 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
                         <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-md px-3.5 py-2 text-sm">{item.content}</div>
                       ) : (
                         <div>
-                          <div className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{item.content}</div>
+                          {/* Agent reply — markdown (bold, titles, lists) via the shared renderer. */}
+                          <div className="text-sm leading-relaxed text-foreground/90">
+                            <MarkdownMessage content={item.content} variant="compact" />
+                          </div>
                           {item.requiresHitl && item.intent && (
                             <IntentPreviewCard
                               intent={item.intent}

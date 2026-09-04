@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import PageHeader from '../components/layout/PageHeader';
+import MarkdownMessage from '../components/chat/MarkdownMessage';
 import evalsService, {
   type EvalRun, type EvalSuite, type QueueItem, type SupervisionPolicy, type Verdict,
 } from '../api/evals';
@@ -291,7 +292,10 @@ function ReviewQueue({
             <Field label="Goal"><span className="text-muted-foreground">{item.goal}</span></Field>
           )}
           <Field label="Answer">
-            <pre className="whitespace-pre-wrap break-words font-sans">{item.answer || '(empty)'}</pre>
+            {/* Agent answer — model-written markdown, not preformatted text. */}
+            <div className="text-sm leading-relaxed">
+              <MarkdownMessage content={item.answer || '(empty)'} variant="compact" />
+            </div>
             {item.answer_truncated && (
               <span className="text-[11px] text-muted-foreground">(truncated)</span>
             )}

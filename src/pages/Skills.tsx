@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import apiClient from '../api/client';
+import MarkdownMessage from '../components/chat/MarkdownMessage';
 
 interface Skill {
     id: string;
@@ -146,21 +147,6 @@ export default function Skills() {
             console.error('Failed to incorporate skill:', error);
             toast.error('Failed to incorporate skill');
         }
-    };
-
-    // Simple Markdown to HTML-ish renderer (basic support for headers, lists, code)
-    const renderMarkdown = (text: string) => {
-        // This is a very basic renderer for UI purposes
-        const lines = text.split('\n');
-        return lines.map((line, i) => {
-            if (line.startsWith('# ')) return <h1 key={i} className="text-3xl font-bold mb-4 mt-6">{line.substring(2)}</h1>;
-            if (line.startsWith('## ')) return <h2 key={i} className="text-2xl font-bold mb-3 mt-5">{line.substring(3)}</h2>;
-            if (line.startsWith('### ')) return <h3 key={i} className="text-xl font-bold mb-2 mt-4">{line.substring(4)}</h3>;
-            if (line.startsWith('- ')) return <li key={i} className="ml-6 list-disc mb-1">{line.substring(2)}</li>;
-            if (line.startsWith('```')) return null; // Simple skip for code block markers
-            if (line.trim() === '') return <br key={i} />;
-            return <p key={i} className="mb-2 leading-relaxed text-foreground/80">{line}</p>;
-        });
     };
 
     return (
@@ -435,9 +421,10 @@ export default function Skills() {
                                 </div>
                             )}
                             {(editorMode === 'preview' || editorMode === 'split') && (
-                                <div className="flex-1 overflow-auto bg-card p-4 md:p-10 prose prose-invert max-w-none">
+                                <div className="flex-1 overflow-auto bg-card p-4 md:p-10 max-w-none">
                                     <div className="max-w-3xl mx-auto">
-                                        {renderMarkdown(editContent)}
+                                        {/* Full markdown via the shared renderer. */}
+                                        <MarkdownMessage content={editContent} variant="full" />
                                     </div>
                                 </div>
                             )}

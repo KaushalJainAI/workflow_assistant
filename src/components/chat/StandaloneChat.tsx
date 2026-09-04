@@ -25,6 +25,7 @@ import {
   Mic,
   MessageSquare,
   Shield,
+  Coins,
   ChevronDown,
   BrainCircuit,
   Settings2,
@@ -47,16 +48,18 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatService, type StandaloneChatMessage as ChatMessage, type ChatSession } from '../../api';
+import { describeCost, formatCost } from '../../lib/cost';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 import { TextSelectionMenu } from './TextSelectionMenu';
 import { CollapsiblePanel } from './CollapsiblePanel';
 import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
+import ChartArtifact from './ChartArtifact';
 import MarkdownMessage from './MarkdownMessage';
 import TranscriptSkeleton from './TranscriptSkeleton';
 import { forgetTranscript, readTranscript, writeTranscript } from '../../lib/transcriptCache';
-import type { HtmlArtifact as HtmlArtifactData } from '../../api/chat';
+import type { ChartSpec, HtmlArtifact as HtmlArtifactData } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useChatStream, type StreamEvent } from '../../hooks/useChatStream';
@@ -176,7 +179,7 @@ export default function StandaloneChat() {
   // reads that selection rather than owning it. See `useEffortSelection` for
   // why a stale level is dropped rather than sent.
   const {
-    effort: llmEffort,
+    effective: llmEffort,
     effortToSend,
     available: effortLevels,
     supported: effortSupported,
@@ -829,6 +832,17 @@ export default function StandaloneChat() {
       content: textToSend,
       metadata: { intent: intentToSend },
       created_at: new Date().toISOString(),
+      // A user message costs nothing, which `ChatMessage` spells as zeroes and
+      // a blank `cost_source` — the cost strip renders nothing at all for it.
+      // Written out rather than left off: the optimistic row is the same type
+      // the server's row is, and a partial one would only differ until reload.
+      model_id: '',
+      input_tokens: 0,
+      output_tokens: 0,
+      cached_read_tokens: 0,
+      cached_write_tokens: 0,
+      cost_usd: '0',
+      cost_source: '',
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -1074,6 +1088,18 @@ export default function StandaloneChat() {
                       working
                     </span>
                   )}
+                  {/* Only where there is a real figure. An unpriced or
+                      unanswered conversation shows nothing rather than a dash,
+                      because a column of dashes in a sidebar is clutter that
+                      tells the reader less than blank space does. */}
+                  {conv.cost_source && conv.cost_source !== 'unpriced' && (
+                    <span
+                      className="shrink-0 text-[10px] text-muted-foreground tabular-nums"
+                      title={describeCost(conv.total_cost_usd, conv.cost_source)}
+                    >
+                      {formatCost(conv.total_cost_usd, conv.cost_source)}
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={(e) => handleDeleteConversation(e, conv.id)}
@@ -1136,6 +1162,24 @@ export default function StandaloneChat() {
                  <BrainCircuit className="w-3.5 h-3.5" />
                  Memory off
                </button>
+             )}
+             {/* What this conversation has cost so far. Shown in the header
+                 rather than in the settings panel because the point of the
+                 number is to be noticed while the conversation is still
+                 growing — inside a panel nobody opens, it is an audit trail
+                 rather than a signal. Hidden entirely until there is a figure
+                 to show: a chip reading "—" on every new chat would be noise. */}
+             {currentSession && currentSession.cost_source
+               && currentSession.cost_source !== 'unpriced' && (
+               <div
+                 className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums"
+                 title={describeCost(
+                   currentSession.total_cost_usd, currentSession.cost_source,
+                 ) + ` · ${(currentSession.total_tokens_used ?? 0).toLocaleString()} tokens this conversation`}
+               >
+                 <Coins className="w-3.5 h-3.5" />
+                 {formatCost(currentSession.total_cost_usd, currentSession.cost_source)}
+               </div>
              )}
              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                 <Shield className="w-3.5 h-3.5" />
@@ -1548,9 +1592,10 @@ export default function StandaloneChat() {
                         <CollapsiblePanel open={isPanelOpen('summary', message.id)}>
                         <div className="mt-2 p-5 bg-card/40 backdrop-blur-md border border-primary/20 rounded-2xl animate-in slide-in-from-top-2 duration-300 shadow-sm relative overflow-hidden group">
                           <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40" />
-                          <p className="text-[14px] font-medium text-foreground/90 leading-relaxed italic tracking-tight">
-                            {message.metadata.summary}
-                          </p>
+                          {/* Model-written summary — markdown via the shared renderer. */}
+                          <div className="text-[14px] font-medium text-foreground/90 leading-relaxed italic tracking-tight">
+                            <MarkdownMessage content={message.metadata.summary} variant="compact" />
+                          </div>
                         </div>
                         </CollapsiblePanel>
                       )}
@@ -1784,6 +1829,14 @@ export default function StandaloneChat() {
                           <HtmlArtifact key={`${message.id}-art-${i}`} artifact={art} />
                         ))}
 
+                      {/* Charts, redrawn from the stored spec rather than from
+                          a stored picture — so a reopened conversation gets
+                          today's palette and today's accessibility fixes. */}
+                      {Array.isArray(message.metadata?.charts) &&
+                        (message.metadata?.charts ?? []).map((chart: ChartSpec, i: number) => (
+                          <ChartArtifact key={`${message.id}-chart-${i}`} chart={chart} />
+                        ))}
+
                       
                       {/* Both roles now start at the same left edge, so the
                           actions do too. The old `justify-end` belonged to the
@@ -1975,6 +2028,10 @@ export default function StandaloneChat() {
                         {/* Artifacts as they arrive, before the turn is persisted. */}
                         {live.artifacts.map((art, i) => (
                           <HtmlArtifact key={`live-art-${i}`} artifact={art} />
+                        ))}
+
+                        {live.charts.map((chart, i) => (
+                          <ChartArtifact key={`live-chart-${i}`} chart={chart} />
                         ))}
 
                         {/* Live Activity Timeline */}

@@ -1,5 +1,9 @@
 import { describe as group, expect, it } from 'vitest';
-import { EFFORT_HINTS, EFFORT_LABELS, EFFORT_LADDER } from '../useEffortSelection';
+import {
+  DEFAULT_EFFORT, EFFORT_HINTS, EFFORT_LABELS, EFFORT_LADDER,
+  effortLevelsFor, nearestEffort,
+} from '../useEffortSelection';
+import type { AIProvider } from '../../api/nodeService';
 
 /**
  * The ladder is written down twice — here and in `Backend/llm/effort.py` — and
@@ -42,5 +46,76 @@ group('labels', () => {
     // genuinely different request — think as little as possible, but do think.
     expect(EFFORT_LABELS['']).toBe('Default');
     expect(EFFORT_LABELS['']).not.toBe(EFFORT_LABELS.none);
+  });
+});
+
+group('nearestEffort', () => {
+  // Mirrors `nearest` in `Backend/llm/effort.py`. The two have to agree or the
+  // UI shows one level and the run uses another — a disagreement nothing would
+  // report, because the server snaps silently by design.
+  it('returns an offered rung unchanged', () => {
+    expect(nearestEffort('medium', ['low', 'medium', 'high'])).toBe('medium');
+  });
+
+  it('snaps a rung the model does not offer', () => {
+    expect(nearestEffort('minimal', ['low', 'medium', 'high'])).toBe('low');
+    expect(nearestEffort('none', ['high'])).toBe('high');
+  });
+
+  it('breaks ties downward, so a tie never costs money', () => {
+    expect(nearestEffort('low', ['minimal', 'medium'])).toBe('minimal');
+  });
+
+  it('has nothing to return when the model offers nothing', () => {
+    expect(nearestEffort('high', [])).toBe('');
+  });
+});
+
+group('effortLevelsFor', () => {
+  const catalogue = [
+    {
+      slug: 'openrouter', name: 'OpenRouter', description: '', icon: '',
+      has_credentials: true,
+      models: [
+        {
+          name: 'Free Models Router', value: 'openrouter/free', is_free: true,
+          description: '', effort_levels: ['low', 'medium', 'high'],
+          default_effort: '', supports_effort: true,
+        },
+        {
+          name: 'Plain', value: 'x/plain', is_free: true, description: '',
+          effort_levels: [], default_effort: '', supports_effort: false,
+        },
+      ],
+    },
+  ] as unknown as AIProvider[];
+
+  it('reads the rungs off the selected model', () => {
+    expect(effortLevelsFor(catalogue, 'openrouter', 'openrouter/free'))
+      .toEqual(['low', 'medium', 'high']);
+  });
+
+  it('returns [] for a model with no effort control', () => {
+    expect(effortLevelsFor(catalogue, 'openrouter', 'x/plain')).toEqual([]);
+  });
+
+  it('returns [] rather than throwing before the catalogue arrives', () => {
+    // The pre-load case. Every model looks like it offers nothing here, which
+    // is why nothing may *clear* a stored preference on this basis.
+    expect(effortLevelsFor([], 'openrouter', 'openrouter/free')).toEqual([]);
+  });
+});
+
+group('DEFAULT_EFFORT', () => {
+  it('is a rung the default model actually serves', () => {
+    // `openrouter/free` declares the standard three in `populate_models.py`.
+    // A default outside that set would be snapped away on the very first
+    // message, so the shipped default would never be the shipped default.
+    expect(nearestEffort(DEFAULT_EFFORT, ['low', 'medium', 'high']))
+      .toBe(DEFAULT_EFFORT);
+  });
+
+  it('matches the ChatSession column default', () => {
+    expect(DEFAULT_EFFORT).toBe('medium');
   });
 });

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { ImagineIntent } from '../../api/imagineAgent';
 import type { Capabilities } from '../../api/imagine';
 import { ModelPicker } from './ModelPicker';
+import MarkdownMessage from '../chat/MarkdownMessage';
 import { cn } from '../../lib/utils';
 
 interface Props {
@@ -90,7 +91,9 @@ export function IntentPreviewCard({
       )}
 
       {intent.reasoning && (
-        <p className="text-[11px] text-muted-foreground italic mb-3">{intent.reasoning}</p>
+        <div className="text-[12px] text-muted-foreground italic mb-3 leading-relaxed">
+          <MarkdownMessage content={intent.reasoning} variant="compact" />
+        </div>
       )}
 
       <div className="flex gap-2">

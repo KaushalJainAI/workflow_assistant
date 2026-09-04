@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react
 import { useQuery } from '@tanstack/react-query';
 import { credentialsService } from '../api';
 import { useAIModels } from '../hooks/useAIModels';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../hooks/useChatModelSelection';
 import { tokenManager } from '../api/client';
 
 import { AssistantContext } from './assistantState';
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  // Default to NVIDIA NIM + Nemotron 3 Super, matching the UserProfile column
-  // defaults — it is served by the platform NVIDIA_API_KEY, so the assistant
-  // works before the user has configured any credential of their own.
-  const [llmProvider, setLlmProvider] = useState(localStorage.getItem('orchestrator_llm_provider') || 'nvidia');
-  const [llmModel, setLlmModel] = useState(localStorage.getItem('orchestrator_llm_model') || 'nvidia/nemotron-3-super-120b-a12b');
+  // Matches the `UserProfile` column defaults, which moved to OpenRouter's free
+  // router on 2026-09-03 — the NVIDIA catalogue is 410 upstream, so the old
+  // pair named a model that could not answer. Kept in step with
+  // `useChatModelSelection` by importing the same constants rather than
+  // restating them: three copies of a default is three chances to drift.
+  const [llmProvider, setLlmProvider] = useState(localStorage.getItem('orchestrator_llm_provider') || DEFAULT_PROVIDER);
+  const [llmModel, setLlmModel] = useState(localStorage.getItem('orchestrator_llm_model') || DEFAULT_MODEL);
   const [llmCredential, setLlmCredential] = useState<string | null>(localStorage.getItem('orchestrator_llm_credential'));
 
   // Every function on the context value is memoised. They are all listed in the

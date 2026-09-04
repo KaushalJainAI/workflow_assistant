@@ -6,6 +6,13 @@
  * previously copy-pasted between them and had drifted in pill sizing, tooltip
  * width, and link treatment. The `variant` prop carries the intended
  * differences; everything else is shared.
+ *
+ * This is the single renderer for ALL LLM-produced text shown to the user.
+ * Element overrides below (strong, headings, lists, blockquote, table, …) carry
+ * their own styling so formatting renders correctly wherever this component is
+ * used — even on pages that do not wrap it in a `prose` / `ai-chat-prose`
+ * container. Do not render model output with a bare <p> / whitespace-pre-wrap;
+ * use this component instead, or raw `**bold**` and `# titles` leak through.
  */
 
 import { memo, useMemo, type ReactNode } from 'react';
@@ -163,6 +170,8 @@ function CodeBlock({
  */
 type MarkdownNode = { node?: unknown };
 type AnchorProps = React.ComponentPropsWithoutRef<'a'> & MarkdownNode;
+type ElementProps<T extends keyof React.JSX.IntrinsicElements> =
+  React.ComponentPropsWithoutRef<T> & MarkdownNode;
 type CodeProps = React.ComponentPropsWithoutRef<'code'> & MarkdownNode & {
   /**
    * react-markdown dropped `inline` in v9 and this project is on v10, so it is
@@ -232,6 +241,67 @@ function MarkdownMessage({
           </code>
         );
       },
+      // Self-contained typography: these fire whether or not the caller wrapped
+      // this in a `prose` / `ai-chat-prose` container, so bold, titles, lists,
+      // quotes and tables look right on every page that shows model output.
+      // `node` is stripped in each override for the same reason as the anchor
+      // above — it must never reach the DOM.
+      strong: ({ node: _node, children, ...props }: ElementProps<'strong'>) => (
+        <strong className="font-semibold text-foreground" {...props}>{children}</strong>
+      ),
+      em: ({ node: _node, children, ...props }: ElementProps<'em'>) => (
+        <em {...props}>{children}</em>
+      ),
+      h1: ({ node: _node, children, ...props }: ElementProps<'h1'>) => (
+        <h1 className="text-xl font-semibold mt-6 mb-3 text-foreground leading-tight" {...props}>{children}</h1>
+      ),
+      h2: ({ node: _node, children, ...props }: ElementProps<'h2'>) => (
+        <h2 className="text-lg font-semibold mt-5 mb-2.5 text-foreground leading-tight" {...props}>{children}</h2>
+      ),
+      h3: ({ node: _node, children, ...props }: ElementProps<'h3'>) => (
+        <h3 className="text-[16px] font-semibold mt-4 mb-2 text-foreground leading-snug" {...props}>{children}</h3>
+      ),
+      h4: ({ node: _node, children, ...props }: ElementProps<'h4'>) => (
+        <h4 className="text-[15px] font-semibold mt-3 mb-1.5 text-foreground leading-snug" {...props}>{children}</h4>
+      ),
+      p: ({ node: _node, children, ...props }: ElementProps<'p'>) => (
+        <p className="mb-3 last:mb-0 leading-relaxed" {...props}>{children}</p>
+      ),
+      ul: ({ node: _node, children, ...props }: ElementProps<'ul'>) => (
+        <ul className="list-disc pl-6 mb-3 space-y-1.5 marker:text-primary" {...props}>{children}</ul>
+      ),
+      ol: ({ node: _node, children, ...props }: ElementProps<'ol'>) => (
+        <ol className="list-decimal pl-6 mb-3 space-y-1.5 marker:text-primary marker:font-bold" {...props}>{children}</ol>
+      ),
+      li: ({ node: _node, children, ...props }: ElementProps<'li'>) => (
+        <li className="leading-relaxed [&>p]:mb-1" {...props}>{children}</li>
+      ),
+      blockquote: ({ node: _node, children, ...props }: ElementProps<'blockquote'>) => (
+        <blockquote className="border-l-2 border-primary/40 pl-3 my-3 italic text-muted-foreground" {...props}>{children}</blockquote>
+      ),
+      table: ({ node: _node, children, ...props }: ElementProps<'table'>) => (
+        <span className="block overflow-x-auto my-3 rounded-lg border border-border">
+          <table className="w-full border-collapse text-[13px]" {...props}>{children}</table>
+        </span>
+      ),
+      thead: ({ node: _node, children, ...props }: ElementProps<'thead'>) => (
+        <thead className="bg-secondary text-left" {...props}>{children}</thead>
+      ),
+      th: ({ node: _node, children, ...props }: ElementProps<'th'>) => (
+        <th className="px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap border-b border-border" {...props}>{children}</th>
+      ),
+      td: ({ node: _node, children, ...props }: ElementProps<'td'>) => (
+        <td className="px-3 py-2 align-top border-b border-border last:border-0 leading-relaxed" {...props}>{children}</td>
+      ),
+      tr: ({ node: _node, children, ...props }: ElementProps<'tr'>) => (
+        <tr {...props}>{children}</tr>
+      ),
+      hr: ({ node: _node, ...props }: ElementProps<'hr'>) => (
+        <hr className="my-4 border-border" {...props} />
+      ),
+      pre: ({ node: _node, children, ...props }: ElementProps<'pre'>) => (
+        <pre className="my-3 overflow-x-auto" {...props}>{children}</pre>
+      ),
     }),
     [sources, variant],
   );

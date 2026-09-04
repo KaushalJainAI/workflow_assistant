@@ -188,6 +188,10 @@ const AppContent = () => {
                   installing one is how most people get their first agent, so
                   it needs a link you can send someone. */}
               <Route path="/templates" element={<Templates />} />
+              {/* A deep link to one entry, which is what "anyone with the
+                  link" shares. It opens the same install dialog, so a
+                  pasted link and a click from the grid land identically. */}
+              <Route path="/templates/:slug" element={<Templates />} />
               <Route path="/agents/:id" element={<AgentBuilder />} />
               {/* The configuration timeline grows for the life of the agent, so
                   it is a page rather than a section of the builder, which shows

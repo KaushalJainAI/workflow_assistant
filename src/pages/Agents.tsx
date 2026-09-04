@@ -5,14 +5,16 @@
  * hire "Finance agent" and it decides which steps to run. Workflows stay as the
  * deterministic layer underneath.
  */
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2, Sliders, LayoutGrid } from 'lucide-react';
+import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2, Sliders, LayoutGrid, Share2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import agentsService, { type Agent } from '../api/agents';
 import { AUTONOMY_COPY, TRIGGER_COPY } from '../types/agentConfig';
 import { mcpService } from '../api/mcp';
+import ShareAgentDialog from '../components/agents/ShareAgentDialog';
 
 /* Autonomy is the whole safety story, so it is the most prominent field on the
    card: how much this agent may do before it has to stop and ask. */
@@ -93,7 +95,7 @@ function EmptyState() {
           className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded font-semibold text-sm hover:bg-secondary"
         >
           <LayoutGrid className="w-4 h-4" />
-          Browse templates
+          Start from a template
         </Link>
       </div>
     </div>
@@ -101,6 +103,9 @@ function EmptyState() {
 }
 
 export default function Agents() {
+  /* Which agent's share dialog is open, if any. The dialog previews before it
+     publishes, so opening it is safe and commits nothing. */
+  const [sharing, setSharing] = useState<Agent | null>(null);
   const { data: agents = [], isLoading, isError } = useQuery({
     queryKey: ['agents'],
     queryFn: () => agentsService.list(),
@@ -132,7 +137,7 @@ export default function Agents() {
             className="flex items-center gap-2 px-4 py-2 border border-border rounded font-semibold text-sm hover:bg-secondary"
           >
             <LayoutGrid className="w-4 h-4" />
-            Templates
+            Explore
           </Link>
           <Link
             to="/agents/new"
@@ -246,6 +251,17 @@ export default function Agents() {
                     <Sliders className="w-3 h-3" />
                     Configure
                   </Link>
+                  {/* Sharing sits on the agent rather than on Explore, because
+                      what you publish is something you own — and the dialog
+                      shows the whole payload before anything leaves. */}
+                  <button
+                    type="button"
+                    onClick={() => setSharing(a)}
+                    className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Share2 className="w-3 h-3" />
+                    Share
+                  </button>
                 </div>
                 </div>
               );
@@ -253,6 +269,14 @@ export default function Agents() {
           </div>
         )}
       </div>
+
+      {sharing && (
+        <ShareAgentDialog
+          agentId={sharing.id}
+          agentName={sharing.name}
+          onClose={() => setSharing(null)}
+        />
+      )}
     </div>
   );
 }

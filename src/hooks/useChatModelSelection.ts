@@ -5,9 +5,11 @@
  * acquired an unrelated click-outside listener, so neither could be changed
  * without reasoning about the other. They are separate effects here.
  *
- * The server ships an NVIDIA env key, so chat works without any per-user
- * credential, so the choice is restored unconditionally from localStorage —
- * it is a display preference, not an entitlement.
+ * The choice is restored unconditionally from localStorage: it is a display
+ * preference, not an entitlement. Whether the chosen pair can actually run is
+ * the server's question, and it answers it at preflight with a typed error
+ * rather than letting the turn start — so gating the *restore* on credentials
+ * only ever discarded a valid choice.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,9 +18,21 @@ import type { AIProvider } from '../api/nodeService';
 const PROVIDER_KEY = 'standalone_chat_llm_provider';
 const MODEL_KEY = 'standalone_chat_llm_model';
 
-/** Works out of the box against the server-side NVIDIA key. */
-const DEFAULT_PROVIDER = 'nvidia';
-const DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b';
+/**
+ * Where a new chat starts, mirroring the `ChatSession` column defaults.
+ *
+ * Repointed from NVIDIA to OpenRouter's free router on 2026-09-03: every
+ * `nvidia/*` row in the catalogue answers 410 upstream, so the previous default
+ * named a model that could not answer. The router is the one id that keeps
+ * working as individual models are retired, because *which* model serves it is
+ * decided upstream per request rather than pinned here.
+ *
+ * It needs an OpenRouter key — the user's own, or `OPENROUTER_API_KEY` as a
+ * platform key. That is a narrower gap than the one it replaces: a missing key
+ * is fixable, a dead catalogue is not.
+ */
+export const DEFAULT_PROVIDER = 'openrouter';
+export const DEFAULT_MODEL = 'openrouter/free';
 
 /**
  * What guest mode runs on, mirroring GUEST_PROVIDER / GUEST_MODEL in

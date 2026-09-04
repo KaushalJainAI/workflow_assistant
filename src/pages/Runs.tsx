@@ -204,9 +204,9 @@ function OrchestratorBanner({ detail }: { detail: { delegated_by: NonNullable<im
       </div>
       {by.task && <p className="text-[12px] text-foreground mb-1">Task: {by.task}</p>}
       {by.reasoning && (
-        <p className="text-[12px] italic text-muted-foreground whitespace-pre-wrap">
-          {by.reasoning}
-        </p>
+        <div className="text-[12px] italic text-muted-foreground leading-relaxed">
+          <MarkdownMessage content={by.reasoning} variant="compact" />
+        </div>
       )}
     </div>
   );

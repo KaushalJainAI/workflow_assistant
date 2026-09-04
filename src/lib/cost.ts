@@ -16,6 +16,15 @@
 import type { CostSource } from '@/api/logs';
 
 /**
+ * What callers may pass as a source.
+ *
+ * `''` is what a conversation carries before it has answered anything, and
+ * `undefined` is what an older payload carries. Both mean "no figure yet" and
+ * are treated exactly like `unpriced`: not a number, because there isn't one.
+ */
+export type MaybeCostSource = CostSource | '' | undefined;
+
+/**
  * Rupees per US dollar.
  *
  * Must match `USD_TO_INR` in `Backend/llm/pricing.py`. It is duplicated rather
@@ -49,9 +58,9 @@ function usd(costUsd: string | number | null | undefined): number {
  */
 export function formatCost(
   costUsd: string | number | null | undefined,
-  source: CostSource | undefined,
+  source: MaybeCostSource,
 ): string {
-  if (source === 'unpriced') return UNPRICED_LABEL;
+  if (!source || source === 'unpriced') return UNPRICED_LABEL;
   const inr = usd(costUsd) * USD_TO_INR;
   if (inr === 0) return '₹0';
   if (inr < 0.01) return `₹${inr.toFixed(3)}`;
@@ -73,10 +82,10 @@ export function formatCostUsd(costUsd: string | number | null | undefined): stri
  */
 export function describeCost(
   costUsd: string | number | null | undefined,
-  source: CostSource | undefined,
+  source: MaybeCostSource,
   parts?: Partial<CostParts>,
 ): string {
-  if (source === 'unpriced') {
+  if (!source || source === 'unpriced') {
     return 'No price on record for this model — cost unknown, not zero.';
   }
 

@@ -1,5 +1,11 @@
 /**
- * Templates — agent configurations you can install and then change.
+ * Explore — agent configurations you can install and then change.
+ *
+ * Two sources sit side by side: templates we curate, and agents other users
+ * have published. They are presented identically on purpose. From the
+ * installer's side the provenance changes how much you trust it, not what the
+ * thing is or how it arrives — so the card carries a byline and the install
+ * flow is the same code either way.
  *
  * The install dialog is the part worth caring about. Installing someone else's
  * agent means letting a recipe you cannot read touch your files and act on
@@ -16,7 +22,7 @@
  * anything private, and credentials never travel.
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -34,7 +40,9 @@ import {
   Radar,
   Search,
   ShieldCheck,
+  Sparkles,
   Table2,
+  User,
   Wrench,
   X,
 } from 'lucide-react';
@@ -44,6 +52,7 @@ import PageHeader from '../components/layout/PageHeader';
 import templatesService, {
   type AgentTemplate,
   type RequirementChoices,
+  type TemplateSource,
 } from '../api/templates';
 import {
   AUTONOMY_COPY,
@@ -121,15 +130,31 @@ function TemplateCard({
           </span>
           <div className="min-w-0">
             <h3 className="font-semibold text-foreground truncate">{template.name}</h3>
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded border text-[11px] font-semibold',
-                autonomyStyle[autonomy],
+            <div className="flex flex-wrap items-center gap-1 mt-1">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[11px] font-semibold',
+                  autonomyStyle[autonomy],
+                )}
+              >
+                <ShieldCheck className="w-3 h-3" />
+                {AUTONOMY_COPY[autonomy].label}
+              </span>
+              {/* Provenance is the one thing a card must not blur: an agent a
+                  stranger wrote and one we curate warrant different amounts of
+                  reading before you hand either your mailbox. */}
+              {template.source === 'curated' ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-primary-line bg-primary-subtle text-primary text-[11px] font-semibold">
+                  <Sparkles className="w-3 h-3" />
+                  Built in
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground text-[11px] font-semibold">
+                  <User className="w-3 h-3" />
+                  {template.is_mine ? 'You' : template.author}
+                </span>
               )}
-            >
-              <ShieldCheck className="w-3 h-3" />
-              {AUTONOMY_COPY[autonomy].label}
-            </span>
+            </div>
           </div>
         </div>
 
@@ -158,13 +183,22 @@ function TemplateCard({
         </div>
       </div>
 
+      {template.source === 'community' && (
+        <div className="px-4 pb-3 text-[12px] text-muted-foreground">
+          {template.install_count === 0
+            ? 'No installs yet'
+            : `${template.install_count} ${template.install_count === 1 ? 'install' : 'installs'}`}
+          {template.is_listed === false && ' · withdrawn'}
+        </div>
+      )}
+
       <button
         type="button"
         onClick={onInstall}
         className="flex items-center justify-center gap-1.5 border-t border-border px-3 py-2 text-[12px] font-semibold text-muted-foreground hover:bg-secondary"
       >
         <Download className="w-3 h-3" />
-        Use this template
+        Use this {template.source === 'curated' ? 'template' : 'agent'}
       </button>
     </div>
   );
@@ -387,38 +421,112 @@ function InstallDialog({
   );
 }
 
+/** The filters, in the order they read. `mine` is last because it is the only
+ *  one about you rather than about what is available. */
+const FILTERS: { key: string; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'curated', label: 'Built in' },
+  { key: 'community', label: 'From the community' },
+  { key: 'mine', label: 'Shared by you' },
+];
+
 export default function Templates() {
+  const { slug } = useParams();
+  const navigate = useNavigate();
   const [installing, setInstalling] = useState<AgentTemplate | null>(null);
+  const [filter, setFilter] = useState('all');
+
+  /* A deep link is the only way to reach a `link`-visibility share, so it is
+     fetched on its own rather than looked up in the grid — by design that
+     entry is not in any listing. A slug that resolves to nothing simply leaves
+     the grid showing, which is the right landing for a withdrawn link. */
+  const { data: linked } = useQuery({
+    queryKey: ['agent-template', slug],
+    queryFn: () => templatesService.get(slug as string),
+    enabled: !!slug,
+    retry: false,
+  });
+
+  /* Derived, not mirrored into state. Copying the fetched entry into
+     `installing` would need an effect and a second source of truth; this way
+     clearing the slug from the URL is what closes a deep-linked dialog,
+     because the query it came from is keyed on that slug. */
+  const active = installing ?? linked ?? null;
+
+  /* Closing returns to the grid, so the URL stops naming an entry that is no
+     longer open — otherwise a reload reopens a dialog the user dismissed. */
+  const closeInstall = () => {
+    setInstalling(null);
+    if (slug) navigate('/templates', { replace: true });
+  };
+
+  /* The filter is a server parameter, not a client-side `.filter()`: "shared
+     by you" includes listings you have withdrawn, which by definition are not
+     in the listing everyone else gets, so it cannot be derived from it. */
   const { data: templates = [], isLoading, isError } = useQuery({
-    queryKey: ['agent-templates'],
-    queryFn: () => templatesService.list(),
-    staleTime: 5 * 60 * 1000,
+    queryKey: ['agent-templates', filter],
+    queryFn: () =>
+      templatesService.list(
+        filter === 'mine'
+          ? { mine: true }
+          : filter === 'all'
+            ? {}
+            : { source: filter as TemplateSource },
+      ),
+    staleTime: 60 * 1000,
   });
 
   const subtitle = isLoading
     ? 'Loading…'
-    : `${templates.length} ${templates.length === 1 ? 'template' : 'templates'} · install and edit`;
+    : `${templates.length} ${templates.length === 1 ? 'entry' : 'entries'} · install and edit`;
 
   return (
     <div className="h-full flex flex-col">
-      <PageHeader icon={LayoutGrid} title="Templates" subtitle={subtitle} />
+      <PageHeader icon={LayoutGrid} title="Explore" subtitle={subtitle} />
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <p className="text-[13px] text-muted-foreground max-w-2xl mb-5 leading-relaxed">
-          A template is a starting point, not a subscription. Installing one
-          creates an ordinary agent in your account — you approve what it may
-          reach, point it at your own connections and documents, and change
-          anything afterwards in the builder.
+        <p className="text-[13px] text-muted-foreground max-w-2xl mb-4 leading-relaxed">
+          Installing creates an ordinary agent in your account — you approve
+          what it may reach, point it at your own connections and documents,
+          and change anything afterwards in the builder. Nothing of the
+          author's comes with it: no credentials, no documents, no runs. You can
+          publish your own from the Agents page.
         </p>
+
+        <div className="flex flex-wrap gap-1 mb-5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={cn(
+                'px-3 py-1.5 rounded text-[12px] font-semibold border',
+                filter === f.key
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground hover:bg-secondary',
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
 
         {isLoading ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-12">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Loading templates…
+            Loading…
           </div>
         ) : isError ? (
           <p className="text-[13px] text-destructive py-12">
-            Could not load templates. Reload the page to try again.
+            Could not load this list. Reload the page to try again.
+          </p>
+        ) : templates.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground py-12 max-w-md leading-relaxed">
+            {filter === 'mine'
+              ? 'You have not published anything yet. Open an agent on the Agents page and choose Share to list it here.'
+              : filter === 'community'
+                ? 'Nobody has published an agent yet. Yours would be the first.'
+                : 'Nothing to show.'}
           </p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -429,9 +537,7 @@ export default function Templates() {
         )}
       </div>
 
-      {installing && (
-        <InstallDialog template={installing} onClose={() => setInstalling(null)} />
-      )}
+      {active && <InstallDialog template={active} onClose={closeInstall} />}
     </div>
   );
 }
