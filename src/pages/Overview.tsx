@@ -37,6 +37,7 @@ import {
   CheckCircle2,
   Table2,
   BarChart3,
+  ChevronLeft,
   ChevronRight,
   Repeat,
   Wrench,
@@ -53,8 +54,9 @@ import {
   type DailyTrendPoint,
   type ExecutionLog,
   type HITLRequest,
+  type HITLResponse,
 } from '../api';
-import { orchestratorService } from '../api';
+import { orchestratorService, hitlOption } from '../api';
 import { usePersistedState } from '../hooks/usePersistedState';
 import PageHeader from '../components/layout/PageHeader';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
@@ -66,6 +68,11 @@ type Window = (typeof WINDOWS)[number];
 
 /** A run nobody asked for by hand is a run that happened without you. */
 const AUTONOMOUS_TRIGGERS = ['schedule', 'webhook', 'api'];
+
+/* Which option values are a real `HITLResponse.action` rather than free text.
+   Mirrors the same set in Inbox — both panes answer the same queue, so a
+   button that posts `retry` here must post `retry` there. */
+const ACTIONS = new Set(['approve', 'reject', 'retry', 'skip', 'stop']);
 
 function compact(n: number) {
   if (n < 1000) return String(n);
@@ -328,7 +335,7 @@ export default function Overview() {
   });
 
   const respond = useMutation({
-    mutationFn: ({ id, action, response }: { id: string; action: 'approve' | 'reject' | 'respond'; response?: string }) =>
+    mutationFn: ({ id, action, response }: { id: string; action: HITLResponse['action']; response?: string }) =>
       orchestratorService.respondToHITL(id, { action, response }),
     onSuccess: () => {
       toast.success('Response sent');
@@ -461,9 +468,20 @@ export default function Overview() {
                     All runs <ChevronRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
-                <div className="flex min-h-[280px] max-h-[420px]">
-                  {/* Queue */}
-                  <div className="w-full lg:w-[380px] border-r border-border overflow-y-auto shrink-0">
+                <div className={cn(
+                  'flex lg:min-h-[280px] lg:max-h-[420px]',
+                  // On mobile the two panes stack, so the row must not reserve
+                  // 280px of nothing once the queue inside it is hidden.
+                  selected ? 'min-h-0' : 'min-h-[280px] max-h-[420px]',
+                )}>
+                  {/* Queue. Hidden on mobile once something is selected: the
+                      detail renders *below* this 420px scroller, so tapping a
+                      row scrolled the answer off-screen and read as the tap
+                      doing nothing. Phones swap panes; they do not stack them. */}
+                  <div className={cn(
+                    'w-full lg:w-[380px] border-r border-border overflow-y-auto shrink-0',
+                    selected && 'hidden lg:block',
+                  )}>
                     {pending.map((req) => {
                       const cfg = typeConfig[req.request_type as keyof typeof typeConfig] ?? typeConfig.approval;
                       const Icon = cfg.icon;
@@ -521,16 +539,27 @@ export default function Overview() {
                             <MarkdownMessage content={selected.message} variant="compact" />
                           </div>
                         </div>
+                        {/* The backend supplies both the wording of each
+                            choice and the action it posts — see the same note
+                            in Inbox. Reading the action off the button's
+                            position was a guess that held only for the
+                            two-button case. */}
                         <div className="flex flex-wrap gap-2">
-                          {(selected.options?.length ? selected.options : ['Approve', 'Reject']).map((opt, i) => (
+                          {(selected.options?.length
+                            ? selected.options.map(hitlOption)
+                            : [{ label: 'Approve', value: 'approve' },
+                               { label: 'Reject', value: 'reject' }]
+                          ).map(({ label, value }, i) => (
                             <button
-                              key={opt}
+                              key={`${value}-${label}`}
                               disabled={respond.isPending}
                               onClick={() =>
                                 respond.mutate({
                                   id: selected.request_id,
-                                  action: i === 0 ? 'approve' : 'respond',
-                                  response: opt,
+                                  action: ACTIONS.has(value)
+                                    ? (value as HITLResponse['action'])
+                                    : 'respond',
+                                  response: label,
                                 })
                               }
                               className={cn(
@@ -540,7 +569,7 @@ export default function Overview() {
                                   : 'bg-card border-border hover:bg-secondary'
                               )}
                             >
-                              {opt}
+                              {label}
                             </button>
                           ))}
                           <button
@@ -557,23 +586,43 @@ export default function Overview() {
                     )}
                   </div>
                 </div>
-                {/* Mobile fallback: show selected below queue */}
+                {/* Mobile pane: replaces the queue rather than sitting under it. */}
                 {selected && (
-                  <div className="lg:hidden border-t border-border p-4">
-                    <h3 className="text-sm font-semibold mb-2">{selected.title}</h3>
+                  <div className="lg:hidden p-4">
+                    <button
+                      onClick={() => setSelectedId(null)}
+                      className="mb-3 inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      Back to queue
+                    </button>
+                    <h3 className="text-sm font-semibold mb-1">{selected.title}</h3>
+                    {selected.workflow_name && (
+                      <p className="text-[12px] text-muted-foreground mb-2 flex items-center gap-1">
+                        <span className="truncate">{selected.workflow_name}</span>
+                        <ChevronRight className="w-3 h-3 shrink-0" />
+                        <span className="shrink-0">step {selected.node_id}</span>
+                      </p>
+                    )}
                     <div className="text-[14px] leading-relaxed bg-card border border-border rounded p-3 mb-3">
                       <MarkdownMessage content={selected.message} variant="compact" />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {(selected.options?.length ? selected.options : ['Approve', 'Reject']).map((opt, i) => (
+                      {(selected.options?.length
+                        ? selected.options.map(hitlOption)
+                        : [{ label: 'Approve', value: 'approve' },
+                           { label: 'Reject', value: 'reject' }]
+                      ).map(({ label, value }, i) => (
                         <button
-                          key={opt}
+                          key={`${value}-${label}`}
                           disabled={respond.isPending}
                           onClick={() =>
                             respond.mutate({
                               id: selected.request_id,
-                              action: i === 0 ? 'approve' : 'respond',
-                              response: opt,
+                              action: ACTIONS.has(value)
+                                ? (value as HITLResponse['action'])
+                                : 'respond',
+                              response: label,
                             })
                           }
                           className={cn(
@@ -581,7 +630,7 @@ export default function Overview() {
                             i === 0 ? 'bg-primary text-primary-foreground border-primary font-semibold' : 'bg-card border-border'
                           )}
                         >
-                          {opt}
+                          {label}
                         </button>
                       ))}
                       <button
@@ -592,6 +641,9 @@ export default function Overview() {
                         <X className="w-3 h-3" /> Stop
                       </button>
                     </div>
+                    <p className="text-[11px] text-muted-foreground mt-3">
+                      Nothing has left your account. This step runs only after you answer.
+                    </p>
                   </div>
                 )}
               </section>

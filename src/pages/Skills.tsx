@@ -150,12 +150,14 @@ export default function Skills() {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-background text-foreground animate-in fade-in duration-500">
+        // `h-full`, not `h-screen` — see the note in Documents.tsx.
+        <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-500">
             {/* Header */}
             <header className="px-4 md:px-8 py-6 md:py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-primary/10 rounded-xl">
+                    {/* pl-12 on mobile clears the Sidebar's fixed hamburger. */}
+                    <div className="flex items-center gap-4 pl-12 md:pl-0">
+                        <div className="p-3 bg-primary/10 rounded-xl shrink-0">
                             <Zap className="w-6 h-6 text-primary" />
                         </div>
                         <div>

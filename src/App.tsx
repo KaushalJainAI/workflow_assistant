@@ -51,6 +51,7 @@ const Schedules = lazyPage(() => import('./pages/Schedules'));
 const Settings = lazyPage(() => import('./pages/Settings'));
 const Skills = lazyPage(() => import('./pages/Skills'));
 const Evals = lazyPage(() => import('./pages/Evals'));
+const PublicAgent = lazyPage(() => import('./pages/PublicAgent'));
 const Templates = lazyPage(() => import('./pages/Templates'));
 const Tools = lazyPage(() => import('./pages/Tools'));
 
@@ -134,6 +135,11 @@ const AppContent = () => {
           <Route path="/auth/google/callback" element={<GoogleCallback />} />
 
           {/* Landing — guests get a dedicated minimal page; authed users go to /ai-chat */}
+          {/* A publicly shared agent. Outside ProtectedRoute on purpose: it is
+              the page a link posted off-platform lands on, and bouncing a
+              visitor with no account to a login screen is exactly what
+              choosing "public" was meant to avoid. */}
+          <Route path="/a/:slug" element={<PublicAgent />} />
           <Route path="/" element={<LandingRoute />} />
 
           {/* Credential OAuth popup. Protected because it completes the exchange

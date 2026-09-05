@@ -316,17 +316,17 @@ export default function Settings() {
                     />
                   </div>
 
-                  {/* Hidden entirely for a model with no effort control, rather
-                      than shown disabled: nothing would be sent for it, and a
-                      greyed knob reads as "off" instead of "absent". */}
-                  {effortLevels.length > 0 && (
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-medium">Reasoning effort</p>
-                        <p className="text-sm text-muted-foreground">
-                          How hard it thinks before answering
-                        </p>
-                      </div>
+                  {/* Always rendered, including for a model with no effort
+                      control — see `EffortPicker` for why. An empty space
+                      cannot say "this model does not support it". */}
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium">Reasoning effort</p>
+                      <p className="text-sm text-muted-foreground">
+                        How hard it thinks before answering
+                      </p>
+                    </div>
+                    {effortLevels.length > 0 ? (
                       <Select
                         value={effectiveEffort}
                         onChange={(val) => handleSelectChange('llm_effort', val)}
@@ -339,8 +339,12 @@ export default function Settings() {
                         ]}
                         className="w-[250px]"
                       />
-                    </div>
-                  )}
+                    ) : (
+                      <p className="w-[250px] text-sm text-muted-foreground/60 text-right">
+                        Not supported by this model
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
@@ -730,7 +734,9 @@ export default function Settings() {
   return (
     <div className="h-full flex flex-col md:flex-row">
       {/* Settings Sidebar */}
-      <div className="w-full md:w-64 border-b md:border-r md:border-b-0 border-border/60 bg-card/80 backdrop-blur-xl p-2 md:p-4 shrink-0 overflow-x-auto scrollbar-none">
+      {/* pl-12 on mobile: this rail is the topmost element on a phone, so the
+          Sidebar's fixed hamburger would land on the first tab. */}
+      <div className="w-full md:w-64 border-b md:border-r md:border-b-0 border-border/60 bg-card/80 backdrop-blur-xl p-2 pl-12 md:p-4 shrink-0 overflow-x-auto scrollbar-none">
         <h2 className="text-lg font-semibold mb-2 md:mb-4 px-2 hidden md:block">Settings</h2>
         <nav className="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-1 min-w-max md:min-w-0 pb-1 md:pb-0">
           {tabs.map((tab) => (

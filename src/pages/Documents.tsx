@@ -32,6 +32,7 @@ import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
 import { useAssistant } from '../contexts/assistantState';
 import { DocumentGridCard } from '../components/documents/DocumentGridCard';
+import { DocumentPreviewModal } from '../components/documents/DocumentPreviewModal';
 import ExtractionPanel from '../components/extraction/ExtractionPanel';
 import Breadcrumbs from '../components/documents/Breadcrumbs';
 import FolderPickerModal from '../components/documents/FolderPickerModal';
@@ -50,6 +51,8 @@ export default function Documents() {
   const [searchQuery, setSearchQuery] = usePersistedState('documents.search', '', { storage: 'session' });
   const [activeTab, setActiveTab] = usePersistedState<DocumentsTab>('documents.tab', 'personal');
   const [showUploadModal, setShowUploadModal] = useState(false);
+  /** The document whose preview is open, or null. */
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   const [viewMode, setViewMode] = usePersistedState<'grid' | 'list'>('documents.view', 'grid');
   const [localUploadingDocs, setLocalUploadingDocs] = useState<Document[]>([]);
   // Where the user is standing in their tree. `null` is the root — the server
@@ -382,7 +385,10 @@ export default function Documents() {
     };
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground animate-in fade-in duration-500">
+    // `h-full`, not `h-screen`. The shell is `100dvh`; `h-screen` is `100vh`,
+    // which on mobile includes the area behind the collapsing URL bar, so the
+    // bottom of this page was pushed out of an `overflow-hidden` parent.
+    <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-500">
       {/* Header */}
       <PageHeader 
         title="Documents"
@@ -424,7 +430,11 @@ export default function Documents() {
         }
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-8">
+          {/* Scrolls rather than clips: four tabs at gap-8 are wider than a
+              phone, and the shell is overflow-hidden, so the last tab used to
+              be simply unreachable. `-mx-4 px-4` lets the row bleed to the
+              header's own edges so the last tab can scroll fully into view. */}
+          <div className="flex items-center gap-5 md:gap-8 overflow-x-auto scrollbar-none -mx-4 px-4 md:mx-0 md:px-0">
             <button
               onClick={() => setActiveTab('personal')}
               className={cn(
@@ -630,6 +640,7 @@ export default function Documents() {
               <DocumentGridCard
                 key={doc.id}
                 doc={doc}
+                onOpen={setPreviewDoc}
                 onDownload={handleDownload}
                 onShare={handleShare}
                 onDelete={handleDelete}
@@ -658,7 +669,23 @@ export default function Documents() {
                 <div className="p-2 bg-background rounded-lg border border-border/60 group-hover:bg-primary/10 transition-colors">
                     {getDocIcon(doc.file_type)}
                 </div>
-                <div className="flex-1 min-w-0">
+                {/* The name column opens the preview, in both views. Grid-only
+                    would mean the same file is readable or not depending on a
+                    layout toggle. It is deliberately not the whole row: the row
+                    ends in Download / Move / Delete buttons. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setPreviewDoc(doc)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setPreviewDoc(doc);
+                    }
+                  }}
+                  aria-label={`Preview ${doc.title}`}
+                  className="flex-1 min-w-0 cursor-pointer rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                >
                   <div className="flex items-center gap-3 mb-0.5">
                     <p className="font-bold text-foreground tracking-tight truncate">{doc.title}</p>
                     {doc.is_shared && activeTab === 'personal' && (
@@ -791,6 +818,17 @@ export default function Documents() {
         onCancel={() => setMovePicker({ open: false, payload: null })}
         onConfirm={(target) => performMove(movePicker.payload, target)}
       />
+
+      {previewDoc && (
+        <DocumentPreviewModal
+          // Keyed so opening a second document remounts rather than reusing
+          // the first one's loaded text while the new one is still fetching.
+          key={previewDoc.id}
+          doc={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+          onDownload={handleDownload}
+        />
+      )}
 
       {/* Upload Modal */}
       {showUploadModal && (

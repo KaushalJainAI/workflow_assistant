@@ -463,7 +463,64 @@
   background-color: hsl(var(--muted-foreground) / 0.35);
 }
 
+/* Hides the scrollbar without disabling the scrolling — for horizontal rails
+   (tab rows, the Settings tab strip, the composer textarea) where a visible
+   bar would be thicker than the thing it scrolls.
+   It was used at seven call sites for a long time with nothing defining it:
+   there is no tailwind-scrollbar plugin here, so every one of them compiled to
+   nothing and the bar showed anyway. Defining it is what makes them real. */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
 
+/* Momentum + snap for the horizontal rails above, so a tab row on a phone
+   behaves like a native carousel rather than a truncated block. */
+.scroll-rail {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+
+
+/* ── iOS focus zoom ──
+   Mobile Safari zooms the viewport whenever a form control with a computed
+   font-size under 16px receives focus, and `maximum-scale` is (rightly)
+   ignored, so it never zooms back out. The app has ~107 controls and most are
+   `text-sm` (14px) or smaller, which made tapping any search box or field on
+   an iPhone shove the layout sideways for the rest of the session.
+
+   One rule instead of 107 edits. It is deliberately unlayered so it outranks
+   the Tailwind `text-*` utilities in `@layer utilities`, and it is scoped
+   below `md` so the dense desktop typography is untouched. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* Stops iOS from re-scaling text when the device is turned to landscape,
+   which otherwise makes headings jump a size mid-rotation. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ── Touch targets ──
+   The grey flash iOS paints over any tapped element reads as a rendering
+   glitch on the app's own pressed states, which are already handled by
+   `active:` utilities. */
+@media (hover: none) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
 
 /* Honour the OS setting: every decorative animation above collapses to a
    near-instant state change rather than being removed, so nothing that

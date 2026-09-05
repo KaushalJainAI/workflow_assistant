@@ -22,7 +22,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Check, Copy, Globe, Link2, Loader2, Users, X } from 'lucide-react';
+import { Check, Copy, Globe, Link2, Loader2, ShieldCheck, Users, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import templatesService, {
@@ -42,19 +42,30 @@ const GRANT_COPY: Record<string, string> = {
   subAgents: 'Delegate to other agents',
 };
 
+/* Three rungs, rendered narrowest first. The order is the point: someone
+   scanning a list picks near the top, and the widest option is the one that
+   leaves the platform entirely — so it is last, and it says so plainly rather
+   than in the language of a feature. */
+const VISIBILITY_ORDER: ShareVisibility[] = ['link', 'platform', 'public'];
+
 const VISIBILITY_COPY: Record<
   ShareVisibility,
   { label: string; hint: string; icon: LucideIcon }
 > = {
-  platform: {
-    label: 'Everyone',
-    hint: 'Listed on Explore for every user on this platform.',
-    icon: Users,
-  },
   link: {
     label: 'Anyone with the link',
-    hint: 'Not listed anywhere. Only people you send the link to can find it.',
+    hint: 'Not listed anywhere. Only people you send the link to, and they need an account.',
     icon: Link2,
+  },
+  platform: {
+    label: 'Everyone on this platform',
+    hint: 'Listed on Explore for people who have an account here.',
+    icon: Users,
+  },
+  public: {
+    label: 'Public — anyone on the internet',
+    hint: 'Readable without an account at all. The link works for anyone you send it to, and search engines can reach it. Installing still needs an account.',
+    icon: Globe,
   },
 };
 
@@ -123,8 +134,12 @@ function ShareForm({
     onError: (err) => toast.error(errorText(err, 'Could not withdraw this listing.')),
   });
 
+  /* Two different links, because they land on two different pages: a public
+     share has a page that renders without an account, and handing someone the
+     in-app URL instead would bounce them to a login screen — which is exactly
+     the thing choosing "public" was meant to avoid. */
   const shareUrl = preview.slug
-    ? `${window.location.origin}/templates/${preview.slug}`
+    ? `${window.location.origin}${visibility === 'public' ? '/a/' : '/templates/'}${preview.slug}`
     : '';
 
   const grants = Object.entries(preview.config.tools ?? {})
@@ -199,7 +214,7 @@ function ShareForm({
             Who can find it
           </span>
           <div className="mt-1 space-y-1.5">
-            {(Object.keys(VISIBILITY_COPY) as ShareVisibility[]).map((v) => {
+            {VISIBILITY_ORDER.map((v) => {
               const { label, hint, icon: Icon } = VISIBILITY_COPY[v];
               return (
                 <label
@@ -232,6 +247,19 @@ function ShareForm({
             })}
           </div>
         </div>
+
+        {visibility === 'public' && (
+          /* Said here rather than in the hint above, because this is the one
+             choice on this screen that cannot be fully taken back: withdrawing
+             unlists the page, and does nothing about a copy someone already
+             installed or a page someone already read. */
+          <p className="text-[12px] text-muted-foreground border border-border rounded p-2.5 leading-relaxed">
+            <ShieldCheck className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
+            Anyone will be able to read this agent&rsquo;s instructions,
+            capabilities and limits without signing in. Withdrawing later
+            unlists the page, but does not un-read it.
+          </p>
+        )}
 
         {/* Everything below is what will be sent. It is shown rather than
             summarised because "nothing else travels" is only a promise the

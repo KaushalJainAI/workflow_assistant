@@ -139,7 +139,8 @@ export default function Imagine() {
 
   const header = (
     <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-border/40">
-      <div className="flex items-center gap-2 min-w-0">
+      {/* pl-12 on mobile clears the Sidebar's fixed hamburger (top-3 left-3). */}
+      <div className="flex items-center gap-2 min-w-0 pl-12 md:pl-0">
         {viewMode === 'agent' && (
           <button
             onClick={() => setShowAgentHistory(true)}

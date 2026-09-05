@@ -42,7 +42,7 @@ import {
   FolderSearch,
   LifeBuoy,
   FileText,
-  AlertTriangle,
+  ChevronRight,
   Bot,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -56,10 +56,11 @@ import { CollapsiblePanel } from './CollapsiblePanel';
 import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
 import ChartArtifact from './ChartArtifact';
+import TodoPanel from './TodoPanel';
 import MarkdownMessage from './MarkdownMessage';
 import TranscriptSkeleton from './TranscriptSkeleton';
 import { forgetTranscript, readTranscript, writeTranscript } from '../../lib/transcriptCache';
-import type { ChartSpec, HtmlArtifact as HtmlArtifactData } from '../../api/chat';
+import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useChatStream, type StreamEvent } from '../../hooks/useChatStream';
@@ -114,6 +115,10 @@ export default function StandaloneChat() {
   // drives the live block, so fetching a transcript must never set it — doing
   // that is what made arriving on the page claim the model was thinking.
   const [isLoading, setIsLoading] = useState(false);
+  //: Steers waiting for the running turn to reach its next tool boundary, and
+  //: any the mailbox had to drop. Both are reported by the steer endpoint.
+  const [queuedSteers, setQueuedSteers] = useState(0);
+  const [droppedSteers, setDroppedSteers] = useState(0);
   // Fetching an existing transcript. Distinct from `isLoading` above.
   const [isRestoring, setIsRestoring] = useState(false);
   // The answer that just finished streaming. It is already on screen, so it
@@ -638,15 +643,20 @@ export default function StandaloneChat() {
   };
 
   /**
-   * `remember` stores a standing allowance for this tool, so the same
-   * connector does not prompt on every use. That matters more than it looks:
-   * an approval a user clicks through without reading launders consent rather
-   * than granting it, and the way to keep the remaining prompts meaningful is
-   * to stop re-asking the questions they have already answered.
+   * `scope` says how long the allowance lasts, and the middle rung is the
+   * point of having three. An approval a user clicks through without reading
+   * launders consent rather than granting it, so the way to keep the remaining
+   * prompts meaningful is to stop re-asking the ones already answered — but
+   * someone who only wants to stop being asked for the rest of *this*
+   * conversation should not have to grant a standing allowance over their own
+   * mailbox to get there. The backend has taken `once | session | always`
+   * since approvals were reworked; this screen was still sending a boolean.
    */
-  const handleApproveTool = async (callId: string, remember = false) => {
+  const handleApproveTool = async (
+    callId: string, scope: 'once' | 'session' | 'always' = 'once',
+  ) => {
     if (!conversationId || !pendingToolCall) return;
-    
+
     clearPendingToolCall();
     setIsLoading(true);
 
@@ -665,8 +675,49 @@ export default function StandaloneChat() {
           llmProvider,
           llmModel,
           callId,
-          remember,
-          effortToSend
+          scope === 'always',
+          effortToSend,
+          { approvalScope: scope },
+        ),
+      { intent: activeIntent },
+    );
+  };
+
+  /**
+   * Declining has to reach the server, which it did not.
+   *
+   * The button called `clearPendingToolCall()` and stopped: the card went
+   * away, the graph stayed parked on its `interrupt()`, and the model was
+   * never told it had been refused. `reject_tool_call` has existed since agent
+   * runs got the same asymmetry fixed — chat simply never called it.
+   *
+   * It resumes the turn like an approval does, because that is what a refusal
+   * is for: the model is told what it may not do and carries on with what it
+   * can. So it goes through `startChatRun` too, or a denial on a tab that gets
+   * closed leaves the turn dangling.
+   */
+  const handleDenyTool = async (callId: string) => {
+    if (!conversationId || !pendingToolCall) return;
+
+    clearPendingToolCall();
+    setIsLoading(true);
+
+    startChatRun(
+      conversationId,
+      (onEvent, signal) =>
+        chatService.sendMessageStream(
+          conversationId,
+          "Deny",
+          activeIntent,
+          onEvent,
+          undefined,
+          signal,
+          llmProvider,
+          llmModel,
+          undefined,
+          undefined,
+          effortToSend,
+          { rejectToolCall: callId },
         ),
       { intent: activeIntent },
     );
@@ -820,9 +871,48 @@ export default function StandaloneChat() {
     // after `conversationId` is set).
   }, [conversationId, runningKeys, resetStream, clearStreamStatus]);
 
+  /**
+   * Send a message to a turn that is already running, instead of dropping it.
+   *
+   * Sending while busy used to be a no-op — `handleSend` returned early and the
+   * text sat in the box doing nothing. The backend has had a steer mailbox for
+   * a while, and it is a queue, so several follow-ups sent while the agent
+   * works all arrive in order at its next tool boundary. This is the only path
+   * that reaches it.
+   */
+  useEffect(() => {
+    // The counters describe one run's mailbox, so they go when the run does.
+    if (!isLoading) {
+      setQueuedSteers(0);
+      setDroppedSteers(0);
+    }
+  }, [isLoading]);
+
+  const steerRunningTurn = async (text: string) => {
+    if (!conversationId) return;
+    setInput('');
+    try {
+      const result = await chatService.steer(conversationId, text);
+      setQueuedSteers(result.queued);
+      // Only ever non-zero when the mailbox overflowed. Surfaced because an
+      // instruction the user believes was accepted and that vanished is
+      // exactly what the queue exists to prevent.
+      if (result.dropped) setDroppedSteers(result.dropped);
+    } catch {
+      // The turn finished between the keypress and the request — put the text
+      // back so it can be sent as an ordinary message rather than lost.
+      setInput(text);
+      setQueuedSteers(0);
+    }
+  };
+
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput ?? input;
-    if (!textToSend.trim() || isLoading) return;
+    if (!textToSend.trim()) return;
+    if (isLoading) {
+      await steerRunningTurn(textToSend.trim());
+      return;
+    }
 
     const intentToSend = activeIntent;
 
@@ -1823,6 +1913,13 @@ export default function StandaloneChat() {
                       )}
 
 
+                      {/* The plan the turn worked to, kept as a record of what
+                          it set out to do and what it could not finish. */}
+                      {Array.isArray(message.metadata?.todos) &&
+                        (message.metadata?.todos ?? []).length > 0 && (
+                          <TodoPanel todos={message.metadata?.todos as TodoItem[]} />
+                        )}
+
                       {/* Rendered HTML artifacts, replayed from stored history. */}
                       {Array.isArray(message.metadata?.html_artifacts) &&
                         (message.metadata?.html_artifacts ?? []).map((art: HtmlArtifactData, i: number) => (
@@ -2024,6 +2121,10 @@ export default function StandaloneChat() {
                         )}
 
                         {live.content && statusPanel}
+
+                        {/* The plan, updated live — this is what turns forty
+                            tool calls into something a person can follow. */}
+                        {live.todos.length > 0 && <TodoPanel todos={live.todos} live />}
 
                         {/* Artifacts as they arrive, before the turn is persisted. */}
                         {live.artifacts.map((art, i) => (
@@ -2314,61 +2415,93 @@ export default function StandaloneChat() {
                 </div>
                 <div className="flex-1 space-y-4 max-w-[92%] md:max-w-[85%]">
                   <div className="bg-card/60 p-6 rounded-3xl rounded-tl-none shadow-sm glass border border-amber-500/30 space-y-4">
+                    {/* The heading is what is about to happen, not the word
+                        "Permission". A card that leads with the demand and
+                        buries the act behind `JSON.stringify` teaches people
+                        to approve without reading, which is the one outcome
+                        an approval screen must not produce. */}
                     <div className="space-y-1">
-                      <h3 className="text-lg font-semibold tracking-tight text-amber-600">Permission required</h3>
-                      <p className="text-muted-foreground text-sm font-medium">The agent wants to execute a sensitive operation:</p>
+                      <h3 className="text-lg font-semibold tracking-tight text-foreground">
+                        {pendingToolCall.detail?.title ?? 'Permission required'}
+                      </h3>
+                      <p className="text-muted-foreground text-sm">
+                        {pendingToolCall.detail?.sentence
+                          ?? `The assistant wants to run ${pendingToolCall.tool}.`}
+                        {' '}Nothing has happened yet.
+                      </p>
                     </div>
-                    
-                    <div className="bg-muted/30 p-4 rounded-2xl border border-border/40 font-mono text-[13px] space-y-2 overflow-hidden">
-                      <div className="flex items-center gap-2">
-                        <span className="text-amber-600 font-semibold  text-[10px]">Tool:</span>
-                        <span className="font-bold text-foreground">{pendingToolCall.tool}</span>
+
+                    {pendingToolCall.detail?.fields?.length ? (
+                      <dl className="rounded-2xl border border-border/40 overflow-hidden divide-y divide-border/40">
+                        {pendingToolCall.detail.fields.map((field) => (
+                          <div key={field.label} className="flex gap-3 px-4 py-2.5 bg-muted/20">
+                            <dt className="text-[12px] font-medium text-muted-foreground w-24 shrink-0">
+                              {field.label}
+                            </dt>
+                            {/* Third-party text: rendered as a plain string,
+                                never as markdown. */}
+                            <dd className="text-[13px] text-foreground min-w-0 break-words">
+                              {field.value}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+
+                    {/* Kept, and closed. The raw view is what an engineer
+                        needs when the sentence above is wrong; it is not what
+                        the person deciding needs to read first. */}
+                    <details className="group/raw">
+                      <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors list-none flex items-center gap-1.5">
+                        <ChevronRight className="w-3 h-3 transition-transform group-open/raw:rotate-90" />
+                        Show raw arguments
+                      </summary>
+                      <div className="mt-2 bg-muted/30 p-3 rounded-xl border border-border/40 space-y-2 overflow-hidden">
+                        <div className="font-mono text-[11px] text-muted-foreground break-all">
+                          {pendingToolCall.tool}
+                        </div>
+                        <pre className="text-[11px] font-mono text-muted-foreground/80 overflow-x-auto custom-scrollbar">
+                          {JSON.stringify(pendingToolCall.args, null, 2)}
+                        </pre>
                       </div>
-                      <div className="space-y-1">
-                        <span className="text-amber-600 font-semibold  text-[10px]">Arguments:</span>
-                        {pendingToolCall.tool === 'execute_shell' && typeof pendingToolCall.args?.command === 'string' && /[;&|>]/.test(pendingToolCall.args.command) ? (
-                          <>
-                            <div className="text-[10px] text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded my-1 border border-red-500/20 flex items-center gap-1">
-                              <AlertTriangle size={10} /> Warning: Command contains chaining/redirection (;, &, |, &gt;)
-                            </div>
-                            <pre className="text-xs text-red-400 overflow-x-auto custom-scrollbar pt-1">
-                              {JSON.stringify(pendingToolCall.args, null, 2)}
-                            </pre>
-                          </>
-                        ) : (
-                          <pre className="text-xs text-muted-foreground/80 overflow-x-auto custom-scrollbar pt-1">
-                            {JSON.stringify(pendingToolCall.args, null, 2)}
-                          </pre>
-                        )}
-                      </div>
-                    </div>
+                    </details>
 
                     <div className="space-y-2">
                       <div className="flex gap-3">
                         <button
-                          onClick={() => handleApproveTool(pendingToolCall.call_id)}
+                          onClick={() => handleApproveTool(pendingToolCall.call_id, 'once')}
                           className="flex-1 h-11 bg-primary text-primary-foreground font-semibold rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
                         >
                           <Check className="w-4 h-4" />
                           Approve
                         </button>
                         <button
-                          onClick={() => clearPendingToolCall()}
+                          onClick={() => handleDenyTool(pendingToolCall.call_id)}
                           className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
                         >
                           <X className="w-4 h-4" />
                           Deny
                         </button>
                       </div>
-                      {/* Its own row, and quieter than Approve: this one is
-                          permanent, so it should not be the button a user hits
-                          by reflex while clearing a prompt. */}
-                      <button
-                        onClick={() => handleApproveTool(pendingToolCall.call_id, true)}
-                        className="w-full h-9 text-xs font-medium text-muted-foreground rounded-xl border border-border/50 hover:bg-muted/50 hover:text-foreground transition-all"
-                      >
-                        Always allow {pendingToolCall.tool} without asking
-                      </button>
+                      {/* Three answers, quieter as they get longer-lived. The
+                          middle rung is the one people actually want: without
+                          it, someone who just wants to stop being asked for
+                          the rest of the afternoon says "always" and grants a
+                          standing allowance over their own mailbox. */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApproveTool(pendingToolCall.call_id, 'session')}
+                          className="flex-1 h-9 text-xs font-medium text-muted-foreground rounded-xl border border-border/50 hover:bg-muted/50 hover:text-foreground transition-all"
+                        >
+                          Allow for this chat
+                        </button>
+                        <button
+                          onClick={() => handleApproveTool(pendingToolCall.call_id, 'always')}
+                          className="flex-1 h-9 text-xs font-medium text-muted-foreground/70 rounded-xl border border-border/40 hover:bg-muted/50 hover:text-foreground transition-all"
+                        >
+                          Always allow
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2726,6 +2859,31 @@ export default function StandaloneChat() {
                       </div>
                       )}
 
+                      {/* What is waiting for the running turn. Shown next to
+                          the button that queued it, because the message has
+                          left the composer and the user needs to see it went
+                          somewhere. `dropped` appears only on overflow — a
+                          steer someone believes was accepted and that vanished
+                          is the failure the mailbox exists to prevent. */}
+                      {queuedSteers > 0 && (
+                        <span
+                          className="mr-1 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px]
+                                     font-medium tabular-nums text-primary"
+                          title="Delivered at the agent's next tool boundary"
+                        >
+                          {queuedSteers} queued
+                        </span>
+                      )}
+                      {droppedSteers > 0 && (
+                        <span
+                          className="mr-1 shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px]
+                                     font-medium tabular-nums text-amber-600 dark:text-amber-400"
+                          title="The mailbox was full; the oldest messages were dropped"
+                        >
+                          {droppedSteers} dropped
+                        </span>
+                      )}
+
                       {/* Voice button */}
                       <button
                         className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
@@ -2734,11 +2892,22 @@ export default function StandaloneChat() {
                         <Mic className="w-4 h-4" />
                       </button>
 
+                      {/* While a turn runs the button means two different
+                          things, decided by whether there is text to send:
+                          with text it queues a steer, empty it stops the run.
+                          Expressed here rather than as a new SendButton state
+                          because four other call sites share that component
+                          and none of them can steer. */}
                       <SendButton
                         onClick={() => handleSend()}
-                        onStop={stopGeneration}
-                        busy={isLoading}
+                        onStop={input.trim() ? undefined : stopGeneration}
+                        busy={isLoading && !input.trim()}
                         disabled={!input.trim()}
+                        title={
+                          isLoading && input.trim()
+                            ? 'Send to the running turn'
+                            : undefined
+                        }
                       />
                     </div>
                   </div>

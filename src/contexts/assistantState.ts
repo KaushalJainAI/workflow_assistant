@@ -17,6 +17,14 @@ export interface AssistantContextType {
   setLlmProvider: (provider: string) => void;
   llmModel: string;
   setLlmModel: (model: string) => void;
+  /**
+   * Reasoning effort for this surface, `''` for the model's own default.
+   *
+   * Local to the assistant: like the provider and model above, it is seeded
+   * from the account default and stops tracking it the moment it is set here.
+   */
+  llmEffort: string;
+  setLlmEffort: (level: string) => void;
   llmCredential: string | null;
   setLlmCredential: (credential: string | null) => void;
   syncLlmSettings: (provider: string, model: string, credential?: string | null) => Promise<void>;

@@ -49,6 +49,12 @@ export interface Trigger {
    * leaving the user to infer it from five failures and a self-disabled row.
    */
   agent_allows_unattended: boolean;
+  /**
+   * Whether the agent carries an instruction of its own. A webhook with no goal
+   * falls back to it; with neither, every request is refused by an opaque 404,
+   * so the editor needs to know which of the two is missing.
+   */
+  agent_has_prompt: boolean;
   mode: TriggerMode;
   /** Mode-specific. For schedules this carries `{ cron }`. */
   config: { cron?: string; event?: string; [k: string]: unknown };
@@ -158,6 +164,22 @@ const triggersService = {
 
   remove: async (id: number): Promise<void> => {
     await apiClient.delete(`/orchestrator/triggers/${id}/`);
+  },
+
+  /**
+   * Issue a new secret for a webhook, revoking the URL that was handed out.
+   *
+   * Not delete-and-recreate, which was the only way to change a leaked URL
+   * before this endpoint existed: that discards the row, and with it the
+   * failure count, the last-fired time, and the identity every calling system
+   * was pointed at. Rotation is instant — there is no window where both
+   * secrets work, because a leaked credential that keeps working is leaked.
+   */
+  rotateSecret: async (id: number): Promise<Trigger> => {
+    const { data } = await apiClient.post<Trigger>(
+      `/orchestrator/triggers/${id}/rotate/`, {},
+    );
+    return data;
   },
 
   /**

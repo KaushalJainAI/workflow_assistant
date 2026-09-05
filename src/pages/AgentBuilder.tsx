@@ -38,6 +38,8 @@ import { propose, applyChanges, type Change } from '../lib/agentProposals';
 import { SendButton } from '../components/ui/SendButton';
 import ScheduleEditor from '../components/schedules/ScheduleEditor';
 import { EFFORT_LABELS } from '../hooks/useEffortSelection';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../hooks/useChatModelSelection';
+import { useAuth } from '../contexts/authState';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
 
@@ -308,11 +310,43 @@ export default function AgentBuilder() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
+  /* Which pane is on screen below `lg`, where the chat and the knob board
+     cannot both fit. Ignored at `lg` and above, where both are rendered. */
+  const [mobilePane, setMobilePane] = useState<'chat' | 'settings'>('chat');
   /** A turn is in flight. One at a time: the proposal is against a snapshot of
    *  the board, so a second send while the first is out would propose against a
    *  config that is about to change under it. */
   const [pending, setPending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+
+  // The account default from Settings (UserProfile). A new agent starts here,
+  // and a stored agent with a blank model runs here too — see `displayProvider`
+  // / `effectiveModel` below and the matching backend fallback in
+  // `agents/agent/runtime.py`. `??` for effort because `''` is a real choice
+  // (the model's own default), not an absent one.
+  const userDefaultProvider = user?.llm_provider || DEFAULT_PROVIDER;
+  const userDefaultModel = user?.llm_model || DEFAULT_MODEL;
+  // (No `userDefaultEffort` twin: unlike provider and model, effort is never
+  // *derived* for display — the seeding effect below reads `user.llm_effort`
+  // directly, so a third constant here was dead and failed the build.)
+  // Seed a blank board once from the account default. Guarded so it never
+  // stomps an edit, a builder-chat proposal, or the loaded agent.
+  const userDefaultsApplied = useRef(false);
+  useEffect(() => {
+    if (!isNew || userDefaultsApplied.current || !user) return;
+    if (touched.size > 0) { userDefaultsApplied.current = true; return; }
+    setCfg((c) => {
+      if (c.provider !== DEFAULT_AGENT.provider || c.model !== '' || c.effort !== DEFAULT_AGENT.effort) return c;
+      return {
+        ...c,
+        provider: user.llm_provider || c.provider,
+        model: user.llm_model || c.model,
+        effort: user.llm_effort ?? c.effort,
+      };
+    });
+    userDefaultsApplied.current = true;
+  }, [isNew, user, touched]);
 
   const { data: existing, isLoading } = useQuery({
     queryKey: ['agent', id],
@@ -412,16 +446,28 @@ export default function AgentBuilder() {
     },
   });
 
+  // What the pickers show. A blank model means "the account default" — the
+  // stored `provider` alongside it is just the serializer's `openrouter`
+  // default, not a choice, so both resolve from the profile together. An
+  // explicit model keeps its stored provider even if the profile moved on.
+  const displayProvider = cfg.model
+    ? (cfg.provider || userDefaultProvider)
+    : userDefaultProvider;
   const activeProvider = useMemo(
-    () => providers.find((p) => p.slug === cfg.provider) ?? providers[0],
-    [providers, cfg.provider]
+    () => providers.find((p) => p.slug === displayProvider)
+      ?? providers.find((p) => p.slug === userDefaultProvider)
+      ?? providers[0],
+    [providers, displayProvider, userDefaultProvider]
   );
 
-  // The model actually in force: what was chosen, or the provider's first once
-  // the catalogue arrives. Derived rather than written back into state by an
-  // effect — an effect would race the agent's own load and could overwrite a
-  // saved model with the catalogue's default.
-  const effectiveModel = cfg.model || activeProvider?.models?.[0]?.value || '';
+  // The model actually in force: what was chosen, else the account default,
+  // else the provider's first once the catalogue arrives. Derived rather than
+  // written back into state by an effect — an effect would race the agent's
+  // own load and could overwrite a saved model with the catalogue's default.
+  const effectiveModel = cfg.model
+    || userDefaultModel
+    || activeProvider?.models?.[0]?.value
+    || '';
 
   // Which effort rungs the model in force offers, or `[]` for none — which is
   // what hides the control entirely. Derived for the same reason as
@@ -463,11 +509,15 @@ export default function AgentBuilder() {
     // was looking at when they pressed send, which is what the proposal is
     // against — and what `applyChanges` must be applied to below.
     const history = messages.map((m) => ({ role: m.role, text: m.text }));
+    // Propose against what the board shows: a blank model runs as the account
+    // default (see `displayProvider`/`effectiveModel`), so the proposal must
+    // be too, or the builder re-proposes the default as a change every turn.
+    const visibleCfg = { ...cfg, provider: displayProvider, model: effectiveModel };
     try {
-      const proposal = await agentsService.configure(text, cfg, history);
+      const proposal = await agentsService.configure(text, visibleCfg, history);
       apply(proposal.reply, proposal.changes as Change[]);
     } catch {
-      const { reply, changes } = propose(text, cfg, connectorOptions);
+      const { reply, changes } = propose(text, visibleCfg, connectorOptions);
       apply(
         changes.length
           ? `${reply}
@@ -488,7 +538,19 @@ export default function AgentBuilder() {
   };
 
   const reset = () => {
-    setCfg(existing ? { ...DEFAULT_AGENT, ...existing } : DEFAULT_AGENT);
+    if (existing) {
+      setCfg({ ...DEFAULT_AGENT, ...existing });
+    } else {
+      // A new board starts at the account default, matching the seeding effect
+      // above — resetting to the shipped constants would unpick the user's
+      // own default from under them.
+      setCfg({
+        ...DEFAULT_AGENT,
+        provider: user?.llm_provider || DEFAULT_AGENT.provider,
+        model: user?.llm_model || DEFAULT_AGENT.model,
+        effort: user?.llm_effort ?? DEFAULT_AGENT.effort,
+      });
+    }
     setTouched(new Set());
     setMessages([]);
   };
@@ -498,9 +560,9 @@ export default function AgentBuilder() {
       toast.error('Give the agent a name first.');
       return;
     }
-    // Persist the model actually shown in the picker, not the empty string
+    // Persist the pair actually shown in the pickers, not the empty string
     // that was there before the catalogue loaded.
-    save.mutate({ ...cfg, model: effectiveModel });
+    save.mutate({ ...cfg, provider: displayProvider, model: effectiveModel });
   };
 
   // What actually happened, once there is something to report. Before the first
@@ -515,17 +577,20 @@ export default function AgentBuilder() {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-4 md:px-6 py-4 border-b border-border flex items-center gap-3">
-        <div className="p-2 bg-agent-subtle border border-agent-line rounded">
+      {/* `flex-wrap` and `pl-12` on mobile: three action buttons plus a title do
+          not fit on a phone, and the Sidebar's fixed hamburger sits over the
+          top-left corner. */}
+      <header className="px-4 md:px-6 py-3 md:py-4 border-b border-border flex flex-wrap items-center gap-3 pl-12 md:pl-6">
+        <div className="p-2 bg-agent-subtle border border-agent-line rounded shrink-0">
           <Bot className="w-5 h-5 text-agent" />
         </div>
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg md:text-xl font-semibold tracking-tight truncate">
             {isNew ? 'New agent' : cfg.name || 'Agent'}
           </h1>
-          <p className="text-[13px] text-muted-foreground">{subtitle()}</p>
+          <p className="text-[13px] text-muted-foreground truncate">{subtitle()}</p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
           {!isNew && (
             <button
               onClick={() => {
@@ -551,9 +616,33 @@ export default function AgentBuilder() {
         </div>
       </header>
 
+      {/* Below `lg` the two panes cannot share the width, so they take turns.
+          Before this the knob board was flatly `hidden lg:block`: on a phone or
+          a portrait tablet the builder was a chat box with no way to see or set
+          a single field — not even the agent's name. */}
+      <div className="lg:hidden flex border-b border-border shrink-0">
+        {(['chat', 'settings'] as const).map((pane) => (
+          <button
+            key={pane}
+            onClick={() => setMobilePane(pane)}
+            className={cn(
+              'flex-1 py-2.5 text-[13px] font-semibold capitalize border-b-2 -mb-px transition-colors',
+              mobilePane === pane
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground',
+            )}
+          >
+            {pane === 'chat' ? 'Describe it' : 'Settings'}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 flex min-h-0">
         {/* ---- builder chat ---- */}
-        <div className="w-full lg:w-[420px] xl:w-[460px] border-r border-border flex flex-col min-h-0">
+        <div className={cn(
+          'w-full lg:w-[420px] xl:w-[460px] border-r border-border flex-col min-h-0',
+          mobilePane === 'chat' ? 'flex' : 'hidden lg:flex',
+        )}>
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="pt-4">
@@ -623,7 +712,10 @@ export default function AgentBuilder() {
         </div>
 
         {/* ---- knob board ---- */}
-        <div className="hidden lg:block flex-1 overflow-y-auto p-6 bg-bg-1">
+        <div className={cn(
+          'flex-1 overflow-y-auto p-4 md:p-6 bg-bg-1',
+          mobilePane === 'settings' ? 'block' : 'hidden lg:block',
+        )}>
           <div className="max-w-[1600px]">
             <div className="2xl:columns-2 2xl:gap-4">
 
@@ -667,7 +759,7 @@ export default function AgentBuilder() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <Knob path="provider" touched={touched} label="Provider">
                   <Select
-                    value={cfg.provider}
+                    value={displayProvider}
                     onChange={(slug) => {
                       const p = providers.find((x) => x.slug === slug);
                       setCfg((c) => ({ ...c, provider: slug, model: p?.models?.[0]?.value ?? '' }));
@@ -692,32 +784,42 @@ export default function AgentBuilder() {
                   />
                 </Knob>
               </div>
-              {/* Only for models that have the knob. Rendering a disabled row
-                  for the rest would suggest the setting exists and is simply
-                  off, when in fact nothing would be sent. */}
-              {(effortLevels.length > 0) && (
-                <Knob path="effort" touched={touched} label="Reasoning effort"
-                      hint={cfg.effort || 'model default'}>
-                  <Select
-                    value={cfg.effort}
-                    onChange={(v) => set('effort', v)}
-                    placeholder="Model default"
-                    icon={<Brain className="w-4 h-4" />}
-                    options={[
-                      { value: '', label: 'Model default' },
-                      ...effortLevels.map((level) => ({
-                        value: level,
-                        label: EFFORT_LABELS[level] ?? level,
-                      })),
-                    ]}
-                  />
-                  <p className="text-[12px] text-muted-foreground mt-1">
-                    Raise it for multi-step analysis. Extraction, routing and
-                    formatting do not get better for the extra thinking, and it
-                    is billed either way.
+              {/* Always rendered, including for a model with no effort
+                  control — see `EffortPicker`. Hiding it meant an existing
+                  agent on a non-reasoning model showed no sign the setting
+                  exists, which reads as a missing feature rather than as an
+                  unsupported model. */}
+              <Knob path="effort" touched={touched} label="Reasoning effort"
+                    hint={effortLevels.length ? (cfg.effort || 'model default') : 'not supported'}>
+                {effortLevels.length > 0 ? (
+                  <>
+                    <Select
+                      value={cfg.effort}
+                      onChange={(v) => set('effort', v)}
+                      placeholder="Model default"
+                      icon={<Brain className="w-4 h-4" />}
+                      options={[
+                        { value: '', label: 'Model default' },
+                        ...effortLevels.map((level) => ({
+                          value: level,
+                          label: EFFORT_LABELS[level] ?? level,
+                        })),
+                      ]}
+                    />
+                    <p className="text-[12px] text-muted-foreground mt-1">
+                      Raise it for multi-step analysis. Extraction, routing and
+                      formatting do not get better for the extra thinking, and it
+                      is billed either way.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[12px] text-muted-foreground">
+                    {effectiveModel
+                      ? 'This model has no reasoning-effort setting. Pick a reasoning model to control how hard it thinks.'
+                      : 'Choose a model to see whether it supports reasoning effort.'}
                   </p>
-                </Knob>
-              )}
+                )}
+              </Knob>
               <Knob path="temperature" touched={touched} label="Temperature"
                     hint={cfg.temperature <= 0.2 ? 'deterministic' : cfg.temperature >= 0.7 ? 'varied' : 'balanced'}>
                 <div className="flex items-center gap-3">
@@ -996,7 +1098,7 @@ export default function AgentBuilder() {
                   <p className="mt-2 text-[12px] text-muted-foreground">
                     This agent has {cfg.extraSchedules} other schedule
                     {cfg.extraSchedules === 1 ? '' : 's'}, set up on{' '}
-                    <Link to="/schedules" className="underline">Schedules</Link>.
+                    <Link to="/schedules" className="underline">Triggers</Link>.
                     They are not affected by this field.
                   </p>
                 )}

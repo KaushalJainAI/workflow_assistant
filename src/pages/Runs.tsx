@@ -39,6 +39,9 @@ import { cn } from '../lib/utils';
 import { describeCost, formatCost } from '../lib/cost';
 import PageHeader from '../components/layout/PageHeader';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
+import ChartArtifact from '../components/chat/ChartArtifact';
+import TodoPanel from '../components/chat/TodoPanel';
+import type { ChartSpec, TodoItem } from '../api/chat';
 
 const statusConfig = {
   completed: { icon: CheckCircle2, cls: 'text-success', bg: 'bg-success-subtle', label: 'Succeeded' },
@@ -280,6 +283,21 @@ function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
       )}
 
       <RunCostSummary detail={detail} />
+
+      {/* The plan the run worked to, and anything it drew. Both live on
+          `output_data` because a run's metadata dies with the graph — without
+          this, an agent that charted its findings produced something no reader
+          could ever see, and a run that reported blocked steps reported them
+          only to itself. */}
+      {Array.isArray(detail.output_data?.todos) &&
+        (detail.output_data.todos as TodoItem[]).length > 0 && (
+          <TodoPanel todos={detail.output_data.todos as TodoItem[]} />
+        )}
+
+      {Array.isArray(detail.output_data?.charts) &&
+        (detail.output_data.charts as ChartSpec[]).map((chart, i) => (
+          <ChartArtifact key={`run-chart-${i}`} chart={chart} />
+        ))}
 
       {detail.revision && (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground">

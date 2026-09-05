@@ -52,7 +52,10 @@ export default function AgentHistory() {
   const total = data?.pages[0]?.count ?? null;
 
   return (
-    <div>
+    // `h-full overflow-y-auto` for the same reason as Evals: the shell's
+    // <main> is `overflow-hidden`, so this page has to own its scroller or the
+    // timeline is clipped at the first screen.
+    <div className="h-full overflow-y-auto">
       <PageHeader
         title="Change history"
         subtitle={

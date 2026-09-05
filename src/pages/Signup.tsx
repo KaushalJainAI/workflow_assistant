@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
 import { useAuth } from '../contexts/authState';
 import { googleAuthAvailable, googleAuthorizeUrl } from '../lib/googleAuth';
+import { nextFrom } from '../lib/nextPath';
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -14,6 +15,12 @@ export default function Signup() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const { register, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
+  /* Where this visitor was heading. A public agent link sends people here
+     with `?next=`, and landing them on the dashboard instead loses the page
+     they came for. `nextFrom` refuses anything that is not an in-app path,
+     so the parameter cannot become an open redirect. */
+  const { search } = useLocation();
+  const landing = nextFrom(search);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +41,7 @@ export default function Signup() {
 
     try {
       await register(formData.email, formData.password, formData.name);
-      navigate('/');
+      navigate(landing);
     } catch {
       // Error is handled by AuthContext
     }

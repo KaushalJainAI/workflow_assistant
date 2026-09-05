@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useMemo, useReducer } from 'react';
-import type { ChartSpec, HtmlArtifact as HtmlArtifactData } from '../api/chat';
+import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData } from '../api/chat';
 import type { ChatMediaItem, CodeExecutionEntry } from '../api/chat';
 
 /**
@@ -80,6 +80,21 @@ export interface PendingToolCall {
   tool: string;
   args: Record<string, unknown>;
   call_id: string;
+  /**
+   * What the assistant is asking to do, rendered by the backend
+   * (`chat.tools.describe`). Optional because a turn streamed by a server that
+   * predates it carries none, and the card falls back to the tool name.
+   */
+  detail?: ToolCallDetail | null;
+}
+
+/** One tool call as a person reads it. Built server-side, never in a renderer. */
+export interface ToolCallDetail {
+  title: string;
+  sentence: string;
+  server: string;
+  tool: string;
+  fields: { label: string; value: string }[];
 }
 
 export interface ChatStreamState {
@@ -98,6 +113,7 @@ export interface ChatStreamState {
   codeExecutions: CodeExecutionEntry[];
   artifacts: HtmlArtifactData[];
   charts: ChartSpec[];
+  todos: TodoItem[];
   blockedAttachments: { message: string; items: BlockedAttachment[] } | null;
   pendingToolCall: PendingToolCall | null;
 }
@@ -113,6 +129,7 @@ const EMPTY: ChatStreamState = {
   codeExecutions: [],
   artifacts: [],
   charts: [],
+  todos: [],
   blockedAttachments: null,
   pendingToolCall: null,
 };
@@ -178,6 +195,11 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
           },
         ],
       };
+    case 'todos_update':
+      // Replaced wholesale, never merged: `update_todos` replaces the whole
+      // list every time, so applying this as a delta would reconstruct a state
+      // the server never sent.
+      return { ...state, todos: arr<TodoItem>(event.todos) };
     case 'chart':
       // The whole spec is appended as sent. Charts are not merged or deduped:
       // a turn that draws two charts meant two charts, and the backend has
@@ -203,6 +225,7 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
           tool: str(event.tool),
           args: obj(event.args),
           call_id: str(event.call_id),
+          detail: (event.detail as ToolCallDetail | undefined) ?? null,
         },
       };
     case 'done':

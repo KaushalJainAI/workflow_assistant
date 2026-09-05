@@ -1,9 +1,38 @@
 import { useState, useEffect } from 'react';
 import { Bell, CheckCircle, Clock, ShieldAlert, AlertTriangle, Info } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { notificationsService, type Notification } from '../../api/notifications';
 import ReminderPreferences from './ReminderPreferences';
 import { cn } from '../../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+
+/**
+ * Where a notification wants to send you, if anywhere.
+ *
+ * `data` is internal routing written by half a dozen places — `notifications/
+ * reminders.py`, `eval/supervision.py`, `imagine/`, the chat approval — and
+ * its shape varies per type. So this reads two agreed keys and ignores the
+ * rest: an unrecognised payload renders a title and a message and nothing
+ * more, which is the correct answer rather than a fallback.
+ *
+ * The internal path is validated against a small allow-list. `action_url` is
+ * server-written today, but a link built from a stored value is exactly the
+ * shape that becomes an open redirect the first time one of those writers
+ * starts echoing something a user supplied.
+ */
+const ACTION_PATHS: Record<string, string> = {
+  '/inbox': 'Open the Inbox',
+  '/chat': 'Open the conversation',
+  '/runs': 'See the run',
+  '/documents': 'Open documents',
+};
+
+function actionLink(notification: Notification): { to: string; label: string } | null {
+  const url = notification.data?.action_url;
+  if (typeof url !== 'string') return null;
+  const label = ACTION_PATHS[url];
+  return label ? { to: url, label } : null;
+}
 
 export default function NotificationsTab() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -104,7 +133,9 @@ export default function NotificationsTab() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-4">
-                  <h4 className={cn("text-sm font-semibold truncate", !notification.is_read && "text-foreground")}>
+                  {/* Not truncated. A notification whose whole content is its
+                      title is the one row where clipping loses the message. */}
+                  <h4 className={cn("text-sm font-semibold", !notification.is_read && "text-foreground")}>
                     {notification.title}
                   </h4>
                   <span className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1 shrink-0">
@@ -115,22 +146,30 @@ export default function NotificationsTab() {
                 <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
                   {notification.message}
                 </p>
-                {notification.data && Object.keys(notification.data).length > 0 && (
-                  <pre className="mt-3 p-2 bg-muted/50 rounded-lg text-xs font-mono text-muted-foreground overflow-x-auto border border-border/50">
-                    {JSON.stringify(notification.data, null, 2)}
-                  </pre>
-                )}
-                
-                {!notification.is_read && (
-                  <div className="mt-3 flex">
-                    <button 
-                      onClick={() => handleMarkAsRead(notification.id)}
+
+                {/* `data` used to be printed here as a JSON block whenever it
+                    was non-empty — thread ids, session ids, request ids, and
+                    for a chat approval the raw tool arguments. None of it was
+                    chosen for the reader; it was on screen because nobody had
+                    decided what to show. Two keys are genuinely for them. */}
+                <div className="mt-3 flex items-center gap-4">
+                  {actionLink(notification) && (
+                    <Link
+                      to={actionLink(notification)!.to}
                       className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                      {actionLink(notification)!.label}
+                    </Link>
+                  )}
+                  {!notification.is_read && (
+                    <button
+                      onClick={() => handleMarkAsRead(notification.id)}
+                      className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Mark as read
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           ))}

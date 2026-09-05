@@ -32,26 +32,36 @@ import { logsService } from "../../api";
 import { toast } from "sonner";
 
 
+/* One shared query object for the whole module: `md` in Tailwind's default
+   scale. Kept module-level so the initial `useState` and the subscription can
+   never disagree about the breakpoint. */
+const MOBILE_QUERY = window.matchMedia('(max-width: 767px)');
 
 const Sidebar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+    /* `matchMedia`, not a `resize` listener reading `innerWidth`.
+       A resize listener fires for *height* changes too, and on a phone the
+       height changes constantly: the URL bar collapses on scroll, and opening
+       the keyboard shrinks the visual viewport by ~40%. The old handler
+       re-asserted `collapsed` on every one of those, so the drawer slammed
+       shut mid-interaction and a desktop user's icon-rail choice was undone by
+       any window resize. A media query only notifies when the breakpoint is
+       actually *crossed*, which is the only moment the default should move. */
+    const [isMobile, setIsMobile] = useState(() => MOBILE_QUERY.matches);
     // On mobile: collapsed = fully hidden drawer. On desktop: collapsed = icon rail.
-    const [collapsed, setCollapsed] = useState(() => window.innerWidth < 768);
+    const [collapsed, setCollapsed] = useState(() => MOBILE_QUERY.matches);
 
     useEffect(() => {
-        const handleResize = () => {
-            const mobile = window.innerWidth < 768;
-            setIsMobile(mobile);
-            if (mobile) {
-                setCollapsed(true);
-            } else {
-                setCollapsed(false);
-            }
+        const onCross = (e: MediaQueryListEvent) => {
+            setIsMobile(e.matches);
+            // Crossing the breakpoint is the one event that resets the default:
+            // hidden drawer below it, expanded rail above it. Within a
+            // breakpoint the user's own choice stands.
+            setCollapsed(e.matches);
         };
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
+        MOBILE_QUERY.addEventListener('change', onCross);
+        return () => MOBILE_QUERY.removeEventListener('change', onCross);
     }, []);
 
     // Auto-close drawer on mobile when route changes
@@ -59,6 +69,16 @@ const Sidebar = () => {
         if (isMobile) setCollapsed(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.pathname]);
+
+    // Escape closes the mobile drawer — it is a modal overlay, and the only
+    // other way out is hitting the backdrop, which is a small target beside a
+    // 320px panel.
+    useEffect(() => {
+        if (!isMobile || collapsed) return;
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCollapsed(true); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isMobile, collapsed]);
 
     // Lock body scroll while mobile drawer is open
     useEffect(() => {
@@ -168,7 +188,7 @@ const Sidebar = () => {
                 // configuration, a schedule is a standing commitment to
                 // spend on it. The second is worth being able to audit in
                 // one place without opening every agent to find it.
-                { icon: CalendarClock, label: "Schedules", path: "/schedules" },
+                { icon: CalendarClock, label: "Triggers", path: "/schedules" },
                 { icon: GraduationCap, label: "Skills", path: "/skills" },
                 // Evals sit next to Skills rather than under Runs: a suite is
                 // something you author, and its result is only final once a
@@ -204,8 +224,18 @@ const Sidebar = () => {
         {isMobile && collapsed && (
             <button
                 onClick={() => setCollapsed(false)}
-                className="md:hidden fixed top-3 left-3 z-[60] p-2.5 rounded-xl bg-card/90 border border-border/60 backdrop-blur-md shadow-lg active:scale-95 transition-transform"
+                /* `top-3 left-3` plus the safe-area inset: on a notched phone in
+                   landscape the inset is what keeps this off the sensor housing,
+                   and it is 0 everywhere else. Pages reserve 48px for it with
+                   `pl-12` — see PageHeader. */
+                className="md:hidden fixed z-[60] p-2.5 rounded-xl bg-card/90 border border-border/60 backdrop-blur-md shadow-lg active:scale-95 transition-transform"
+                style={{
+                    top: 'max(0.75rem, env(safe-area-inset-top))',
+                    left: 'max(0.75rem, env(safe-area-inset-left))',
+                }}
                 aria-label="Open menu"
+                aria-expanded={false}
+                aria-controls="app-sidebar"
             >
                 <Menu className="w-5 h-5" />
             </button>
@@ -220,6 +250,10 @@ const Sidebar = () => {
         )}
 
         <div
+            id="app-sidebar"
+            role={isMobile ? 'dialog' : undefined}
+            aria-modal={isMobile && !collapsed ? true : undefined}
+            aria-hidden={isMobile && collapsed ? true : undefined}
             className={cn(
                 "h-viewport backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out overflow-hidden",
                 // Mobile: fixed drawer, slides in from left, fully hidden when collapsed

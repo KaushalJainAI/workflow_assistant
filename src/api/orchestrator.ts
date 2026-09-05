@@ -14,16 +14,57 @@
 import apiClient from './client';
 
 // HITL types
+
+/**
+ * One button on a pending request.
+ *
+ * The backend writes these as `{label, value}` — the label is what the button
+ * says, the value is what the response posts. This was typed `string[]` for as
+ * long as the queue existed, which was survivable only because nothing wrote a
+ * row: React refuses an object as a child, so the first genuine request took
+ * the Inbox detail pane into the error boundary.
+ *
+ * A bare string is still accepted. Rows written before `open_request` existed
+ * carry them, and `options` is a free JSON column that other writers may reach.
+ */
+export type HITLOption = { label: string; value: string } | string;
+
 export interface HITLRequest {
   request_id: string;
   request_type: 'approval' | 'clarification' | 'error';
   node_id: string;
   title: string;
   message: string;
-  options: string[];
+  options: HITLOption[];
   timeout_seconds: number;
   created_at: string;
   workflow_name?: string;
+  /** What the agent is asking to do, rendered by the backend. See `describe_call`. */
+  detail?: HITLDetail | null;
+}
+
+/**
+ * A tool call as a person reads it, built once on the server so the Inbox,
+ * the chat card and a notification all say the same thing.
+ */
+export interface HITLDetail {
+  title: string;
+  sentence: string;
+  server: string;
+  tool: string;
+  fields: { label: string; value: string }[];
+  raw?: Record<string, unknown>;
+}
+
+/** Normalise either stored shape into something renderable. */
+export function hitlOption(option: HITLOption): { label: string; value: string } {
+  if (typeof option === 'string') {
+    return { label: option, value: option.toLowerCase() };
+  }
+  return {
+    label: option?.label ?? String(option?.value ?? ''),
+    value: option?.value ?? option?.label ?? '',
+  };
 }
 
 export interface HITLResponse {

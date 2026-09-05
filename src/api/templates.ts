@@ -54,8 +54,11 @@ export interface TemplateRequirement {
 /** Where an entry came from. Presentation differs; installing does not. */
 export type TemplateSource = 'curated' | 'community';
 
-/** Who may find a published agent. */
-export type ShareVisibility = 'platform' | 'link';
+/**
+ * Who may find a published agent. Three rungs, each strictly wider than the
+ * last, and only the widest leaves the platform.
+ */
+export type ShareVisibility = 'link' | 'platform' | 'public';
 
 export interface AgentTemplate {
   slug: string;
@@ -110,6 +113,31 @@ export interface PublishInput {
 
 /** Requirement key -> the id the installer chose for it. */
 export type RequirementChoices = Record<string, number>;
+
+/**
+ * A publicly shared agent, as somebody with no account sees it.
+ *
+ * A narrower shape than `AgentTemplate` on purpose, mirroring the server's own
+ * narrower projection: there is no signed-in caller, so there are no
+ * `candidates` to fill a picker with and no `is_mine` to compute. What is kept
+ * is what a visitor needs to decide whether to sign up — what it does, what it
+ * would be able to reach, and what they would have to supply.
+ */
+export interface PublicAgent {
+  slug: string;
+  source: 'community';
+  name: string;
+  tagline: string;
+  description: string;
+  icon: string;
+  tags: string[];
+  author: string;
+  install_count: number;
+  version: number;
+  updated_at: string;
+  requirements: Omit<TemplateRequirement, 'candidates'>[];
+  config: Partial<AgentConfig>;
+}
 
 const templatesService = {
   list: async (params: { source?: TemplateSource; mine?: boolean } = {}): Promise<AgentTemplate[]> => {
@@ -170,6 +198,28 @@ const templatesService = {
    */
   unpublish: async (agentId: number | string): Promise<void> => {
     await apiClient.delete(`/orchestrator/agents/${agentId}/share/`);
+  },
+
+  /**
+   * One publicly shared agent, readable with no account.
+   *
+   * Every refusal is the same 404 by design — `link`-only, platform-only,
+   * withdrawn and never-existed are indistinguishable from outside — so the
+   * caller can only say "not found", never why.
+   */
+  publicGet: async (slug: string): Promise<PublicAgent> => {
+    const { data } = await apiClient.get<PublicAgent>(
+      `/orchestrator/public/agents/${slug}/`,
+    );
+    return data;
+  },
+
+  /** The public catalogue. Capped server-side; `truncated` says when it cut. */
+  publicList: async (): Promise<{ results: PublicAgent[]; truncated: boolean }> => {
+    const { data } = await apiClient.get<{ results: PublicAgent[]; truncated: boolean }>(
+      '/orchestrator/public/agents/',
+    );
+    return data;
   },
 };
 

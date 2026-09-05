@@ -6,10 +6,13 @@
 
 export { default as apiClient, tokenManager, handleApiError, type ApiError } from './client';
 export { default as authService, type User, type AuthResponse } from './auth';
-export { 
+export {
   default as orchestratorService,
+  hitlOption,
   type HITLRequest,
   type HITLResponse,
+  type HITLOption,
+  type HITLDetail,
   type ChatMessage,
 } from './orchestrator';
 export {

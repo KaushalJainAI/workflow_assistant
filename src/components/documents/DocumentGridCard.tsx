@@ -54,6 +54,8 @@ function TypeIcon({ fileType, className }: { fileType: string; className?: strin
 
 interface Props {
   doc: Document;
+  /** Open the preview. Absent leaves the card inert, as it was before previews. */
+  onOpen?: (doc: Document) => void;
   onDownload: (doc: Document) => void;
   onShare: (doc: Document) => void;
   onDelete: (id: number) => void;
@@ -63,7 +65,7 @@ interface Props {
   showActions?: boolean;
 }
 
-export function DocumentGridCard({ doc, onDownload, onShare, onDelete, draggable, onDragStart, onDragEnd }: Props) {
+export function DocumentGridCard({ doc, onOpen, onDownload, onShare, onDelete, draggable, onDragStart, onDragEnd }: Props) {
   const isImage = doc.file_type.includes('image');
   const isVideo = doc.file_type.includes('video');
   const isGenerated = doc.metadata?.source === 'imagine';
@@ -111,8 +113,29 @@ export function DocumentGridCard({ doc, onDownload, onShare, onDelete, draggable
         isFailed && 'border-destructive/30'
       )}
     >
-      {/* Media */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted/20">
+      {/* Media. Clicking it opens the preview; the action buttons below stop
+          propagation already, so this cannot swallow a download or a delete.
+          A button rather than an onClick div, so it is reachable by keyboard. */}
+      <div
+        role={onOpen ? 'button' : undefined}
+        tabIndex={onOpen ? 0 : undefined}
+        onClick={onOpen ? () => onOpen(doc) : undefined}
+        onKeyDown={
+          onOpen
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onOpen(doc);
+                }
+              }
+            : undefined
+        }
+        aria-label={onOpen ? `Preview ${title}` : undefined}
+        className={cn(
+          'relative aspect-[4/3] w-full overflow-hidden bg-muted/20',
+          onOpen && 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
+        )}
+      >
         {isImage && thumbUrl ? (
           <img
             src={thumbUrl}

@@ -58,6 +58,24 @@ export interface HtmlArtifact {
   height?: number;
 }
 
+/**
+ * One step of the plan a run is working to. `blocked` is a real status so a run
+ * can finish honestly — without it a model told not to stop with open work
+ * marks things done to escape the loop.
+ */
+/** What the steer endpoint reports back about the run's mailbox. */
+export interface SteerResult {
+  steered: boolean;
+  delivered: number;
+  queued: number;
+  dropped: number;
+}
+
+export interface TodoItem {
+  text: string;
+  status: 'open' | 'doing' | 'done' | 'blocked';
+}
+
 /** One point on a chart. `y` is null where the value is unknown, which the
  *  renderer draws as a gap — a missing measurement and a measured zero are
  *  different facts. */
@@ -152,6 +170,7 @@ export interface ChatMessageMetadata {
   file_type?: string;
   html_artifacts?: HtmlArtifact[];
   charts?: ChartSpec[];
+  todos?: TodoItem[];
   follow_ups?: string[];
   [key: string]: unknown;
 }
@@ -241,7 +260,8 @@ export const chatService = {
    * Stream a message via SSE. Calls onEvent for each parsed event.
    * Event types: the `Event` enum in `Backend/chat/events.py` — status,
    * thinking_chunk, content_chunk, content_reset, agent_trace, sources_update,
-   * images_update, videos_update, html_artifact, chart, attachments_blocked,
+   * images_update, videos_update, html_artifact, chart, todos_update,
+   * attachments_blocked,
    * ask_permission, done, error.
    */
   async sendMessageStream(
@@ -266,7 +286,20 @@ export const chatService = {
      * stored level — which is why the check below is on `!== undefined` and
      * not on truthiness.
      */
-    llmEffort?: string
+    llmEffort?: string,
+    /**
+     * Everything added after the positional list stopped being readable.
+     * One object rather than three more slots, because the note above is
+     * right — appending to a positional list is how a later edit silently
+     * reassigns every existing call's arguments.
+     */
+    extras?: {
+      /** 'once' | 'session' | 'always'. Supersedes `rememberApproval`. */
+      approvalScope?: string;
+      /** Decline a paused call and let the turn carry on without it. */
+      rejectToolCall?: string;
+      rejectReason?: string;
+    },
   ): Promise<void> {
     const body: Record<string, unknown> = { content };
     if (intent && intent !== 'normal') body.intent = intent;
@@ -276,6 +309,13 @@ export const chatService = {
     if (llmEffort !== undefined) body.llm_effort = llmEffort;
     if (approveToolCall) body.approve_tool_call = approveToolCall;
     if (approveToolCall && rememberApproval) body.remember_approval = true;
+    if (approveToolCall && extras?.approvalScope) {
+      body.approval_scope = extras.approvalScope;
+    }
+    if (extras?.rejectToolCall) {
+      body.reject_tool_call = extras.rejectToolCall;
+      if (extras.rejectReason) body.reject_reason = extras.rejectReason;
+    }
 
     return streamSse({
       path: `/chat/sessions/${sessionId}/message/stream/`,
@@ -314,6 +354,26 @@ export const chatService = {
    */
   async stopStream(sessionId: string): Promise<{ stopped: boolean; ai_response: ChatMessage | null }> {
     const response = await apiClient.post(`/chat/sessions/${sessionId}/message/stop/`);
+    return response.data;
+  },
+
+  /**
+   * Say something to a turn that is already running.
+   *
+   * Not a second message: two turns on one session would interleave into one
+   * transcript. This lands in the run's mailbox and the graph picks it up at
+   * its next tool boundary — same turn, same answer, no restart.
+   *
+   * Queued rather than last-write-wins, so sending three follow-ups while the
+   * agent works delivers all three in order. `dropped` is non-zero only when
+   * the mailbox overflowed, which is worth surfacing: an instruction the user
+   * believes was accepted and that vanished is the failure the mailbox exists
+   * to prevent.
+   */
+  async steer(sessionId: string, message: string): Promise<SteerResult> {
+    const response = await apiClient.post<SteerResult>(
+      `/chat/sessions/${sessionId}/message/steer/`, { message },
+    );
     return response.data;
   },
 

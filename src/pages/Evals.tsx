@@ -154,7 +154,11 @@ export default function Evals() {
   const pendingTotal = queue.length;
 
   return (
-    <div className="min-h-screen bg-background">
+    // `h-full overflow-y-auto`, not `min-h-screen`: the shell's <main> is
+    // `h-full overflow-hidden`, so a page that only declares a *minimum*
+    // height owns no scroller and everything past the first screen is
+    // simply unreachable.
+    <div className="h-full overflow-y-auto bg-background">
       <PageHeader
         title="Evals"
         subtitle="Does this agent still do what it did last week — and do you agree with the grader?"
@@ -170,7 +174,7 @@ export default function Evals() {
       />
 
       <div className="px-4 py-6 md:px-8 space-y-6">
-        <div className="flex items-center gap-1 border-b border-border/60">
+        <div className="flex items-center gap-1 border-b border-border/60 overflow-x-auto scrollbar-none">
           {([
             ['review', 'Needs review', pendingTotal],
             ['suites', 'Suites', suites.length],

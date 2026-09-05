@@ -22,11 +22,17 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { orchestratorService, type HITLRequest } from '../api';
+import {
+  orchestratorService, hitlOption,
+  type HITLRequest, type HITLResponse,
+} from '../api';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
 import ExtractionPanel from '../components/extraction/ExtractionPanel';
+
+/** Values the respond endpoint understands as decisions rather than free text. */
+const ACTIONS = new Set(['approve', 'reject', 'retry', 'skip', 'stop']);
 
 const typeConfig = {
   approval: { icon: ShieldQuestion, label: 'Needs your approval' },
@@ -61,7 +67,7 @@ export default function Inbox() {
   const { data: requests = [], isLoading } = useHitlPending();
 
   const respond = useMutation({
-    mutationFn: ({ id, action, response }: { id: string; action: 'approve' | 'reject' | 'respond'; response?: string }) =>
+    mutationFn: ({ id, action, response }: { id: string; action: HITLResponse['action']; response?: string }) =>
       orchestratorService.respondToHITL(id, { action, response }),
     onSuccess: () => {
       toast.success('Response sent');
@@ -205,20 +211,50 @@ export default function Inbox() {
                   <div className="text-[15px] leading-relaxed text-foreground">
                     <MarkdownMessage content={selected.message} variant="compact" />
                   </div>
+
+                  {/* What the agent is actually asking to do. Built on the
+                      server so this and the chat card cannot describe one call
+                      two different ways — and rendered as plain text, never
+                      markdown: these values come from a model or a third-party
+                      server, and this is the screen they are asking to get
+                      past. Absent on rows written before `describe_call`. */}
+                  {selected.detail?.fields?.length ? (
+                    <dl className="mt-4 border-t border-border pt-3 divide-y divide-border/60">
+                      {selected.detail.fields.map((field) => (
+                        <div key={field.label} className="flex gap-3 py-2">
+                          <dt className="text-[12px] font-medium text-muted-foreground w-28 shrink-0">
+                            {field.label}
+                          </dt>
+                          <dd className="text-[13px] text-foreground min-w-0 break-words">
+                            {field.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
                 </div>
 
-                {/* The backend supplies the wording of each choice, so the
-                    buttons say what will actually happen. */}
+                {/* The backend supplies the wording of each choice *and* the
+                    action it posts. Reading the action off the button's
+                    position instead — `i === 0 ? 'approve' : 'respond'` — was a
+                    guess that happened to be right only for the two-button
+                    case the queue always writes. */}
                 <div className="flex flex-wrap gap-2">
-                  {(selected.options?.length ? selected.options : ['Approve', 'Reject']).map((opt, i) => (
+                  {(selected.options?.length
+                    ? selected.options.map(hitlOption)
+                    : [{ label: 'Approve', value: 'approve' },
+                       { label: 'Reject', value: 'reject' }]
+                  ).map(({ label, value }, i) => (
                     <button
-                      key={opt}
+                      key={`${value}-${label}`}
                       disabled={respond.isPending}
                       onClick={() =>
                         respond.mutate({
                           id: selected.request_id,
-                          action: i === 0 ? 'approve' : 'respond',
-                          response: opt,
+                          action: ACTIONS.has(value)
+                            ? (value as HITLResponse['action'])
+                            : 'respond',
+                          response: label,
                         })
                       }
                       className={cn(
@@ -228,7 +264,7 @@ export default function Inbox() {
                           : 'bg-card border-border hover:bg-secondary'
                       )}
                     >
-                      {opt}
+                      {label}
                     </button>
                   ))}
                   <button
@@ -237,12 +273,17 @@ export default function Inbox() {
                     className="px-4 py-2 text-sm rounded border border-border hover:bg-secondary text-muted-foreground flex items-center gap-1.5 disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
-                    Stop this run
+                    Decline this step
                   </button>
                 </div>
 
+                {/* It said "Stop this run", which was wrong in both directions:
+                    it stopped nothing (the response was recorded and never
+                    reached the run), and a rejection resumes the agent *past*
+                    the declined call rather than ending it. */}
                 <p className="text-[12px] text-muted-foreground mt-4">
-                  Nothing has left your account. This step runs only after you answer.
+                  Nothing has left your account. Approve and the agent carries on from
+                  here; decline and it continues without this step.
                 </p>
               </div>
             )}
