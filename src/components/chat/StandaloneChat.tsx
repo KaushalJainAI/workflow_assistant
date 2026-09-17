@@ -775,6 +775,28 @@ export default function StandaloneChat() {
         setIsLoading(false);
         break;
 
+      case 'steers_returned': {
+        // Messages sent while the agent was writing its final answer: the run
+        // ended before it reached a point where it reads them. They go back in
+        // the box — the same place a too-late steer already lands — so nothing
+        // the user typed is lost and nothing is sent without them seeing it.
+        // Not on replay: a re-attached stream would put the text back again.
+        const returned = Array.isArray(event.messages)
+          ? event.messages.filter((m): m is string => typeof m === 'string' && m.trim() !== '')
+          : [];
+        if (replayed || returned.length === 0) break;
+        const text = returned.join('\n');
+        setInput(prev => (prev.trim() ? `${text}\n${prev}` : text));
+        setQueuedSteers(0);
+        toast.info(
+          returned.length === 1
+            ? 'The agent finished before reading your message. It is back in the box.'
+            : `The agent finished before reading ${returned.length} messages. They are back in the box.`,
+        );
+        break;
+      }
+
+
       case 'done': {
         // The `done` frame carries whole persisted messages. `StreamEvent`
         // fields are `unknown` by design, so the assertion happens once, here,
