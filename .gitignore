@@ -69,3 +69,10 @@ status.txt
 diff.txt
 *.tmp
 
+
+# Test and build output
+coverage/
+playwright-report/
+blob-report/
+test-results/
+*.tsbuildinfo
