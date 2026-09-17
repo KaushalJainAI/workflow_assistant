@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User,
@@ -37,12 +37,16 @@ export default function Profile() {
   });
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
-  useEffect(() => {
+  // Follows the account's name and email when they change (after a save, or
+  // once the user loads). During render, so the form never paints stale.
+  const [seenAccount, setSeenAccount] = useState<readonly [string | undefined, string | undefined] | null>(null);
+  if (!seenAccount || seenAccount[0] !== user?.name || seenAccount[1] !== user?.email) {
+    setSeenAccount([user?.name, user?.email]);
     setFormData({
       name: user?.name || '',
       email: user?.email || '',
     });
-  }, [user?.name, user?.email]);
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

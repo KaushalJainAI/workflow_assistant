@@ -41,7 +41,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // would race the profile load and could overwrite a local choice made before
   // it landed. Falling back at read time cannot.
   const effectiveProvider = llmProvider || user?.llm_provider || DEFAULT_PROVIDER;
-  const effectiveModel = llmModel || user?.llm_model || DEFAULT_MODEL;
   const [llmCredential, setLlmCredential] = useState<string | null>(localStorage.getItem('orchestrator_llm_credential'));
 
   // Every function on the context value is memoised. They are all listed in the
@@ -56,21 +55,23 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const { providers: dynamicProviders, isLoading: isModelsLoading } = useAIModels();
 
-  // Validate and sync settings once dynamic providers load
-  useEffect(() => {
-    if (!isModelsLoading && dynamicProviders.length > 0) {
-      const currentProvider = dynamicProviders.find(p => p.slug === llmProvider);
-      if (currentProvider) {
-        // If the current model isn't in the provider's list, reset to default
-        const modelExists = currentProvider.models.some(m => m.value === llmModel);
-        if (!modelExists && currentProvider.models.length > 0) {
-          const defaultModel = currentProvider.models[0].value;
-          setLlmModel(defaultModel);
-          localStorage.setItem('orchestrator_llm_model', defaultModel);
-        }
-      }
-    }
+  // A stored model the chosen provider no longer lists falls back to that
+  // provider's first model. Derived rather than written back into state by an
+  // effect (which rendered the retired model for a frame, then re-rendered);
+  // only the persisted copy is corrected, and that is a side effect proper.
+  const staleModelFallback = useMemo(() => {
+    if (isModelsLoading || dynamicProviders.length === 0) return null;
+    const currentProvider = dynamicProviders.find(p => p.slug === llmProvider);
+    if (!currentProvider || currentProvider.models.length === 0) return null;
+    return currentProvider.models.some(m => m.value === llmModel)
+      ? null
+      : currentProvider.models[0].value;
   }, [dynamicProviders, isModelsLoading, llmProvider, llmModel]);
+  const effectiveModel = (staleModelFallback ?? llmModel) || user?.llm_model || DEFAULT_MODEL;
+
+  useEffect(() => {
+    if (staleModelFallback) localStorage.setItem('orchestrator_llm_model', staleModelFallback);
+  }, [staleModelFallback]);
 
   const { data: hasCredentials = null, refetch } = useQuery({
     queryKey: ['credentials', llmProvider],

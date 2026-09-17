@@ -15,7 +15,7 @@
  *    `imagine_agent_{user_id}`. The socket is the primary signal now; a slow
  *    poll remains only as a backstop for a dropped connection.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   EMPTY_CAPABILITIES,
@@ -165,6 +165,7 @@ export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {})
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a server read; its state lands after the await
     void loadCatalog();
   }, [loadCatalog]);
 
@@ -186,8 +187,11 @@ export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {})
   // returning undefined for an empty option list is what makes switching from a
   // model with 4K tiers to one with none drop the tier, rather than carry a
   // value the new model will refuse.
-  useEffect(() => {
-    if (!activeModel) return;
+  // During render rather than in an effect, so a newly selected model never
+  // paints one frame of dials it does not accept. Same trigger the effect had.
+  const [snappedFor, setSnappedFor] = useState<readonly [typeof activeModel, typeof mode] | null>(null);
+  if (activeModel && (!snappedFor || snappedFor[0] !== activeModel || snappedFor[1] !== mode)) {
+    setSnappedFor([activeModel, mode]);
     setParams(prev => ({
       ...prev,
       resolution: snap(prev.resolution, activeModel.resolutions),
@@ -221,7 +225,7 @@ export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {})
       speed: activeModel.speed_range ? clamp(prev.speed, activeModel.speed_range) : prev.speed,
       instructions: activeModel.supports_instructions ? prev.instructions : '',
     }));
-  }, [activeModel, mode]);
+  }
 
   // ── history ────────────────────────────────────────────────────────────────
 
@@ -268,14 +272,15 @@ export function useImagineStudio({ enabled = true }: { enabled?: boolean } = {})
   // Backstop only: a job left pending with no socket to tell us it finished.
   // `pendingIds` is derived, so the effect re-runs when the set changes rather
   // than on every mutation of `results`.
+  // The poll reads the *current* pending ids when it fires. An effect event
+  // does that without a ref written during render, which the compiler refuses.
   const pendingKey = pendingIds.join(',');
-  const pendingRef = useRef(pendingIds);
-  pendingRef.current = pendingIds;
+  const pollPending = useEffectEvent(() => void refreshPending(pendingIds));
   useEffect(() => {
     if (!enabled || isConnected || pendingKey === '') return;
-    const timer = setInterval(() => void refreshPending(pendingRef.current), FALLBACK_POLL_MS);
+    const timer = setInterval(() => pollPending(), FALLBACK_POLL_MS);
     return () => clearInterval(timer);
-  }, [enabled, isConnected, pendingKey, refreshPending]);
+  }, [enabled, isConnected, pendingKey]);
 
   // ── actions ────────────────────────────────────────────────────────────────
 

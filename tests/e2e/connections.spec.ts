@@ -22,9 +22,18 @@ async function freshLogin() {
   return body.access ?? body.access_token;
 }
 
+/* One account for the whole file, minted once — the same rule
+   mobile-layout.spec.ts follows. Registering per test runs straight into the
+   register throttle (3/minute in settings/base.py), and every test after the
+   third then fails on the login screen rather than on anything about
+   Connections. */
+let TOKEN = '';
+test.beforeAll(async () => {
+  TOKEN = await freshLogin();
+});
+
 async function signedIn(page: import('@playwright/test').Page) {
-  const token = await freshLogin();
-  await page.addInitScript((t) => localStorage.setItem('access_token', t), token);
+  await page.addInitScript((t) => localStorage.setItem('access_token', t), TOKEN);
 }
 
 test.describe('Connections page — happy', () => {

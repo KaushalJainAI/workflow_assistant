@@ -38,10 +38,6 @@ export default function NotificationsTab() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
   const loadNotifications = async () => {
     try {
       const data = await notificationsService.getNotifications();
@@ -52,6 +48,11 @@ export default function NotificationsTab() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a server read; its state lands after the await
+    void loadNotifications();
+  }, []);
 
   const handleMarkAsRead = async (id: number) => {
     try {

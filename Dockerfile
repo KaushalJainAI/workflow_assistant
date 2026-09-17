@@ -1,4 +1,6 @@
-FROM node:20-alpine AS builder
+# Node 22: Vite 8, @rolldown/plugin-babel (the React Compiler) and Vitest 5
+# all require >=22.12, and CI already builds on 22.
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 

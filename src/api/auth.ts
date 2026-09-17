@@ -155,7 +155,7 @@ export const authService = {
       return response.data;
     } catch (error) {
       console.error('Google login error', error);
-      throw new Error('Google sign-in failed. Please try again.');
+      throw new Error('Google sign-in failed. Please try again.', { cause: error });
     }
   },
 
@@ -183,17 +183,17 @@ export const authService = {
           !detail.toLowerCase().includes('internal') &&
           !detail.toLowerCase().includes('server error')
         ) {
-          throw new Error(detail);
+          throw new Error(detail, { cause: error });
         }
-        throw new Error('Invalid email or password. Please try again.');
+        throw new Error('Invalid email or password. Please try again.', { cause: error });
       }
 
       if (status === 429) {
-        throw new Error('Too many login attempts. Please wait a moment and try again.');
+        throw new Error('Too many login attempts. Please wait a moment and try again.', { cause: error });
       }
 
       // Network or unknown error — don't expose internals
-      throw new Error('Unable to connect. Please check your internet connection and try again.');
+      throw new Error('Unable to connect. Please check your internet connection and try again.', { cause: error });
     }
   },
 
@@ -218,24 +218,24 @@ export const authService = {
       const msg = detail.toLowerCase();
 
       if (msg.includes('username') && msg.includes('exist')) {
-        throw new Error('An account with this email already exists.');
+        throw new Error('An account with this email already exists.', { cause: error });
       }
       if (msg.includes('email') && (msg.includes('exist') || msg.includes('already'))) {
-        throw new Error('An account with this email already exists.');
+        throw new Error('An account with this email already exists.', { cause: error });
       }
       if (msg.includes('password') && msg.includes('common')) {
-        throw new Error('This password is too common. Please choose a stronger password.');
+        throw new Error('This password is too common. Please choose a stronger password.', { cause: error });
       }
       if (msg.includes('password') && msg.includes('short')) {
-        throw new Error('Password is too short. Please use at least 8 characters.');
+        throw new Error('Password is too short. Please use at least 8 characters.', { cause: error });
       }
       if (msg.includes('password') && msg.includes('numeric')) {
-        throw new Error('Password cannot be entirely numeric.');
+        throw new Error('Password cannot be entirely numeric.', { cause: error });
       }
 
       // Rethrow as-is if we have a clean detail from the backend
-      if (detail) throw new Error(detail);
-      throw new Error('Registration failed. Please try again.');
+      if (detail) throw new Error(detail, { cause: error });
+      throw new Error('Registration failed. Please try again.', { cause: error });
     }
   },
 

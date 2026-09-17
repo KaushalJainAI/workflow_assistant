@@ -64,11 +64,13 @@ const Sidebar = () => {
         return () => MOBILE_QUERY.removeEventListener('change', onCross);
     }, []);
 
-    // Auto-close drawer on mobile when route changes
-    useEffect(() => {
+    // Auto-close drawer on mobile when route changes. During render rather
+    // than in an effect, so the new page never paints under an open drawer.
+    const [seenPath, setSeenPath] = useState(location.pathname);
+    if (location.pathname !== seenPath) {
+        setSeenPath(location.pathname);
         if (isMobile) setCollapsed(true);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [location.pathname]);
+    }
 
     // Escape closes the mobile drawer — it is a modal overlay, and the only
     // other way out is hitting the backdrop, which is a small target beside a

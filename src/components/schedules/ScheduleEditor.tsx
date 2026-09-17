@@ -121,10 +121,14 @@ export default function ScheduleEditor({
   // The spec is derived from the cron the parent holds, so this component has
   // no second source of truth to keep in step — `cron` is the only state.
   const [spec, setSpec] = useState<ScheduleSpec>(() => fromCron(value.cron));
-  const [preview, setPreview] = useState<SchedulePreview | null>(null);
-  const [checking, setChecking] = useState(false);
+  const [lastPreview, setPreview] = useState<SchedulePreview | null>(null);
+  // The inputs of the last preview that settled. Checking is derived from it
+  // (the current inputs have not settled yet) rather than set true at the
+  // start of each request, which was a synchronous setState in an effect.
+  const previewKey = [value.cron, value.timezone, value.startsAt, value.endsAt].join("|");
+  const [settledKey, setSettledKey] = useState<string | null>(null);
 
-  const zones = useMemo(allZones, []);
+  const zones = useMemo(() => allZones(), []);
   const set = (patch: Partial<ScheduleDraft>) => onChange({ ...value, ...patch });
 
   const applySpec = (next: ScheduleSpec) => {
@@ -134,11 +138,13 @@ export default function ScheduleEditor({
 
   // Re-derive when the parent swaps in a different schedule (opening another
   // row in the same modal), but not on our own writes — comparing the compiled
-  // cron is what distinguishes the two.
-  useEffect(() => {
+  // cron is what distinguishes the two. During render, not in an effect, so
+  // the swapped-in schedule never paints one frame of the old one's controls.
+  const [seenCron, setSeenCron] = useState(value.cron);
+  if (value.cron !== seenCron) {
+    setSeenCron(value.cron);
     if (toCron(spec) !== value.cron) setSpec(fromCron(value.cron));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value.cron]);
+  }
 
   // The server's reading. Debounced, and every in-flight answer is checked
   // against the request that is current when it lands — otherwise a slow reply
@@ -146,12 +152,15 @@ export default function ScheduleEditor({
   const latest = useRef(0);
   useEffect(() => {
     const cron = value.cron.trim();
+    // Nothing to ask about. The stale reading is hidden below rather than
+    // cleared here, and the ticket is bumped so a reply still in flight for
+    // the expression that was just deleted cannot land.
     if (!cron) {
-      setPreview(null);
+      latest.current += 1;
       return;
     }
     const ticket = ++latest.current;
-    setChecking(true);
+    const requested = previewKey;
     const timer = setTimeout(async () => {
       try {
         const res = await triggersService.preview({
@@ -167,12 +176,15 @@ export default function ScheduleEditor({
         // form. The local reading below still stands.
         if (ticket === latest.current) setPreview(null);
       } finally {
-        if (ticket === latest.current) setChecking(false);
+        if (ticket === latest.current) setSettledKey(requested);
       }
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [value.cron, value.timezone, value.startsAt, value.endsAt]);
+  }, [previewKey, value.cron, value.timezone, value.startsAt, value.endsAt]);
 
+  // A blank expression has no server reading, whatever the last one was.
+  const preview = value.cron.trim() ? lastPreview : null;
+  const checking = Boolean(value.cron.trim()) && settledKey !== previewKey;
   const localReading = describeLocally(spec, value.timezone);
   const reading = preview?.description || localReading;
 

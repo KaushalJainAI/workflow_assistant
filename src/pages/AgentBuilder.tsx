@@ -325,11 +325,13 @@ export default function AgentBuilder() {
   // directly, so a third constant here was dead and failed the build.)
   // Seed a blank board once from the account default. Guarded so it never
   // stomps an edit, a builder-chat proposal, or the loaded agent.
-  const userDefaultsApplied = useRef(false);
-  useEffect(() => {
-    if (!isNew || userDefaultsApplied.current || !user) return;
-    if (touched.size > 0) { userDefaultsApplied.current = true; return; }
-    setCfg((c) => {
+  // State rather than a ref, and applied during render rather than in an
+  // effect: the board is seeded before it first paints instead of flashing the
+  // platform default and then re-rendering.
+  const [userDefaultsApplied, setUserDefaultsApplied] = useState(false);
+  if (isNew && !userDefaultsApplied && user) {
+    setUserDefaultsApplied(true);
+    if (touched.size === 0) setCfg((c) => {
       if (c.provider !== DEFAULT_AGENT.provider || c.model !== '' || c.effort !== DEFAULT_AGENT.effort) return c;
       return {
         ...c,
@@ -338,8 +340,7 @@ export default function AgentBuilder() {
         effort: user.llm_effort ?? c.effort,
       };
     });
-    userDefaultsApplied.current = true;
-  }, [isNew, user, touched]);
+  }
 
   const { data: existing, isLoading } = useQuery({
     queryKey: ['agent', id],

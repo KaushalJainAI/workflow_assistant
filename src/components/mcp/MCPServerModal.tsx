@@ -120,51 +120,61 @@ export default function MCPServerModal({
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    setError(null);
-    if (initialData) {
-      setName(initialData.name);
-      setType(initialData.type);
-      setCommand(initialData.command || '');
-      setUrl(initialData.url || '');
-      setArgsRows(initialData.args && initialData.args.length > 0 ? [...initialData.args] : ['']);
-      // Write-only on the backend: saved env values never come back, so start
-      // blank and only send env if the user actually changes something.
-      setEnvRows([{ key: '', value: '' }]);
-      setEnvDirty(false);
-      setCredMapRows(
-        Object.entries(initialData.credential_env_map ?? {}).map(([envVar, mapping]) => {
-          const idx = String(mapping).indexOf(':');
-          return idx > 0
-            ? { envVar, slug: String(mapping).slice(0, idx), field: String(mapping).slice(idx + 1) }
-            : { envVar, slug: '', field: '' };
-        })
-      );
-      setHeaderRows(Object.entries(initialData.credential_header_map ?? {}).map(([header, template]) => ({ header, template })));
-      setRequiredCreds(initialData.required_credential_types || []);
-      setSetupNotes(initialData.setup_notes || '');
-      setEnabled(initialData.enabled);
-    } else {
-      setName('');
-      /* Remote first: production refuses local-process servers
-         (`MCP_ALLOW_STDIO=False`), and a hosted endpoint costs this box no memory. */
-      setType('http');
-      setCommand('');
-      setUrl('');
-      setArgsRows(['']);
-      setEnvRows([{ key: '', value: '' }]);
-      setEnvDirty(false);
-      setCredMapRows([{ envVar: '', slug: '', field: '' }]);
-      setHeaderRows([{ header: '', template: '' }]);
-      setTokenSlug('');
-      setTokenField('');
-      setRequiredCreds([]);
-      setSetupNotes('');
-      setEnabled(true);
-      setShowPreview(false);
+  // Reset the form when the modal opens or is pointed at a different record.
+  // Adjusted during render rather than in an effect: an effect paints the
+  // previous record's values for one frame and then re-renders to replace
+  // them, which is the cascading render React's docs (and the compiler's
+  // lint) steer away from. Same trigger as the effect had: any change to
+  // these inputs while open.
+  const resetInputs = [isOpen, initialData] as const;
+  const [seenInputs, setSeenInputs] = useState<typeof resetInputs | null>(null);
+  if (!seenInputs || resetInputs.some((input, i) => input !== seenInputs[i])) {
+    setSeenInputs(resetInputs);
+    if (isOpen) {
+        setError(null);
+        if (initialData) {
+          setName(initialData.name);
+          setType(initialData.type);
+          setCommand(initialData.command || '');
+          setUrl(initialData.url || '');
+          setArgsRows(initialData.args && initialData.args.length > 0 ? [...initialData.args] : ['']);
+          // Write-only on the backend: saved env values never come back, so start
+          // blank and only send env if the user actually changes something.
+          setEnvRows([{ key: '', value: '' }]);
+          setEnvDirty(false);
+          setCredMapRows(
+            Object.entries(initialData.credential_env_map ?? {}).map(([envVar, mapping]) => {
+              const idx = String(mapping).indexOf(':');
+              return idx > 0
+                ? { envVar, slug: String(mapping).slice(0, idx), field: String(mapping).slice(idx + 1) }
+                : { envVar, slug: '', field: '' };
+            })
+          );
+          setHeaderRows(Object.entries(initialData.credential_header_map ?? {}).map(([header, template]) => ({ header, template })));
+          setRequiredCreds(initialData.required_credential_types || []);
+          setSetupNotes(initialData.setup_notes || '');
+          setEnabled(initialData.enabled);
+        } else {
+          setName('');
+          /* Remote first: production refuses local-process servers
+             (`MCP_ALLOW_STDIO=False`), and a hosted endpoint costs this box no memory. */
+          setType('http');
+          setCommand('');
+          setUrl('');
+          setArgsRows(['']);
+          setEnvRows([{ key: '', value: '' }]);
+          setEnvDirty(false);
+          setCredMapRows([{ envVar: '', slug: '', field: '' }]);
+          setHeaderRows([{ header: '', template: '' }]);
+          setTokenSlug('');
+          setTokenField('');
+          setRequiredCreds([]);
+          setSetupNotes('');
+          setEnabled(true);
+          setShowPreview(false);
+        }
     }
-  }, [isOpen, initialData]);
+  }
 
   // ---- Credential helpers -------------------------------------------------
 

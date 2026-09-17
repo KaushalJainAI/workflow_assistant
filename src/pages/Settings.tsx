@@ -103,7 +103,11 @@ export default function Settings() {
     ? nearestEffort(formData.llm_effort, effortLevels)
     : '';
 
-  useEffect(() => {
+  // Load the account into the form whenever the account object changes.
+  // During render, not in an effect, so the form never paints blank first.
+  const [seenUser, setSeenUser] = useState<typeof user | undefined>(undefined);
+  if (user !== seenUser) {
+    setSeenUser(user);
     if (user) {
       setFormData({
         instance_name: user.instance_name || 'AIAAS Instance',
@@ -123,13 +127,7 @@ export default function Settings() {
         default_max_tokens: user.default_max_tokens || 2048,
       });
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (activeTab === 'api') {
-      loadApiKey();
-    }
-  }, [activeTab]);
+  }
 
   const loadApiKey = async () => {
     try {
@@ -139,6 +137,13 @@ export default function Settings() {
       console.error('Failed to load API key:', error);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'api') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a server read; its state lands after the await
+      void loadApiKey();
+    }
+  }, [activeTab]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

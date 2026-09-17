@@ -54,10 +54,13 @@ export default function Select({
 
   const selectedOption = options.find(opt => opt.value === value);
 
-  // Reset highlighted index when filtered options change
-  useEffect(() => {
+  // Reset highlighted index when filtered options change. Adjusted during
+  // render: an effect would paint the stale highlight for one frame first.
+  const [seenFilter, setSeenFilter] = useState([filteredOptions.length, searchQuery] as const);
+  if (seenFilter[0] !== filteredOptions.length || seenFilter[1] !== searchQuery) {
+    setSeenFilter([filteredOptions.length, searchQuery]);
     setHighlightedIndex(0);
-  }, [filteredOptions.length, searchQuery]);
+  }
 
   // Scroll highlighted item into view
   useEffect(() => {
@@ -81,21 +84,25 @@ export default function Select({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Focus search input when dropdown opens
-  useEffect(() => {
-    if (isOpen && showSearch) {
-      setTimeout(() => searchInputRef.current?.focus(), 0);
-    }
+  // Opening highlights the current value; closing clears the search. Both are
+  // state derived from `isOpen` changing, so they happen during render.
+  const [seenOpen, setSeenOpen] = useState(isOpen);
+  if (isOpen !== seenOpen) {
+    setSeenOpen(isOpen);
     if (isOpen) {
-      // Set highlight to currently selected option
       const idx = filteredOptions.findIndex(opt => opt.value === value);
       setHighlightedIndex(idx >= 0 ? idx : 0);
-    }
-    if (!isOpen) {
+    } else {
       setSearchQuery('');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }
+
+  // Focusing the search box is a real side effect on the DOM, so it stays one.
+  useEffect(() => {
+    if (!isOpen || !showSearch) return;
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [isOpen, showSearch]);
 
   const handleSelect = useCallback((optionValue: string) => {
     onChange(optionValue);

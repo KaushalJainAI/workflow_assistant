@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   X, 
   Eye, 
@@ -65,8 +65,16 @@ export default function CredentialModal({
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Initialize form when opening/changing props
-  useEffect(() => {
+  // Reset the form when the modal opens or is pointed at a different record.
+  // Adjusted during render rather than in an effect: an effect paints the
+  // previous record's values for one frame and then re-renders to replace
+  // them, which is the cascading render React's docs (and the compiler's
+  // lint) steer away from. Same trigger as the effect had: any change to
+  // these inputs while open.
+  const resetInputs = [isOpen, initialData, credentialTypes] as const;
+  const [seenInputs, setSeenInputs] = useState<typeof resetInputs | null>(null);
+  if (!seenInputs || resetInputs.some((input, i) => input !== seenInputs[i])) {
+    setSeenInputs(resetInputs);
     if (isOpen) {
       setError(null);
       if (initialData) {
@@ -92,7 +100,7 @@ export default function CredentialModal({
         setSearchTerm('');
       }
     }
-  }, [isOpen, initialData, credentialTypes]);
+  }
 
   const handleSelectType = (type: CredentialType) => {
     setSelectedType(type);
