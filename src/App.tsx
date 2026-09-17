@@ -36,6 +36,7 @@ const lazyPage = <T extends { default: React.ComponentType }>(
 ) => lazy(load);
 
 const AIChat = lazyPage(() => import('./pages/AIChat'));
+const Legal = lazy(() => import('./pages/Legal'));
 const AgentBuilder = lazyPage(() => import('./pages/AgentBuilder'));
 const AgentHistory = lazyPage(() => import('./pages/AgentHistory'));
 const Agents = lazyPage(() => import('./pages/Agents'));
@@ -133,6 +134,8 @@ const AppContent = () => {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/auth/google/callback" element={<GoogleCallback />} />
+          <Route path="/terms" element={<Legal doc="terms" />} />
+          <Route path="/privacy" element={<Legal doc="privacy" />} />
 
           {/* Landing — guests get a dedicated minimal page; authed users go to /ai-chat */}
           {/* A publicly shared agent. Outside ProtectedRoute on purpose: it is

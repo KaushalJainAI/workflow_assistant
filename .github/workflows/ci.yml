@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [agent, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # `tsc -b --force`, not `tsc --noEmit`: the root tsconfig only holds
+      # project references, so a plain noEmit run checks zero files.
+      - name: Typecheck
+        run: npx tsc -b --force
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npx vite build

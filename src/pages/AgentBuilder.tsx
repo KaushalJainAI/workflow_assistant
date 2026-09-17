@@ -1156,11 +1156,6 @@ export default function AgentBuilder() {
                     ? 'Pings you when it pauses, then again after an hour and a day.'
                     : "No pings for this agent — it still waits in your Inbox and in the daily summary."} />
               </Knob>
-              <Knob path="reviewAgent" touched={touched} label="">
-                <Toggle on={cfg.reviewAgent} onChange={(v) => set('reviewAgent', v)}
-                  label="Review agent"
-                  hint="Coming soon — automatic reviews." />
-              </Knob>
               <Knob path="spendCapRupees" touched={touched} label="Spend cap" hint="per month">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">₹</span>

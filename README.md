@@ -1,98 +1,64 @@
-# Nexus (Better n8n)
+# AIAAS Frontend
 
-Nexus is a modern, AI-powered n8n clone built with React, TypeScript, and ReactFlow.
+[![ci](https://github.com/KaushalJainAI/workflow_assistant/actions/workflows/ci.yml/badge.svg?branch=agent)](https://github.com/KaushalJainAI/workflow_assistant/actions/workflows/ci.yml)
 
-## Documentation
+The web app for **AIAAS**, a platform for building AI agents that do real work
+on a user's behalf and stop to ask before anything irreversible. The backend
+lives in [`AIAAS_Backend`](https://github.com/KaushalJainAI/AIAAS_Backend).
 
-For a detailed explanation of the project structure, components, and architecture, please refer to:
- **[documentation.md](./documentation.md)**
+React 19 · TypeScript · Vite · Tailwind · TanStack Query · Zustand
 
-## Features & Capabilities
-Want to see everything this frontend can do? Check out the full feature list:
- **[FEATURES.md](./FEATURES.md)**
+## Screens
 
----
+| Route | What it's for |
+|---|---|
+| `/ai-chat` | Streaming chat with live tool calls, a plan (todo) panel, charts, approvals inline, and **steering**: type while the agent works to redirect it |
+| `/agents`, `/agents/:id` | Agent builder: prompt, model and reasoning effort, granted tools, connector scopes, autonomy level, spend cap, schedules |
+| `/templates` | Install a curated or community agent; requirements are matched to *your* knowledge bases and connections, never someone else's ids |
+| `/overview` | Inbox of runs waiting for a human decision |
+| `/runs` | Run history: each model turn with its reasoning, each tool call, cost |
+| `/schedules` | Cron schedules with a live plain-English reading ("Every weekday at 9:00") |
+| `/connections` | Gmail, Drive, Calendar and MCP servers |
+| `/documents` | File system and knowledge bases |
+| `/evals` | Evaluation suites and human review of grader decisions |
+| `/a/:slug` | Public page for a published agent (no account needed) |
 
-## Quick Start
+## Engineering notes
 
-1. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
+- **Streaming without `EventSource`.** Chat endpoints stream Server-Sent
+  Events over `POST`, which `EventSource` cannot send, so `api/sse.ts` is a
+  single hand-written reader used everywhere.
+- **One WebSocket primitive.** `lib/websocket.ts::useSocket` owns URL
+  resolution, exponential backoff and the remount race guard; no feature opens
+  its own socket.
+- **Lazy routes.** Every page except the auth screens is code-split. The app
+  used to ship as one 1.2 MB chunk behind a login screen that needed none of it.
+- **Render isolation.** The 10 Hz "thinking" timer lives in its own component
+  and `MarkdownMessage` is memoised, so a ticking clock doesn't re-parse the
+  whole transcript's markdown ten times a second.
+- **Wording pinned across the stack.** The schedule description is rendered
+  instantly in the browser and then replaced by the server's reading. Both are
+  tested against the *same* table of expected strings, so the sentence never
+  visibly rewrites itself under the cursor.
+- **Safe redirects.** `lib/nextPath.ts::safeNext` refuses any post-login
+  redirect that isn't a same-origin path. An open redirect on a sign-in page is
+  a phishing primitive.
 
-2. **Run Development Server**:
-   ```bash
-   npm run dev
-   ```
+## Run it locally
 
-## Tech Stack
-- **Frontend**: React 19, TypeScript, Vite
-- **Flow Engine**: ReactFlow
-- **Styling**: TailwindCSS
-- **State Management**: Zustand
-
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev            # http://localhost:5173, expects the backend on :8000
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Checks (all run in CI)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npx tsc -b --force     # typecheck (plain `tsc --noEmit` checks zero files here)
+npm run lint           # zero-warning baseline
+npm test               # vitest unit tests
+npm run build          # production bundle
 ```
+
+Optional suites: `npm run test:integration` (needs `msw`) and
+`npm run test:e2e` (Playwright, including a mobile-layout spec).

@@ -603,118 +603,49 @@ export default function Settings() {
         );
 
       case 'billing':
+        // Early access has no paid plans. This tab used to render three price
+        // cards with "Upgrade" buttons wired to nothing and limits written for
+        // the retired workflow product; a screen promising a purchase that
+        // cannot happen is worse than one saying plainly that there is none.
         return (
-          <div className="space-y-8 max-w-7xl">
+          <div className="space-y-8 max-w-3xl">
             <div>
-              <h3 className="text-2xl font-bold tracking-tight">Billing & plans</h3>
-              <p className="text-muted-foreground mt-1">Manage your subscription and usage limits</p>
+              <h3 className="text-2xl font-bold tracking-tight">Usage</h3>
+              <p className="text-muted-foreground mt-1">
+                Early access is free. Each account has a credit allowance so one runaway agent cannot spend it all.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="p-6 rounded-xl border border-border/60 bg-card/50">
                 <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-blue-500/12 rounded-xl">
-                    <Zap className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Monthly executions</p>
-                    <h3 className="text-2xl font-bold">{user?.credits || 0} / 50,000</h3>
-                  </div>
-                </div>
-                <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full bg-primary w-[25%] rounded-full shadow-[0_0_8px_hsl(var(--primary)/0.2)]" />
-                </div>
-              </div>
-
-              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
-                 <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-purple-500/12 rounded-xl">
-                    <Rocket className="w-5 h-5 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Tier</p>
-                    <h3 className="text-2xl font-bold capitalize">{user?.tier || 'Free'}</h3>
-                  </div>
-                </div>
-                <div className="mt-4 h-2 bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full bg-purple-600 w-[100%] rounded-full opacity-20" />
-                </div>
-              </div>
-
-              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
-                 <div className="flex items-center gap-4">
                   <div className="p-2.5 bg-emerald-500/12 rounded-xl">
                     <CreditCard className="w-5 h-5 text-emerald-400" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Credits remaining</p>
-                    <h3 className="text-2xl font-bold">{user?.credits || 0}</h3>
+                    <h3 className="text-2xl font-bold">{(user?.credits ?? 0).toLocaleString()}</h3>
                   </div>
                 </div>
-                <div className="mt-4">
-                  <span className="text-sm text-muted-foreground">Next refill: Next Month</span>
-                </div>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  One credit covers roughly 1,000 tokens of model usage on the platform key.
+                </p>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {[
-                {
-                  name: 'Starter',
-                  price: '$0',
-                  description: 'Perfect for testing and personal projects',
-                  features: ['5 active workflows', '1,000 executions/month', 'Community support', 'Basic integrations', '7-day history']
-                },
-                {
-                  name: 'Pro',
-                  price: '$29',
-                  period: '/month',
-                  description: 'For professionals and growing teams',
-                  features: ['Unlimited workflows', '50,000 executions/month', 'Priority email support', 'Advanced integrations', '30-day history', 'AI Generation'],
-                  highlight: true
-                },
-                {
-                  name: 'Enterprise',
-                  price: 'Custom',
-                  description: 'For large organizations with custom needs',
-                  features: ['Unlimited executions', 'Dedicated manager', 'SSO & Advanced Security', 'Custom SLAs', 'Unlimited history', 'On-premise option']
-                }
-              ].map((plan) => (
-                <div key={plan.name} className={cn(
-                  "rounded-2xl border flex flex-col p-8 relative overflow-hidden transition-all duration-300 hover:shadow-lg bg-card/50",
-                  plan.highlight ? "border-primary/50 shadow-xl shadow-primary/10 scale-105 z-10" : "border-border/60"
-                )}>
-                  {plan.highlight && (
-                    <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wider">
-                      POPULAR
-                    </div>
-                  )}
-                  <div className="mb-6">
-                    <h3 className="text-xl font-bold">{plan.name}</h3>
-                    <p className="text-muted-foreground text-sm mt-2">{plan.description}</p>
+              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-purple-500/12 rounded-xl">
+                    <Rocket className="w-5 h-5 text-purple-400" />
                   </div>
-                  <div className="mb-6">
-                    <span className="text-4xl font-bold">{plan.price}</span>
-                    {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Plan</p>
+                    <h3 className="text-2xl font-bold capitalize">{user?.tier || 'Free'}</h3>
                   </div>
-                  <ul className="space-y-3 mb-8 flex-1">
-                    {plan.features.map((feature, i) => (
-                      <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
-                        <Check className="w-4 h-4 text-emerald-500" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <button className={cn(
-                    "w-full py-2.5 rounded-lg font-medium transition-all active:scale-[0.98]",
-                    plan.highlight 
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm" 
-                      : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                  )}>
-                    {user?.tier?.toLowerCase() === plan.name.toLowerCase() ? 'Current Plan' : 'Upgrade'}
-                  </button>
                 </div>
-              ))}
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Free models and calls made with your own provider keys never use credits.
+                </p>
+              </div>
             </div>
           </div>
         );
@@ -725,7 +656,7 @@ export default function Settings() {
       default:
         return (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
-            <p>Settings for {activeTab} coming soon...</p>
+            <p>Choose a section on the left.</p>
           </div>
         );
     }

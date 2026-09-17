@@ -138,9 +138,6 @@ export function propose(
   if (has(t, 'review every', 'check every step', 'high stakes', 'approve each')) {
     add('autonomy', 'Autonomy', 'review', 'You asked to see every step.');
   }
-  if (has(t, 'double check', 'second opinion', 'review agent', 'grade')) {
-    if (!cfg.reviewAgent) add('reviewAgent', 'Review agent', true, 'You asked for a second checker.');
-  }
 
   // --- temperature ----------------------------------------------------------
   if (has(t, 'extract', 'exact', 'precise', 'accurate', 'classif', 'parse', 'validate')) {
