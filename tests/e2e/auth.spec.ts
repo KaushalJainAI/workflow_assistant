@@ -15,6 +15,9 @@ test.describe('auth — happy', () => {
     // test waited 30 s for an email field on the not-found page.
     await page.goto('/signup');
     const email = uniqueEmail();
+    // Full Name is `required`: left blank, the browser's own constraint
+    // validation blocks the submit and no request is ever sent.
+    await page.getByLabel(/full name/i).fill('E2E Tester');
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).first().fill('Sup3r$ecret-e2e!');
     // Some forms have a confirm field

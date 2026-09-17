@@ -34,5 +34,11 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Real pages against a mocked network (MSW + jsdom). Not in CI before,
+      # which is how it sat unrunnable (no jsdom installed) and then stale (a
+      # deleted page, fixtures for routes that no longer exist) unnoticed.
+      - name: Integration tests
+        run: npm run test:integration
+
       - name: Build
         run: npx vite build

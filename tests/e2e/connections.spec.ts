@@ -60,9 +60,11 @@ test.describe('Connections page — happy', () => {
     await page.goto('/connections');
     // Collapsed by default: the raw server config must not be the first thing
     // a non-technical user meets.
-    await expect(page.getByText('Add MCP server')).toBeHidden();
+    // The button reads "Add custom server" (the MCP vocabulary was dropped from
+    // the page copy); exact, because the collapsed header says "Add a custom server".
+    await expect(page.getByText('Add custom server', { exact: true })).toBeHidden();
     await page.getByText('Advanced', { exact: true }).click();
-    await expect(page.getByText('Add MCP server')).toBeVisible();
+    await expect(page.getByText('Add custom server', { exact: true })).toBeVisible();
   });
 
   test('turning a curated connection off does not fail with 403', async ({ page }) => {

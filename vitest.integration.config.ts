@@ -12,6 +12,10 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // The app calls relative `/api/...` URLs, which jsdom resolves against its
+    // own origin (localhost:3000 by default) — so every MSW handler, written
+    // for localhost:8000, missed and the request failed as a network error.
+    environmentOptions: { jsdom: { url: 'http://localhost:8000' } },
     globals: true,
     setupFiles: ['./tests/integration/setup.ts'],
     include: ['tests/integration/**/*.test.{ts,tsx}'],
