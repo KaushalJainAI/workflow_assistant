@@ -25,6 +25,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/authState';
 import { authService } from '../api/auth';
 import Select from '../components/ui/Select';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import NotificationsTab from '../components/settings/NotificationsTab';
 import { useAIModels } from '../hooks/useAIModels';
 import {
@@ -62,6 +63,7 @@ export default function Settings() {
   const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [confirmRegenKey, setConfirmRegenKey] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -174,12 +176,13 @@ export default function Settings() {
   };
 
   const handleRegenerateKey = async () => {
-    if (!confirm('Are you sure? This will invalidate your old key.')) return;
     try {
       const data = await authService.regenerateApiKey();
       setApiKey(data.key);
     } catch (error) {
       console.error('Failed to regenerate API key:', error);
+    } finally {
+      setConfirmRegenKey(false);
     }
   };
 
@@ -266,7 +269,7 @@ export default function Settings() {
                     name="instance_name"
                     value={formData.instance_name}
                     onChange={handleInputChange}
-                    className="px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                    className="px-3 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors duration-200"
                   />
                 </div>
                 
@@ -433,7 +436,7 @@ export default function Settings() {
                       name="first_name"
                       value={formData.first_name}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                      className="w-full px-3 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors duration-200"
                     />
                   </div>
                   <div>
@@ -443,7 +446,7 @@ export default function Settings() {
                       name="last_name"
                       value={formData.last_name}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                      className="w-full px-3 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors duration-200"
                     />
                   </div>
                 </div>
@@ -454,7 +457,7 @@ export default function Settings() {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200"
+                    className="w-full px-3 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors duration-200"
                   />
                 </div>
                 <div>
@@ -464,7 +467,7 @@ export default function Settings() {
                     value={formData.bio}
                     onChange={handleInputChange}
                     rows={3}
-                    className="w-full px-3 py-2 border border-input rounded-lg bg-background/50 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 resize-none"
+                    className="w-full px-3 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors duration-200 resize-none"
                     placeholder="Tell us a bit about yourself..."
                   />
                 </div>
@@ -477,7 +480,7 @@ export default function Settings() {
                 </p>
                 <button 
                   onClick={handleLogout}
-                  className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-all duration-200 rounded-lg font-medium border border-border/60"
+                  className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors duration-200 rounded-lg font-medium border border-border/60"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -504,9 +507,9 @@ export default function Settings() {
                       <button
                         key={id}
                         onClick={() => setTheme(id)}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors duration-200 ${
                           theme === id 
-                            ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10' 
+                            ? 'border-primary bg-primary/5 shadow-sm' 
                             : 'border-border hover:border-primary/50'
                         }`}
                       >
@@ -527,9 +530,9 @@ export default function Settings() {
                       <button
                         key={id}
                         onClick={() => setColorTheme(id)}
-                        className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 relative overflow-hidden group/palette ${
+                        className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-colors duration-300 relative overflow-hidden group/palette ${
                           colorTheme === id 
-                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/5' 
+                            ? 'border-primary bg-primary/5 shadow-sm' 
                             : 'border-border hover:border-primary/40 hover:bg-muted/30'
                         }`}
                       >
@@ -559,14 +562,14 @@ export default function Settings() {
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-medium">API key</p>
                     <button 
-                      onClick={handleRegenerateKey}
+                      onClick={() => setConfirmRegenKey(true)}
                       className="text-sm text-primary hover:underline"
                     >
                       Regenerate
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 p-2 bg-background/50 border border-input rounded-lg text-sm font-mono overflow-hidden text-ellipsis">
+                    <code className="flex-1 p-2 bg-background border border-input rounded-lg text-sm font-mono overflow-hidden text-ellipsis">
                       {apiKey || '••••••••••••••••••••••••••••••••'}
                     </code>
                     <button 
@@ -582,7 +585,7 @@ export default function Settings() {
                 </div>
                 <div className="p-4 bg-muted/50 rounded-lg">
                   <p className="font-medium mb-2">Webhook URL</p>
-                  <code className="block p-2 bg-background/50 border border-input rounded-lg text-sm font-mono break-all">
+                  <code className="block p-2 bg-background border border-input rounded-lg text-sm font-mono break-all">
                     {window.location.origin}/api/webhook/
                   </code>
                 </div>
@@ -617,10 +620,10 @@ export default function Settings() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
+              <div className="p-6 rounded-lg border border-border bg-card">
                 <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-emerald-500/12 rounded-xl">
-                    <CreditCard className="w-5 h-5 text-emerald-400" />
+                  <div className="p-2.5 bg-success-subtle rounded-lg border border-border">
+                    <CreditCard className="w-5 h-5 text-success" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Credits remaining</p>
@@ -632,10 +635,10 @@ export default function Settings() {
                 </p>
               </div>
 
-              <div className="p-6 rounded-xl border border-border/60 bg-card/50">
+              <div className="p-6 rounded-lg border border-border bg-card">
                 <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-purple-500/12 rounded-xl">
-                    <Rocket className="w-5 h-5 text-purple-400" />
+                  <div className="p-2.5 bg-agent-subtle rounded-lg border border-agent-line">
+                    <Rocket className="w-5 h-5 text-agent" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Plan</p>
@@ -667,14 +670,14 @@ export default function Settings() {
       {/* Settings Sidebar */}
       {/* pl-12 on mobile: this rail is the topmost element on a phone, so the
           Sidebar's fixed hamburger would land on the first tab. */}
-      <div className="w-full md:w-64 border-b md:border-r md:border-b-0 border-border/60 bg-card/80 backdrop-blur-xl p-2 pl-12 md:p-4 shrink-0 overflow-x-auto scrollbar-none">
+      <div className="w-full md:w-64 border-b md:border-r md:border-b-0 border-border bg-card p-2 pl-12 md:p-4 shrink-0 overflow-x-auto scrollbar-none">
         <h2 className="text-lg font-semibold mb-2 md:mb-4 px-2 hidden md:block">Settings</h2>
         <nav className="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-1 min-w-max md:min-w-0 pb-1 md:pb-0">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg transition-all duration-200 relative whitespace-nowrap ${
+              className={`flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg transition-colors duration-200 relative whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -706,13 +709,13 @@ export default function Settings() {
           
           {['general', 'account', 'appearance'].includes(activeTab) && (
             <div className="mt-8 pt-6 border-t border-border flex justify-end gap-2">
-              <button className="px-4 py-2 border border-border/60 rounded-lg hover:bg-muted transition-colors">
+              <button className="px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors">
                 Cancel
               </button>
               <button 
                 onClick={handleSave}
                 disabled={isSaving}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-200 shadow-sm active:scale-[0.98] font-medium disabled:opacity-50"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors shadow-sm font-medium disabled:opacity-50"
               >
                 {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
@@ -720,6 +723,15 @@ export default function Settings() {
           )}
         </div>
       </div>
+      {confirmRegenKey && (
+        <ConfirmDialog
+          title="Regenerate API key?"
+          body="This invalidates your old key immediately. Update anywhere it is used."
+          confirmLabel="Regenerate"
+          onCancel={() => setConfirmRegenKey(false)}
+          onConfirm={handleRegenerateKey}
+        />
+      )}
     </div>
   );
 }

@@ -133,7 +133,7 @@ export default function FolderTile({
       {...dragHandlers}
       onDoubleClick={() => onOpen(folder)}
       className={cn(
-        'group relative rounded-xl border p-4 cursor-pointer transition-all',
+        'group relative rounded-lg border p-4 cursor-pointer card-hover',
         isDropTarget
           ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-400'
           : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-sm'

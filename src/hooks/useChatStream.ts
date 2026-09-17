@@ -12,7 +12,7 @@
  * the state that lives and dies with the turn.
  */
 
-import { useCallback, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData } from '../api/chat';
 import type { ChatMediaItem, CodeExecutionEntry } from '../api/chat';
 
@@ -137,6 +137,7 @@ const EMPTY: ChatStreamState = {
 type Action =
   | { type: 'event'; event: StreamEvent }
   | { type: 'reset' }
+  | { type: 'events'; events: StreamEvent[] }
   | { type: 'clearStatus' }
   | { type: 'clearPendingToolCall' }
   | { type: 'dismissBlockedAttachments' };
@@ -248,6 +249,8 @@ function reducer(state: ChatStreamState, action: Action): ChatStreamState {
   switch (action.type) {
     case 'event':
       return reduceEvent(state, action.event);
+    case 'events':
+      return action.events.reduce(reduceEvent, state);
     case 'reset':
       return EMPTY;
     case 'clearStatus':
@@ -259,11 +262,68 @@ function reducer(state: ChatStreamState, action: Action): ChatStreamState {
   }
 }
 
+/**
+ * Token frames. A provider streams one per token, often each in its own network
+ * read, and every one used to be its own dispatch: a re-render of the whole
+ * chat page per token, with the live answer's markdown re-parsed each time.
+ * These are folded once per animation frame instead, which is as often as the
+ * screen can show them anyway.
+ */
+const COALESCED = new Set(['content_chunk', 'thinking_chunk']);
+
+const scheduleFrame = (callback: () => void): number =>
+  typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame(callback)
+    : (setTimeout(callback, 16) as unknown as number);
+
+const cancelFrame = (handle: number): void => {
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(handle);
+  else clearTimeout(handle);
+};
+
 export function useChatStream() {
   const [live, dispatch] = useReducer(reducer, EMPTY);
+  const pending = useRef<StreamEvent[]>([]);
+  const frame = useRef<number | null>(null);
 
-  const applyEvent = useCallback((event: StreamEvent) => dispatch({ type: 'event', event }), []);
-  const reset = useCallback(() => dispatch({ type: 'reset' }), []);
+  /** Applies buffered token frames now, ahead of whatever comes next. */
+  const flush = useCallback(() => {
+    if (frame.current !== null) {
+      cancelFrame(frame.current);
+      frame.current = null;
+    }
+    if (pending.current.length === 0) return;
+    const events = pending.current;
+    pending.current = [];
+    dispatch({ type: 'events', events });
+  }, []);
+
+  useEffect(() => () => {
+    if (frame.current !== null) cancelFrame(frame.current);
+  }, []);
+
+  const applyEvent = useCallback((event: StreamEvent) => {
+    if (COALESCED.has(event.type)) {
+      pending.current.push(event);
+      if (frame.current === null) frame.current = scheduleFrame(flush);
+      return;
+    }
+    // Order is the fold's contract: buffered tokens land before any other
+    // frame, so a `content_reset` or `done` never sees a buffer from before it
+    // arrive after it.
+    flush();
+    dispatch({ type: 'event', event });
+  }, [flush]);
+
+  const reset = useCallback(() => {
+    if (frame.current !== null) {
+      cancelFrame(frame.current);
+      frame.current = null;
+    }
+    // Tokens from the turn being discarded must not land in the next one.
+    pending.current = [];
+    dispatch({ type: 'reset' });
+  }, []);
   const clearStatus = useCallback(() => dispatch({ type: 'clearStatus' }), []);
   const clearPendingToolCall = useCallback(() => dispatch({ type: 'clearPendingToolCall' }), []);
   const dismissBlockedAttachments = useCallback(

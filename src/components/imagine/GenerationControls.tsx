@@ -34,7 +34,7 @@ interface Props {
 }
 
 const INPUT_CLASS =
-  'w-full px-3 py-2 text-xs bg-muted/30 border border-border/50 rounded-xl outline-none ' +
+  'w-full px-3 py-2 text-xs bg-muted/30 border border-border/50 rounded-lg outline-none ' +
   'focus:border-primary/50 transition-colors';
 
 /** Which frame slot reads as what. The API spells them `first_frame`/`last_frame`. */
@@ -122,7 +122,7 @@ function UrlList({
             type="button"
             onClick={() => onChange(urls.filter((_, j) => j !== i))}
             title="Remove"
-            className="px-2.5 rounded-xl border border-border/50 text-muted-foreground hover:bg-muted/60 transition-colors"
+            className="px-2.5 rounded-lg border border-border/50 text-muted-foreground hover:bg-muted/60 transition-colors"
           >
             <X size={13} />
           </button>
@@ -374,7 +374,7 @@ export function GenerationControls({ kind, model, params, onChange }: Props) {
             value={params.negativePrompt}
             onChange={e => onChange({ negativePrompt: e.target.value })}
             placeholder="What to avoid — text, watermarks, blur…"
-            className="w-full min-h-[80px] p-3 text-xs bg-muted/30 border border-border/50 rounded-xl outline-none focus:border-primary/50 transition-colors resize-none leading-relaxed"
+            className="w-full min-h-[80px] p-3 text-xs bg-muted/30 border border-border/50 rounded-lg outline-none focus:border-primary/50 transition-colors resize-none leading-relaxed"
           />
         </Field>
       )}
@@ -393,7 +393,7 @@ export function GenerationControls({ kind, model, params, onChange }: Props) {
               type="button"
               onClick={() => onChange({ seed: String(Math.floor(Math.random() * 1_000_000)) })}
               title="Randomize seed"
-              className="px-3 rounded-xl border border-border/50 text-muted-foreground hover:bg-muted/60 transition-colors"
+              className="px-3 rounded-lg border border-border/50 text-muted-foreground hover:bg-muted/60 transition-colors"
             >
               <Dices size={14} />
             </button>

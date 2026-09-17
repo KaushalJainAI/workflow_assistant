@@ -14,7 +14,9 @@ import apiClient from './client';
  * existing rows stay editable — the modal never *creates* one, but it must not
  * silently rewrite a row that already is one.
  */
-export type MCPServerType = 'stdio' | 'http' | 'sse';
+/** `native` is not a transport: a curated card whose tools are built into the
+ *  backend (Gmail, Drive, Sheets, Calendar over REST). Never user-creatable. */
+export type MCPServerType = 'stdio' | 'http' | 'sse' | 'native';
 
 /** The transports that reach a server over the network rather than spawn it. */
 export const REMOTE_SERVER_TYPES: readonly MCPServerType[] = ['http', 'sse'];

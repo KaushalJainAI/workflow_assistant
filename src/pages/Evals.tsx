@@ -23,6 +23,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import PageHeader from '../components/layout/PageHeader';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Button } from '../components/ui/Button';
 import evalsService, {
   type EvalRun, type EvalSuite, type QueueItem, type SupervisionPolicy, type Verdict,
 } from '../api/evals';
@@ -258,7 +260,7 @@ function ReviewQueue({
   if (loading) return <Loading />;
   if (queue.length === 0) {
     return (
-      <Empty
+      <EmptyState
         icon={ClipboardCheck}
         title="Nothing waiting on you"
         body="Results land here when a suite's supervision policy queues them — by default, the ones the graders were least sure about."
@@ -273,7 +275,7 @@ function ReviewQueue({
         kept so agreement stays measurable.
       </p>
       {queue.map((item) => (
-        <div key={item.id} className="rounded-xl border border-border/60 bg-card p-4">
+        <div key={item.id} className="rounded-lg border border-border/60 bg-card p-4">
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{item.case_name || 'Untitled case'}</div>
@@ -363,11 +365,11 @@ function SuiteList({
   if (loading) return <Loading />;
   if (suites.length === 0) {
     return (
-      <Empty
+      <EmptyState
         icon={FlaskConical}
         title="No suites yet"
         body="A suite is a set of cases — a goal and what a good answer looks like — run against one agent."
-        action={<button onClick={onCreate} className="mt-4 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">Create a suite</button>}
+        action={<Button size="md" onClick={onCreate}>Create a suite</Button>}
       />
     );
   }
@@ -375,7 +377,7 @@ function SuiteList({
   return (
     <div className="space-y-3">
       {suites.map((suite) => (
-        <div key={suite.id} className="rounded-xl border border-border/60 bg-card overflow-hidden">
+        <div key={suite.id} className="rounded-lg border border-border/60 bg-card overflow-hidden">
           <div className="p-4 flex items-center justify-between gap-4">
             <button onClick={() => onToggle(suite.id)} className="flex items-center gap-3 min-w-0 text-left">
               <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition', openSuite === suite.id && 'rotate-90')} />
@@ -473,13 +475,13 @@ function RunList({ runs, loading, openRun, onToggle }: {
 }) {
   if (loading) return <Loading />;
   if (runs.length === 0) {
-    return <Empty icon={Activity} title="No sweeps yet" body="Run a suite and its history shows up here." />;
+    return <EmptyState icon={Activity} title="No sweeps yet" body="Run a suite and its history shows up here." />;
   }
 
   return (
     <div className="space-y-2">
       {runs.map((run) => (
-        <div key={run.run_id} className="rounded-xl border border-border/60 bg-card overflow-hidden">
+        <div key={run.run_id} className="rounded-lg border border-border/60 bg-card overflow-hidden">
           <button
             onClick={() => onToggle(run.run_id)}
             className="w-full p-4 flex items-center justify-between gap-4 text-left"
@@ -594,7 +596,7 @@ function CreateSuiteModal({ agents, onClose, onCreated }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/60 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg rounded-lg bg-card border border-border/60 shadow-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
           <h2 className="text-base font-semibold">New eval suite</h2>
           <button onClick={onClose} className="p-1 rounded-lg text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
@@ -688,22 +690,6 @@ function Loading() {
   return (
     <div className="flex items-center justify-center py-12 text-muted-foreground">
       <Loader2 className="w-5 h-5 animate-spin" />
-    </div>
-  );
-}
-
-function Empty({ icon: Icon, title, body, action }: {
-  icon: typeof FlaskConical;
-  title: string;
-  body: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="p-3 rounded-xl bg-muted mb-3"><Icon className="w-6 h-6 text-muted-foreground" /></div>
-      <h3 className="text-sm font-medium">{title}</h3>
-      <p className="text-xs text-muted-foreground mt-1 max-w-md">{body}</p>
-      {action}
     </div>
   );
 }

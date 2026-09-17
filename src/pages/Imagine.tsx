@@ -144,7 +144,7 @@ export default function Imagine() {
         {viewMode === 'agent' && (
           <button
             onClick={() => setShowAgentHistory(true)}
-            className="p-2 rounded-xl border border-border/60 bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="p-2 rounded-lg border border-border/60 bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Conversation history"
             title="Conversations — independent contexts"
           >
@@ -159,13 +159,13 @@ export default function Imagine() {
           </span>
         )}
       </div>
-      <div className="flex p-1 bg-muted/40 rounded-full border border-border/50 shrink-0">
+      <div className="flex p-1 bg-muted rounded-lg border border-border shrink-0">
         {(['agent', 'studio'] as const).map(view => (
           <button
             key={view}
             onClick={() => setViewMode(view)}
             className={cn(
-              'px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors',
+              'px-4 py-1.5 rounded-md text-xs font-semibold capitalize transition-colors',
               viewMode === view
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground',
@@ -182,7 +182,7 @@ export default function Imagine() {
   const agentHistoryDrawer = viewMode === 'agent' && (
     <>
       {showAgentHistory && (
-        <div className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm md:hidden" onClick={() => setShowAgentHistory(false)} />
+        <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setShowAgentHistory(false)} />
       )}
       <div
         className={cn(
@@ -206,7 +206,7 @@ export default function Imagine() {
               agent.newConversation();
               setShowAgentHistory(false);
             }}
-            className="flex w-full items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            className="flex w-full items-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" /> New conversation
           </button>
@@ -227,7 +227,7 @@ export default function Imagine() {
                     setShowAgentHistory(false);
                   }}
                   className={cn(
-                    'group flex items-center gap-2 rounded-xl px-3 py-2.5 text-left cursor-pointer transition-colors border',
+                    'group flex items-center gap-2 rounded-lg px-3 py-2.5 text-left cursor-pointer transition-colors border',
                     agent.conversationId === c.id ? 'bg-primary/10 border-primary/20' : 'hover:bg-muted/60 border-transparent'
                   )}
                 >
@@ -291,15 +291,15 @@ export default function Imagine() {
           <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-5 space-y-6">
             {/* Modality */}
             <div className="flex items-center justify-center">
-              <div className="flex p-1 bg-muted/40 rounded-full border border-border/50">
+              <div className="flex p-1 bg-muted rounded-lg border border-border">
                 {MODES.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setMode(tab.id)}
                     className={cn(
-                      'flex items-center gap-2 px-5 sm:px-7 py-2 rounded-full text-xs font-semibold transition-colors',
+                      'flex items-center gap-2 px-5 sm:px-7 py-2 rounded-md text-xs font-semibold transition-colors',
                       mode === tab.id
-                        ? 'bg-background text-foreground shadow-sm border border-border/50'
+                        ? 'bg-card text-foreground shadow-sm border border-border'
                         : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
@@ -337,7 +337,7 @@ export default function Imagine() {
 
             {/* Prompt */}
             <section className="space-y-2.5">
-              <div className="rounded-2xl border border-border/60 bg-card focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/5 transition-all">
+              <div className="rounded-lg border border-border/60 bg-card focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/5 transition-colors">
                 <textarea
                   value={prompt}
                   onChange={e => setPrompt(e.target.value)}
@@ -441,8 +441,8 @@ export default function Imagine() {
               </SectionLabel>
 
               {results.length === 0 && !isGenerating ? (
-                <div className="flex flex-col items-center justify-center py-14 text-center rounded-2xl border border-dashed border-border/50">
-                  <div className="h-12 w-12 rounded-2xl bg-muted/50 flex items-center justify-center">
+                <div className="flex flex-col items-center justify-center py-14 text-center rounded-lg border border-dashed border-border/50">
+                  <div className="h-12 w-12 rounded-lg bg-muted/50 flex items-center justify-center">
                     <ImageIcon size={20} className="text-muted-foreground/40" />
                   </div>
                   <p className="mt-3.5 text-sm font-medium">Nothing generated yet</p>
@@ -453,7 +453,7 @@ export default function Imagine() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {isGenerating && (
-                    <div className="rounded-2xl border border-dashed border-primary/40 bg-primary/5 aspect-square flex flex-col items-center justify-center gap-3 p-6">
+                    <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 aspect-square flex flex-col items-center justify-center gap-3 p-6">
                       <Loader2 size={24} className="animate-spin text-primary" />
                       <p className="text-xs font-semibold text-primary">Generating {mode}…</p>
                       <p className="text-[11px] text-muted-foreground text-center line-clamp-2">
@@ -512,7 +512,7 @@ export default function Imagine() {
       {/* Options drawer — the only route below `xl`, and the "More" target above it */}
       {optionsOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end"
+          className="fixed inset-0 z-50 bg-black/50 flex justify-end"
           onClick={() => setOptionsOpen(false)}
           role="presentation"
         >
@@ -542,7 +542,7 @@ export default function Imagine() {
             <div className="p-4 border-t border-border/40">
               <button
                 onClick={() => setOptionsOpen(false)}
-                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+                className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
               >
                 Done
               </button>

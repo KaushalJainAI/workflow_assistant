@@ -66,7 +66,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-4 p-4 rounded-xl border border-border/50 bg-card/40">
+    <div className="flex items-start gap-4 p-4 rounded-lg border border-border/50 bg-card/40">
       <div className="mt-0.5 shrink-0 p-2 bg-background rounded-full border border-border/50">
         {icon}
       </div>
@@ -136,7 +136,7 @@ export default function ReminderPreferences() {
       </div>
 
       {permission === 'denied' && (
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm">
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-warning-subtle text-sm">
           <BellOff className="w-4 h-4 text-amber-500 shrink-0" />
           <span className="text-amber-600 dark:text-amber-400">
             This browser is blocking notifications for the site. Device pings stay off until you
@@ -185,7 +185,7 @@ export default function ReminderPreferences() {
         />
       </Row>
 
-      <div className="p-4 rounded-xl border border-border/50 bg-card/40 space-y-4">
+      <div className="p-4 rounded-lg border border-border/50 bg-card/40 space-y-4">
         <div className="flex items-start gap-4">
           <div className="mt-0.5 shrink-0 p-2 bg-background rounded-full border border-border/50">
             <Mail className="w-4 h-4 text-amber-500" />
@@ -234,7 +234,7 @@ export default function ReminderPreferences() {
         )}
       </div>
 
-      <div className="p-4 rounded-xl border border-border/50 bg-card/40 space-y-4">
+      <div className="p-4 rounded-lg border border-border/50 bg-card/40 space-y-4">
         <div className="flex items-start gap-4">
           <div className="mt-0.5 shrink-0 p-2 bg-background rounded-full border border-border/50">
             <Moon className="w-4 h-4 text-indigo-400" />

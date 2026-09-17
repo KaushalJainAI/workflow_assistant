@@ -89,7 +89,7 @@ export default function InsightsDashboard() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card/50 p-6 rounded-xl border border-border/60 backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card p-6 rounded-lg border border-border">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Insights</h2>
           <p className="text-muted-foreground">Your usage, cost, and execution activity</p>
@@ -100,7 +100,7 @@ export default function InsightsDashboard() {
             <button
               key={range}
               onClick={() => setTimeRange(range)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 timeRange === range
                   ? 'bg-background text-primary shadow-sm border border-border/50'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -115,7 +115,7 @@ export default function InsightsDashboard() {
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
         {/* Total Executions */}
-        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
+        <div className="bg-card border border-border rounded-lg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-2">
             <div className="p-2 bg-primary/10 rounded-lg text-primary">
               <Activity className="w-5 h-5" />
@@ -126,7 +126,7 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Time Saved */}
-        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
+        <div className="bg-card border border-border rounded-lg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-2">
             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
               <Clock className="w-5 h-5" />
@@ -140,7 +140,7 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Total Cost */}
-        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
+        <div className="bg-card border border-border rounded-lg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-2">
             <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
               <DollarSign className="w-5 h-5" />
@@ -151,7 +151,7 @@ export default function InsightsDashboard() {
         </div>
 
         {/* Success Rate */}
-        <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-md">
+        <div className="bg-card border border-border rounded-lg p-5 shadow-sm">
           <div className="flex justify-between items-start mb-2">
             <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
               <CheckCircle2 className="w-5 h-5" />
@@ -164,7 +164,7 @@ export default function InsightsDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Execution Trends Chart */}
-        <div className="lg:col-span-2 bg-card border border-border/60 rounded-xl p-6 shadow-sm">
+        <div className="lg:col-span-2 bg-card border border-border/60 rounded-lg p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-semibold flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary" />
@@ -190,7 +190,7 @@ export default function InsightsDashboard() {
                 const height = (data.executions / maxChartValue) * 100;
                 return (
                   <div key={i} className="flex-1 flex flex-col justify-end h-full gap-0.5 group relative hover:opacity-90">
-                    <div className="absolute bottom-[100%] left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 bg-popover text-popover-foreground text-xs p-2 rounded shadow-lg border border-border whitespace-nowrap">
+                    <div className="absolute bottom-[100%] left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block group-focus-within:block z-10 bg-popover text-popover-foreground text-xs p-2 rounded-md shadow-lg border border-border whitespace-nowrap">
                       <div className="font-semibold mb-1">{data.date}</div>
                       <div className="text-emerald-500">Executions: {data.executions}</div>
                     </div>
@@ -215,7 +215,7 @@ export default function InsightsDashboard() {
 
         {/* Plan & credits */}
         <div className="space-y-6">
-          <div className="bg-card border border-border/60 rounded-xl p-6 shadow-sm">
+          <div className="bg-card border border-border/60 rounded-lg p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <Zap className="w-4 h-4" />
               Plan &amp; credits

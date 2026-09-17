@@ -228,7 +228,7 @@ const Sidebar = () => {
                    landscape the inset is what keeps this off the sensor housing,
                    and it is 0 everywhere else. Pages reserve 48px for it with
                    `pl-12` — see PageHeader. */
-                className="md:hidden fixed z-[60] p-2.5 rounded-xl bg-card/90 border border-border/60 backdrop-blur-md shadow-lg active:scale-95 transition-transform"
+                className="md:hidden fixed z-[60] p-2.5 rounded-lg bg-card border border-border shadow-md"
                 style={{
                     top: 'max(0.75rem, env(safe-area-inset-top))',
                     left: 'max(0.75rem, env(safe-area-inset-left))',
@@ -244,7 +244,7 @@ const Sidebar = () => {
         {/* Mobile: backdrop when drawer is open */}
         {isMobile && !collapsed && (
             <div
-                className="md:hidden fixed inset-0 z-[55] bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+                className="md:hidden fixed inset-0 z-[55] bg-black/50 animate-in fade-in duration-200"
                 onClick={() => setCollapsed(true)}
             />
         )}
@@ -255,11 +255,11 @@ const Sidebar = () => {
             aria-modal={isMobile && !collapsed ? true : undefined}
             aria-hidden={isMobile && collapsed ? true : undefined}
             className={cn(
-                "h-viewport backdrop-blur-xl border-r flex flex-col transition-all duration-300 ease-out overflow-hidden",
+                "h-viewport border-r flex flex-col transition-colors duration-150 overflow-hidden",
                 // Mobile: fixed drawer, slides in from left, fully hidden when collapsed
                 isMobile
                     ? cn(
-                        "fixed left-0 top-0 z-[60] w-72 shadow-2xl",
+                        "fixed left-0 top-0 z-[60] w-72 shadow-lg",
                         collapsed ? "-translate-x-full" : "translate-x-0"
                       )
                     // Desktop: in-flow, collapses to icon rail
@@ -309,7 +309,7 @@ const Sidebar = () => {
                         navigate('/agents/new');
                     }}
                     className={cn(
-                        "flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-all duration-200 font-semibold shadow-sm active:scale-[0.98] overflow-hidden whitespace-nowrap mx-auto",
+                        "flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors duration-150 font-semibold shadow-sm overflow-hidden whitespace-nowrap mx-auto",
                         collapsed ? "w-10 h-10 p-0" : "w-full py-2.5 px-4 gap-2"
                     )}
                     title={collapsed ? "New agent" : undefined}
@@ -455,7 +455,7 @@ const Sidebar = () => {
                     )}
                     title={collapsed ? "Settings" : undefined}
                 >
-                    <div className="w-8 h-8 flex-shrink-0 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-semibold text-sm ring-2 ring-primary/0 group-hover:ring-primary/10 transition-all duration-200">
+                    <div className="w-8 h-8 flex-shrink-0 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-semibold text-sm">
                         {getInitials()}
                     </div>
                     <div className={cn(

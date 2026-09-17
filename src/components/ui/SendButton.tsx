@@ -76,14 +76,13 @@ export function SendButton({
       disabled={isInert}
       title={title ?? defaultTitle}
       aria-label={title ?? defaultTitle}
-      className={cn(
-        'shrink-0 rounded-full flex items-center justify-center shadow-lg transition-all',
-        'hover:scale-105 active:scale-95',
-        // Never let a disabled button look pressable.
-        'disabled:opacity-40 disabled:shadow-none disabled:hover:scale-100 disabled:active:scale-100 disabled:cursor-not-allowed',
-        canStop
-          ? 'bg-red-500 text-white shadow-red-500/20 hover:bg-red-500/90'
-          : 'bg-primary text-primary-foreground shadow-primary/20 hover:bg-primary/90',
+  className={cn(
+    'shrink-0 rounded-full flex items-center justify-center shadow-sm transition-colors duration-150',
+    // Never let a disabled button look pressable.
+    'disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed',
+    canStop
+      ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+      : 'bg-primary text-primary-foreground hover:bg-primary/90',
         dimensions.button,
         className,
       )}

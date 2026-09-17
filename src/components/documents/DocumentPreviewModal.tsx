@@ -144,7 +144,7 @@ export function DocumentPreviewModal({ doc, onClose, onDownload }: Props) {
       aria-modal="true"
       aria-label={`Preview of ${doc.filename}`}
     >
-      <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-scale-in">
+      <div className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden entrance-modal">
         {/* Header */}
         <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between gap-4 shrink-0">
           <div className="min-w-0">

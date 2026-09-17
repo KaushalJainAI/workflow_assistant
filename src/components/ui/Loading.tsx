@@ -18,12 +18,36 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={cn('skeleton', className)} aria-hidden />;
 }
 
+/** One spinner, three sizes. Colour inherits — primary on primary buttons,
+ *  muted everywhere else. No per-call-site size/color improvisation. */
+export function Spinner({
+  size = 'md',
+  className,
+}: {
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}) {
+  const dims =
+    size === 'sm' ? 'w-3.5 h-3.5' : size === 'lg' ? 'w-6 h-6' : 'w-4 h-4';
+  return (
+    <span
+      role="status"
+      aria-label="Loading"
+      className={cn(
+        'inline-block rounded-full border-2 border-current border-t-transparent animate-spin opacity-60',
+        dims,
+        className,
+      )}
+    />
+  );
+}
+
 /** `count` stacked skeleton rows — the list/table case, which is most of them. */
 export function SkeletonRows({ count = 5, className }: { count?: number; className?: string }) {
   return (
     <div className={cn('space-y-3', className)} role="status" aria-label="Loading">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 rounded-xl border border-border/50 p-4">
+        <div key={i} className="flex items-center gap-3 rounded-lg border border-border/50 p-4">
           <Skeleton className="h-9 w-9 rounded-lg" />
           <div className="flex-1 space-y-2">
             {/* Staggered widths: uniform bars read as a broken table rather
@@ -44,12 +68,12 @@ export function SkeletonRows({ count = 5, className }: { count?: number; classNa
 export function AppLoader({ label = 'Loading' }: { label?: string }) {
   return (
     <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background">
-      <div className="relative h-12 w-12">
-        <div className="absolute inset-0 rounded-full border-2 border-primary/15" />
-        <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-primary" />
-        <div className="absolute inset-2 rounded-full bg-primary/10 animate-pulse-glow" />
+      <div className="relative h-12 w-12 text-primary">
+        <div className="absolute inset-0 rounded-full border-2 border-current opacity-15" />
+        <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-current" />
+        <div className="absolute inset-2 rounded-full bg-current opacity-10 animate-pulse" />
       </div>
-      <p className="text-xs font-medium tracking-wide text-muted-foreground animate-fade-in">
+      <p className="micro-label animate-fade-in">
         {label}
       </p>
     </div>

@@ -47,18 +47,18 @@ export function TextSelectionMenu({ position, onCopy, onReference, onClose }: Te
         transform: 'translate(-50%, -100%) translateY(-10px)',
       }}
     >
-      <div className="flex items-center gap-1 p-1 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-xl shadow-2xl">
+      <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg shadow-lg">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onCopy();
           }}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors"
         >
           <Copy className="w-3.5 h-3.5" />
           Copy
         </button>
-        <div className="w-px h-4 bg-zinc-700 mx-1" />
+        <div className="w-px h-4 bg-border mx-1" />
         <button
           onClick={(e) => {
             e.stopPropagation();

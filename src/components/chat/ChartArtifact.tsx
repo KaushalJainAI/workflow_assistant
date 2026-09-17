@@ -138,7 +138,7 @@ export default function ChartArtifact({ chart }: Props) {
 
   return (
     <figure
-      className="chart-figure group/chart my-3 overflow-hidden rounded-xl border border-border/60 bg-muted/20
+      className="chart-figure group/chart my-3 overflow-hidden rounded-lg border border-border bg-card
                  animate-in fade-in slide-in-from-bottom-2 duration-500"
     >
       <style>{`

@@ -1,9 +1,12 @@
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Loader2, ArrowRight, AlertCircle, GitGraph } from 'lucide-react';
+import { Mail, Lock, ArrowRight, GitGraph } from 'lucide-react';
 import { useAuth } from '../contexts/authState';
 import { googleAuthAvailable, googleAuthorizeUrl } from '../lib/googleAuth';
 import { nextFrom } from '../lib/nextPath';
+import { Alert } from '../components/ui/Alert';
+import { Button } from '../components/ui/Button';
+import { IconTile } from '../components/ui/IconTile';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -57,20 +60,21 @@ export default function Login() {
       
       <div className="w-full max-w-md space-y-8 relative z-10 animate-slide-up">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary text-primary-foreground mb-6 shadow-sm">
-            <GitGraph className="w-6 h-6" />
+          <div className="inline-flex mb-6">
+            <IconTile size="lg">
+              <GitGraph className="w-6 h-6" />
+            </IconTile>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight mb-2">Welcome back</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome back</h1>
           <p className="mt-2 text-muted-foreground">
             Enter your credentials to access your workspace
           </p>
         </div>
 
-        <div className="glass rounded-2xl p-8">
+        <div className="glass rounded-lg p-8">
           {error && (
-            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive animate-scale-in">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">{error}</span>
+            <div className="mb-4">
+              <Alert tone="error">{error}</Alert>
             </div>
           )}
 
@@ -85,7 +89,7 @@ export default function Login() {
                   id="email"
                   type="email"
                   placeholder="name@example.com"
-                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-colors duration-150"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -107,7 +111,7 @@ export default function Login() {
                 <input
                   id="password"
                   type="password"
-                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-colors duration-150"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -115,23 +119,19 @@ export default function Login() {
               </div>
             </div>
 
-            <button
+            <Button
               type="submit"
-              disabled={busy}
-              className="inline-flex items-center justify-center w-full rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-sm active:scale-[0.98]"
+              loading={busy}
+              className="w-full"
             >
-              {busy ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
+              {!busy && (
                 <>
                   Sign in
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </>
               )}
-            </button>
+              {busy && <>Signing in...</>}
+            </Button>
           </form>
 
           {/* Hidden where the built redirect URI does not match this origin —
@@ -142,7 +142,7 @@ export default function Login() {
                 <span className="w-full border-t border-border/60" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-card/60 backdrop-blur px-3 text-muted-foreground">
+                <span className="bg-card px-3 text-muted-foreground">
                   Or continue with
                 </span>
               </div>
@@ -152,7 +152,7 @@ export default function Login() {
               <button 
                 type="button"
                 onClick={handleGoogleLogin}
-                className="inline-flex items-center justify-center rounded-lg text-sm font-medium border border-border/60 bg-background/50 hover:bg-accent hover:text-accent-foreground h-11 px-4 py-2 transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] hover:border-border"
+                className="inline-flex items-center justify-center rounded-lg text-sm font-medium border border-border bg-background hover:bg-secondary hover:text-foreground h-11 px-4 py-2 transition-colors duration-150"
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                   <path

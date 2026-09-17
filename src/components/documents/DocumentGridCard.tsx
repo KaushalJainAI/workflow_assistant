@@ -106,9 +106,8 @@ export function DocumentGridCard({ doc, onOpen, onDownload, onShare, onDelete, d
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        'group relative flex flex-col overflow-hidden rounded-xl border bg-card text-card-foreground',
-        'border-border/60 hover:border-border hover:shadow-[0_4px_24px_rgba(0,0,0,0.06)] hover:-translate-y-[1px]',
-        'transition-all duration-200',
+        'group relative flex flex-col overflow-hidden rounded-lg border bg-card text-card-foreground card-hover',
+        'border-border',
         doc.is_shared && 'ring-1 ring-primary/15',
         isFailed && 'border-destructive/30'
       )}
@@ -132,7 +131,7 @@ export function DocumentGridCard({ doc, onOpen, onDownload, onShare, onDelete, d
         }
         aria-label={onOpen ? `Preview ${title}` : undefined}
         className={cn(
-          'relative aspect-[4/3] w-full overflow-hidden bg-muted/20',
+          'relative aspect-[4/3] w-full overflow-hidden bg-muted',
           onOpen && 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
         )}
       >
@@ -141,32 +140,32 @@ export function DocumentGridCard({ doc, onOpen, onDownload, onShare, onDelete, d
             src={thumbUrl}
             alt={title}
             loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            className="h-full w-full object-cover"
           />
         ) : isImage ? (
           // Skeleton while authenticated blob loads — avoids flash of unauthenticated 401
-          <div className="flex h-full w-full items-center justify-center bg-muted/30">
+          <div className="flex h-full w-full items-center justify-center bg-muted">
             <div className="h-6 w-6 animate-pulse rounded-full bg-border" />
           </div>
         ) : isVideo ? (
-          <div className="flex h-full w-full items-center justify-center bg-slate-900/5 dark:bg-zinc-900">
-            <FileVideo className="h-8 w-8 text-muted-foreground/30" />
+          <div className="flex h-full w-full items-center justify-center bg-muted">
+            <FileVideo className="h-8 w-8 text-muted-foreground" />
           </div>
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted/10 p-6 text-center">
-            <TypeIcon fileType={doc.file_type} className="h-7 w-7 text-muted-foreground/25" />
-            <span className="max-w-[80%] truncate text-[11px] font-medium text-muted-foreground/50">{ext || typeLabel}</span>
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted p-6 text-center">
+            <TypeIcon fileType={doc.file_type} className="h-7 w-7 text-muted-foreground" />
+            <span className="max-w-[80%] truncate text-[11px] font-medium text-muted-foreground">{ext || typeLabel}</span>
           </div>
         )}
 
         {/* Top bar: type + size */}
         <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/70 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-foreground border border-border">
             <TypeIcon fileType={doc.file_type} className="h-3 w-3" />
             {ext || typeLabel}
           </span>
           {!isPending && !isFailed && (
-            <span className="hidden sm:inline-flex rounded-full bg-background/80 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur">
+            <span className="hidden sm:inline-flex rounded-md bg-card px-2 py-1 text-[11px] text-muted-foreground border border-border">
               {formatSize(doc.file_size)}
             </span>
           )}
@@ -174,21 +173,18 @@ export function DocumentGridCard({ doc, onOpen, onDownload, onShare, onDelete, d
 
         {/* Failed / pending overlay */}
         {isFailed ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-destructive/5 backdrop-blur-[1px] p-4 text-center">
-            <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive">Failed</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-card p-4 text-center">
+            <span className="rounded-md bg-destructive-subtle px-2.5 py-1 text-[11px] font-semibold text-destructive">Failed</span>
             <span className="line-clamp-2 max-w-[85%] text-[11px] leading-relaxed text-muted-foreground">{doc.error_message ?? 'Could not process'}</span>
           </div>
         ) : isPending ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/40 backdrop-blur-[1px]">
-            <div className="flex items-center gap-2 rounded-full bg-background px-3 py-1.5 text-xs font-medium shadow-sm">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+          <div className="absolute inset-0 flex items-center justify-center bg-card/80">
+            <div className="flex items-center gap-2 rounded-md bg-card px-3 py-1.5 text-xs font-medium border border-border shadow-sm">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-warning" />
               {doc.status === 'uploading' ? 'Uploading…' : doc.status === 'processing' ? 'Indexing…' : 'Queued'}
             </div>
           </div>
         ) : null}
-
-        {/* Subtle bottom gradient for legibility without AI gloss */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/10 to-transparent opacity-0 transition-opacity group-hover:opacity-100 dark:from-black/20" />
       </div>
 
       {/* Body — left aligned, editorial */}

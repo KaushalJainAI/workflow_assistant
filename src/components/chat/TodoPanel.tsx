@@ -38,7 +38,7 @@ export default function TodoPanel({ todos, live = false }: Props) {
 
   return (
     <div
-      className={`my-3 overflow-hidden rounded-xl border bg-muted/20 ${
+      className={`my-3 overflow-hidden rounded-lg border bg-muted/20 ${
         live ? 'border-primary/30' : 'border-border/60'
       }`}
     >

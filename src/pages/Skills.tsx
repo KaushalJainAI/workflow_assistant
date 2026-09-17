@@ -20,6 +20,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import apiClient from '../api/client';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { IconButton } from '../components/ui/IconButton';
 
 interface Skill {
     id: string;
@@ -62,6 +64,7 @@ export default function Skills() {
 
     // Editor State
     const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState('');
     const [editTitle, setEditTitle] = useState('');
@@ -125,15 +128,15 @@ export default function Skills() {
     };
 
     const handleDelete = async (id: string) => {
-        if (confirm('Are you sure you want to delete this skill?')) {
-            try {
-                await apiClient.delete(`/skills/${id}/`);
-                toast.success('Skill deleted');
-                queryClient.invalidateQueries({ queryKey: ['skills'] });
-            } catch (error) {
-                console.error('Failed to delete skill:', error);
-                toast.error('Failed to delete skill');
-            }
+        try {
+            await apiClient.delete(`/skills/${id}/`);
+            toast.success('Skill deleted');
+            queryClient.invalidateQueries({ queryKey: ['skills'] });
+        } catch (error) {
+            console.error('Failed to delete skill:', error);
+            toast.error('Failed to delete skill');
+        } finally {
+            setPendingDeleteId(null);
         }
     };
 
@@ -153,11 +156,11 @@ export default function Skills() {
         // `h-full`, not `h-screen` — see the note in Documents.tsx.
         <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-500">
             {/* Header */}
-            <header className="px-4 md:px-8 py-6 md:py-8 border-b border-border/60 bg-card/80 backdrop-blur-xl sticky top-0 z-20">
+            <header className="px-4 py-2 bg-card sticky top-0 z-20 border-b border-border">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                     {/* pl-12 on mobile clears the Sidebar's fixed hamburger. */}
                     <div className="flex items-center gap-4 pl-12 md:pl-0">
-                        <div className="p-3 bg-primary/10 rounded-xl shrink-0">
+                        <div className="p-3 bg-primary/10 rounded-lg shrink-0">
                             <Zap className="w-6 h-6 text-primary" />
                         </div>
                         <div>
@@ -169,7 +172,7 @@ export default function Skills() {
                     </div>
                     <button 
                         onClick={handleCreateSkill}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all hover:bg-primary/90 active:scale-95"
+                        className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-semibold transition-all hover:bg-primary/90"
                     >
                         <Plus className="w-4 h-4" />
                         Create skill
@@ -209,7 +212,7 @@ export default function Skills() {
                     <input 
                         type="text" 
                         placeholder="Search skills..."
-                        className="w-full h-11 pl-11 pr-4 rounded-xl bg-background/50 border border-border/60 focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground shadow-sm"
+                        className="w-full h-11 pl-11 pr-4 rounded-lg bg-background/50 border border-border/60 focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground shadow-sm"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -238,7 +241,7 @@ export default function Skills() {
                         {!searchQuery && activeTab === 'mine' && (
                             <button 
                                 onClick={handleCreateSkill}
-                                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
+                                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-bold text-sm hover:bg-primary/90 transition-all"
                             >
                                 <Plus className="w-4 h-4" />
                                 Create your first skill
@@ -251,29 +254,28 @@ export default function Skills() {
                             <div 
                                 key={skill.id}
                                 onClick={() => handleOpenSkill(skill)}
-                                className="group relative bg-card border border-border/60 rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col h-[240px]"
+                                className="group relative bg-card border border-border/60 rounded-lg p-6 transition-all hover:border-primary/40 cursor-pointer flex flex-col h-[240px]"
                             >
                                 <div className="flex items-start justify-between mb-4">
-                                    <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+                                    <div className="p-3 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
                                         <FileText className="w-5 h-5 text-primary" />
                                     </div>
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-colors">
                                         {activeTab === 'mine' ? (
                                             <>
-                                                <button 
+                                                <IconButton
+                                                    label="Share skill"
                                                     onClick={(e) => { e.stopPropagation(); handleShare(skill); }}
-                                                    className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-primary transition-colors"
-                                                    title="Share"
                                                 >
                                                     <Share2 className="w-4 h-4" />
-                                                </button>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleDelete(skill.id); }}
-                                                    className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-destructive transition-colors"
-                                                    title="Delete"
+                                                </IconButton>
+                                                <IconButton
+                                                    label="Delete skill"
+                                                    onClick={(e) => { e.stopPropagation(); setPendingDeleteId(skill.id); }}
+                                                    className="hover:text-destructive"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                </IconButton>
                                             </>
                                         ) : (
                                             <button 
@@ -281,7 +283,7 @@ export default function Skills() {
                                                     e.stopPropagation(); 
                                                     handleIncorporate(skill);
                                                 }}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground rounded-lg text-xs font-bold transition-all active:scale-95"
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground rounded-lg text-xs font-bold transition-all"
                                                 title="Incorporate to My Skills"
                                             >
                                                 <Download className="w-3.5 h-3.5" />
@@ -315,8 +317,8 @@ export default function Skills() {
 
             {/* Markdown Editor Modal */}
             {isEditing && (
-                <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
-                    <div className="bg-card border border-border/60 w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in">
+                <div className="fixed inset-0 z-50 bg-black/50 flex flex-col items-center justify-center animate-in fade-in duration-200">
+                    <div className="bg-card border border-border/60 w-full max-w-6xl h-[90vh] rounded-lg shadow-lg flex flex-col overflow-hidden entrance-modal">
                         {/* Modal Header */}
                         <div className="p-4 md:p-6 border-b border-border/60 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 bg-card">
                             <div className="flex items-center gap-2 md:gap-4 flex-1 lg:mr-4">
@@ -393,14 +395,14 @@ export default function Skills() {
                                 
                                 <button 
                                     onClick={handleSave}
-                                    className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/20 active:scale-95 flex items-center gap-2"
+                                    className="px-6 py-2 bg-primary text-white rounded-lg font-bold text-sm transition-all shadow-sm flex items-center gap-2"
                                 >
                                     <Check className="w-4 h-4" />
                                     Save skill
                                 </button>
                                 <button 
                                     onClick={() => setIsEditing(false)}
-                                    className="p-2 hover:bg-muted rounded-xl transition-colors"
+                                    className="p-2 hover:bg-muted rounded-lg transition-colors"
                                 >
                                     <X className="w-6 h-6" />
                                 </button>
@@ -433,6 +435,15 @@ export default function Skills() {
                         </div>
                     </div>
                 </div>
+            )}
+            {pendingDeleteId && (
+                <ConfirmDialog
+                    title="Delete skill?"
+                    body="This removes the skill from your collection. This cannot be undone."
+                    confirmLabel="Delete"
+                    onCancel={() => setPendingDeleteId(null)}
+                    onConfirm={() => handleDelete(pendingDeleteId)}
+                />
             )}
         </div>
     );

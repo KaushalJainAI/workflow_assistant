@@ -30,6 +30,8 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
+import { Button } from '../components/ui/Button';
+import { Spinner } from '../components/ui/Loading';
 import { useAssistant } from '../contexts/assistantState';
 import { DocumentGridCard } from '../components/documents/DocumentGridCard';
 import { DocumentPreviewModal } from '../components/documents/DocumentPreviewModal';
@@ -375,10 +377,10 @@ export default function Documents() {
 
     const getStatusParams = (status: Document['status']) => {
         switch(status) {
-            case 'uploading': return { color: 'text-blue-500', icon: <Loader2 className="w-4 h-4 animate-spin text-blue-500" />, label: 'Uploading...' };
-            case 'pending': return { color: 'text-yellow-500', icon: <Loader2 className="w-4 h-4 animate-spin text-yellow-500" />, label: 'Queued' };
-            case 'processing': return { color: 'text-orange-500', icon: <Loader2 className="w-4 h-4 animate-spin text-orange-500" />, label: 'Indexing...' };
-            case 'stored': return { color: 'text-emerald-500', icon: <BookOpen className="w-4 h-4 text-emerald-500" />, label: 'Stored' };
+            case 'uploading': return { color: 'text-primary', icon: <Loader2 className="w-4 h-4 animate-spin text-primary" />, label: 'Uploading...' };
+            case 'pending': return { color: 'text-warning', icon: <Loader2 className="w-4 h-4 animate-spin text-warning" />, label: 'Queued' };
+            case 'processing': return { color: 'text-warning', icon: <Loader2 className="w-4 h-4 animate-spin text-warning" />, label: 'Indexing...' };
+            case 'stored': return { color: 'text-success', icon: <BookOpen className="w-4 h-4 text-success" />, label: 'Stored' };
             case 'failed': return { color: 'text-destructive', icon: <AlertCircle className="w-4 h-4 text-destructive" />, label: 'Failed' };
             default: return null;
         }
@@ -388,7 +390,7 @@ export default function Documents() {
     // `h-full`, not `h-screen`. The shell is `100dvh`; `h-screen` is `100vh`,
     // which on mobile includes the area behind the collapsing URL bar, so the
     // bottom of this page was pushed out of an `overflow-hidden` parent.
-    <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-500">
+    <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-200">
       {/* Header */}
       <PageHeader 
         title="Documents"
@@ -402,7 +404,7 @@ export default function Documents() {
           activeTab === 'trash' ? (
             <button
               onClick={handleEmptyTrash}
-              className="flex items-center gap-2 px-6 py-2.5 bg-destructive/10 text-destructive rounded-xl font-semibold transition-all active:scale-95 hover:bg-destructive/20"
+              className="flex items-center gap-2 px-6 py-2.5 bg-destructive/10 text-destructive rounded-lg font-semibold transition-colors hover:bg-destructive/20"
             >
               <Trash2 className="w-4 h-4" />
               Empty Trash
@@ -412,19 +414,18 @@ export default function Documents() {
             {activeTab === 'personal' && (
               <button
                 onClick={handleCreateFolder}
-                className="flex items-center gap-2 px-4 py-2.5 border border-border/60 rounded-xl font-semibold transition-all active:scale-95 hover:bg-muted"
+                className="flex items-center gap-2 px-4 py-2.5 border border-border/60 rounded-lg font-semibold transition-colors hover:bg-muted"
               >
                 <FolderPlus className="w-4 h-4" />
                 New folder
               </button>
             )}
-            <button 
+            <Button 
               onClick={() => setShowUploadModal(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all shadow-lg shadow-primary/20 active:scale-95 hover:bg-primary/90"
             >
               <Upload className="w-4 h-4" />
               Upload files
-            </button>
+            </Button>
           </div>
           ) : null
         }
@@ -438,7 +439,7 @@ export default function Documents() {
             <button
               onClick={() => setActiveTab('personal')}
               className={cn(
-                "pb-3 text-sm font-semibold transition-all relative",
+                "pb-3 text-sm font-semibold transition-colors relative",
                 activeTab === 'personal' ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -448,7 +449,7 @@ export default function Documents() {
             <button
               onClick={() => setActiveTab('public')}
               className={cn(
-                "pb-3 text-sm font-semibold transition-all relative",
+                "pb-3 text-sm font-semibold transition-colors relative",
                 activeTab === 'public' ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -458,7 +459,7 @@ export default function Documents() {
             <button
               onClick={() => setActiveTab('extraction')}
               className={cn(
-                "pb-3 text-sm font-semibold transition-all relative",
+                "pb-3 text-sm font-semibold transition-colors relative",
                 activeTab === 'extraction' ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -468,7 +469,7 @@ export default function Documents() {
             <button
               onClick={() => setActiveTab('trash')}
               className={cn(
-                "pb-3 text-sm font-semibold transition-all relative flex items-center gap-1.5",
+                "pb-3 text-sm font-semibold transition-colors relative flex items-center gap-1.5",
                 activeTab === 'trash' ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -491,7 +492,7 @@ export default function Documents() {
               <button 
                 onClick={() => setViewMode('grid')}
                 className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
                   viewMode === 'grid' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -500,7 +501,7 @@ export default function Documents() {
               <button 
                 onClick={() => setViewMode('list')}
                 className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
                   viewMode === 'list' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -539,8 +540,8 @@ export default function Documents() {
             </p>
 
             {trashLoading ? (
-              <div className="flex justify-center py-16">
-                <Loader2 className="w-6 h-6 animate-spin text-primary/50" />
+              <div className="flex justify-center py-16 text-muted-foreground">
+                <Spinner size="lg" />
               </div>
             ) : (trashPage?.folders.length ?? 0) + (trashPage?.documents.length ?? 0) === 0 ? (
               <div className="text-center py-20">
@@ -548,7 +549,7 @@ export default function Documents() {
                 <p className="text-muted-foreground">Trash is empty.</p>
               </div>
             ) : (
-              <ul className="divide-y divide-border/60 rounded-xl border border-border/60 overflow-hidden">
+              <ul className="divide-y divide-border/60 rounded-lg border border-border/60 overflow-hidden">
                 {trashPage?.folders.map((f) => (
                   <li key={`folder-${f.id}`} className="flex items-center gap-3 px-4 py-3 bg-card">
                     <FolderInput className="w-5 h-5 text-amber-500 shrink-0" />
@@ -597,7 +598,7 @@ export default function Documents() {
                   isAssistantOpen
                     ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
                     : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6')
-              : 'rounded-xl border border-border/60 overflow-hidden bg-card'
+              : 'rounded-lg border border-border/60 overflow-hidden bg-card'
           )}>
             {filteredFolders.map((folder) => (
               <FolderTile
@@ -620,11 +621,11 @@ export default function Documents() {
         )}
         {isLoading && allDocuments.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
-            <p className="text-muted-foreground text-sm font-medium animate-pulse">Loading documents...</p>
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground text-sm">Loading documents...</p>
           </div>
         ) : error && allDocuments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 bg-destructive/5 rounded-2xl border border-destructive/10 max-w-2xl mx-auto">
+          <div className="flex flex-col items-center justify-center py-16 bg-destructive-subtle rounded-lg border border-border max-w-2xl mx-auto px-6 text-center">
             <AlertCircle className="w-12 h-12 text-destructive mb-4" />
             <h3 className="text-lg font-bold text-foreground mb-2">Failed to load documents</h3>
             <p className="text-muted-foreground text-sm">{error}</p>
@@ -662,11 +663,11 @@ export default function Documents() {
               <div
                 key={doc.id}
                 className={cn(
-                    "flex items-center gap-6 p-4 bg-card border border-border/60 rounded-xl hover:border-primary/40 hover:shadow-md transition-all group animate-slide-up",
+                    "flex items-center gap-6 p-4 bg-card border border-border rounded-lg card-hover",
                     doc.is_shared && "border-primary/30 bg-primary/5"
                 )}
               >
-                <div className="p-2 bg-background rounded-lg border border-border/60 group-hover:bg-primary/10 transition-colors">
+                <div className="p-2 bg-muted rounded-lg border border-border">
                     {getDocIcon(doc.file_type)}
                 </div>
                 {/* The name column opens the preview, in both views. Grid-only
@@ -726,7 +727,7 @@ export default function Documents() {
 
                 <div className="flex items-center gap-1">
                   <button 
-                    className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-primary"
+                    className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
                     onClick={() => handleDownload(doc)}
                     title="Download"
                   >
@@ -738,7 +739,7 @@ export default function Documents() {
                           is the accelerator. Drag-only would be untestable and
                           unusable on touch. */}
                       <button
-                        className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-primary"
+                        className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
                         onClick={() => setMovePicker({ open: true, payload: { kind: 'document', id: doc.id } })}
                         title="Move to…"
                         disabled={doc.id < 0}
@@ -747,7 +748,7 @@ export default function Documents() {
                       </button>
                       <button 
                         className={cn(
-                            "p-2 rounded-lg transition-all",
+                            "p-2 rounded-lg transition-colors",
                             doc.is_shared ? "text-primary bg-primary/20" : "text-muted-foreground hover:text-primary hover:bg-muted"
                         )}
                         onClick={() => handleShare(doc)}
@@ -757,7 +758,7 @@ export default function Documents() {
                         <Globe className="w-4 h-4" />
                       </button>
                       <button 
-                        className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-all"
+                        className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-colors"
                         onClick={() => handleDelete(doc.id)}
                         title="Delete"
                       >
@@ -783,26 +784,25 @@ export default function Documents() {
                 : "The public library is currently empty."}
             </p>
             {activeTab === 'personal' && (
-              <button 
+              <Button 
                 onClick={() => setShowUploadModal(true)}
-                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 transition-all active:scale-95"
               >
                 <Upload className="w-4 h-4" />
                 Upload your first file
-              </button>
+              </Button>
             )}
           </div>
         )}
         {hasNextPage && !searchQuery && (
           <div className="flex justify-center mt-8">
-            <button
+            <Button
+              variant="secondary"
               onClick={() => fetchNextPage()}
               disabled={isFetchingNextPage}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-60"
+              loading={isFetchingNextPage}
             >
-              {isFetchingNextPage && <Loader2 className="w-4 h-4 animate-spin" />}
               {isFetchingNextPage ? 'Loading...' : 'Load more'}
-            </button>
+            </Button>
           </div>
         )}
         </>
@@ -832,8 +832,8 @@ export default function Documents() {
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-in fade-in duration-300">
-          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6 entrance-overlay">
+          <div className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-lg overflow-hidden entrance-modal">
             <div className="p-6 border-b border-border/60 flex items-center justify-between">
               <div>
                   <h2 className="text-xl font-bold text-foreground">Upload documents</h2>
@@ -841,7 +841,7 @@ export default function Documents() {
               </div>
               <button 
                 onClick={() => setShowUploadModal(false)} 
-                className="p-2 hover:bg-muted rounded-lg transition-all"
+                className="p-2 hover:bg-muted rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -862,7 +862,7 @@ export default function Documents() {
                   if (e.dataTransfer.files?.length) handleUpload(e.dataTransfer.files);
                 }}
                 className={cn(
-                  "group border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer block",
+                  "group border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer block",
                   isDropTarget
                     ? "border-primary bg-primary/10"
                     : "border-border/60 hover:border-primary/50 bg-background/50 hover:bg-primary/5"
@@ -875,7 +875,7 @@ export default function Documents() {
                   onChange={(e) => e.target.files && handleUpload(e.target.files)}
                 />
                
-                <div className="p-4 bg-card rounded-xl border border-border/60 w-fit mx-auto mb-6 group-hover:scale-110 group-hover:border-primary/40 transition-all">
+                <div className="p-4 bg-card rounded-lg border border-border w-fit mx-auto mb-6">
                     <Upload className="w-10 h-10 text-muted-foreground group-hover:text-primary" />
                 </div>
                 
@@ -899,15 +899,15 @@ export default function Documents() {
       {/* Share Confirmation Modal */}
       {shareConfirmation.isOpen && shareConfirmation.doc && (
         <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-6 animate-in fade-in duration-200"
           onClick={() => setShareConfirmation({ isOpen: false, doc: null })}
         >
           <div 
-            className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
+            className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-md overflow-hidden entrance-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 border-b border-border/60 flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-xl">
+              <div className="p-3 bg-primary/10 rounded-lg">
                 <Globe className="w-6 h-6 text-primary" />
               </div>
               <div>
@@ -917,7 +917,7 @@ export default function Documents() {
             </div>
             
             <div className="p-6 space-y-6">
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex gap-3">
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 flex gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
                 <p className="text-sm text-foreground/80 leading-relaxed">
                     Sharing <strong>{shareConfirmation.doc.title}</strong> will make it visible to all users in the public library.
@@ -950,7 +950,7 @@ export default function Documents() {
               </button>
               <button 
                 onClick={confirmShare}
-                className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm transition-all hover:bg-primary/90 active:scale-95 flex items-center gap-2"
+                className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm transition-colors hover:bg-primary/90 flex items-center gap-2"
               >
                 <Globe className="w-4 h-4" />
                 Share document

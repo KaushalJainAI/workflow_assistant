@@ -204,15 +204,36 @@ export interface UploadResult {
   [key: string]: unknown;
 }
 
+/**
+ * A session as the history list returns it: no transcript. The list used to
+ * nest every message of every conversation to render a sidebar of titles; the
+ * transcript now comes only from `getSession`, which is what opening a
+ * conversation already calls.
+ */
+export type ChatSessionSummary = Omit<ChatSession, 'messages'>;
+
+/**
+ * The list is paginated at 20 and this used to read page one only, so a
+ * user's 21st-oldest conversation could not be reached. Pages are small now
+ * (no transcripts), but still bounded: this is a sidebar, not an export.
+ */
+const SESSION_LIST_MAX_PAGES = 10;
+
 export const chatService = {
-  async getSessions(): Promise<ChatSession[]> {
-    // Paginated or bare, depending on the view — hence the two shapes rather
-    // than `any`.
-    const response = await apiClient.get<ChatSession[] | { results: ChatSession[] }>(
-      '/chat/sessions/',
-    );
-    const data = response.data;
-    return Array.isArray(data) ? data : data.results;
+  async getSessions(): Promise<ChatSessionSummary[]> {
+    const sessions: ChatSessionSummary[] = [];
+    for (let page = 1; page <= SESSION_LIST_MAX_PAGES; page++) {
+      // Paginated or bare, depending on the view: hence the two shapes rather
+      // than `any`.
+      const response = await apiClient.get<
+        ChatSessionSummary[] | { results: ChatSessionSummary[]; next: string | null }
+      >('/chat/sessions/', { params: { page } });
+      const data = response.data;
+      if (Array.isArray(data)) return data;
+      sessions.push(...data.results);
+      if (!data.next) break;
+    }
+    return sessions;
   },
 
   async getSession(id: string): Promise<ChatSession> {

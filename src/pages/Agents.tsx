@@ -8,9 +8,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Loader2, Sliders, LayoutGrid, Share2 } from 'lucide-react';
+import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Sliders, LayoutGrid, Share2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Spinner } from '../components/ui/Loading';
 import agentsService, { type Agent } from '../api/agents';
 import { AUTONOMY_COPY, TRIGGER_COPY } from '../types/agentConfig';
 import { mcpService } from '../api/mcp';
@@ -68,37 +71,33 @@ function grants(agent: Agent, names: Map<number, string>) {
   return [...conns, ...tools];
 }
 
-function EmptyState() {
+function EmptyStateView() {
   return (
-    <div className="max-w-md py-12">
-      <div className="w-10 h-10 rounded bg-agent-subtle border border-agent-line flex items-center justify-center mb-3">
-        <Bot className="w-5 h-5 text-agent" />
-      </div>
-      <h2 className="font-semibold mb-1">No agents yet</h2>
-      <p className="text-[13px] text-muted-foreground leading-relaxed mb-4">
-        An agent combines instructions and tools. Describe the job in plain
-        language and the builder handles setup — you can change anything.
-      </p>
-      <div className="flex items-center gap-2">
-        <Link
-          to="/agents/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90"
-        >
-          <Plus className="w-4 h-4" />
-          New agent
-        </Link>
-        {/* The likelier first move of the two: starting from a template means
-            approving a permission envelope somebody already thought about,
-            rather than choosing every dial from scratch. */}
-        <Link
-          to="/templates"
-          className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded font-semibold text-sm hover:bg-secondary"
-        >
-          <LayoutGrid className="w-4 h-4" />
-          Start from a template
-        </Link>
-      </div>
-    </div>
+    <EmptyState
+      align="left"
+      icon={Bot}
+      title="No agents yet"
+      body="An agent combines instructions and tools. Describe the job in plain language and the builder handles setup — you can change anything."
+      action={
+        <>
+          <Link to="/agents/new">
+            <Button size="md">
+              <Plus className="w-4 h-4" />
+              New agent
+            </Button>
+          </Link>
+          {/* The likelier first move of the two: starting from a template means
+              approving a permission envelope somebody already thought about,
+              rather than choosing every dial from scratch. */}
+          <Link to="/templates">
+            <Button variant="secondary" size="md">
+              <LayoutGrid className="w-4 h-4" />
+              Start from a template
+            </Button>
+          </Link>
+        </>
+      }
+    />
   );
 }
 
@@ -132,19 +131,17 @@ export default function Agents() {
         subtitle={subtitle}
         actions={
           <div className="flex items-center gap-2">
-          <Link
-            to="/templates"
-            className="flex items-center gap-2 px-4 py-2 border border-border rounded font-semibold text-sm hover:bg-secondary"
-          >
-            <LayoutGrid className="w-4 h-4" />
-            Explore
+          <Link to="/templates">
+            <Button variant="secondary" size="md">
+              <LayoutGrid className="w-4 h-4" />
+              Explore
+            </Button>
           </Link>
-          <Link
-            to="/agents/new"
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90"
-          >
-            <Plus className="w-4 h-4" />
-            New agent
+          <Link to="/agents/new">
+            <Button size="md">
+              <Plus className="w-4 h-4" />
+              New agent
+            </Button>
           </Link>
           </div>
         }
@@ -153,7 +150,7 @@ export default function Agents() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {isLoading ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-12">
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Spinner size="md" />
             Loading agents…
           </div>
         ) : isError ? (
@@ -161,7 +158,7 @@ export default function Agents() {
             Could not load your agents. Reload the page to try again.
           </p>
         ) : agents.length === 0 ? (
-          <EmptyState />
+          <EmptyStateView />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {agents.map((a) => {

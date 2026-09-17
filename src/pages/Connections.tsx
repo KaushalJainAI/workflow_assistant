@@ -45,6 +45,8 @@ import {
 import { mcpService, MCPToolsError, type MCPServer, type MCPServerCategory } from '../api/mcp';
 import MCPServerModal from '../components/mcp/MCPServerModal';
 import PageHeader from '../components/layout/PageHeader';
+import { Button } from '../components/ui/Button';
+import { Spinner } from '../components/ui/Loading';
 import {
   CATEGORY_BLURBS,
   CATEGORY_LABELS,
@@ -89,12 +91,12 @@ interface StatusView {
 const STATUS_VIEWS: Record<ConnectionStatus, StatusView> = {
   always: {
     label: 'Ready',
-    dot: 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]',
+    dot: 'bg-emerald-500',
     badge: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
   },
   connected: {
     label: 'Connected',
-    dot: 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.6)]',
+    dot: 'bg-primary',
     badge: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   },
   needs_auth: {
@@ -246,11 +248,11 @@ function ConnectModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-      <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative bg-card border border-border rounded-lg shadow-lg w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center gap-4 p-6 border-b border-border/60">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 bg-muted/60">
+          <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted/60">
             <Icon style={{ color }} className="w-6 h-6" />
           </div>
           <div className="flex-1 min-w-0">
@@ -289,20 +291,15 @@ function ConnectModal({
                 <span>{error}</span>
               </div>
             )}
-            <button
+            <Button
               onClick={handleOAuth}
               disabled={saving}
-              className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              loading={saving}
+              className="w-full"
             >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Waiting for Google…
-                </>
-              ) : (
-                'Sign in with Google'
-              )}
-            </button>
+              {!saving && 'Sign in with Google'}
+              {saving && <>Waiting for Google…</>}
+            </Button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -329,7 +326,7 @@ function ConnectModal({
                         setFormData((prev) => ({ ...prev, [field.name]: e.target.value }))
                       }
                       placeholder={field.placeholder ?? ''}
-                      className="w-full px-4 py-2.5 bg-background border border-border/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-mono pr-10"
+                      className="w-full px-4 py-2.5 bg-background border border-border/60 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-mono pr-10"
                       autoComplete="off"
                     />
                     {field.type === 'password' && (
@@ -374,24 +371,19 @@ function ConnectModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 py-2.5 rounded-xl border border-border/60 text-sm font-semibold hover:bg-muted/50 transition-colors"
+                className="flex-1 py-2.5 rounded-lg border border-border/60 text-sm font-semibold hover:bg-muted/50 transition-colors"
               >
                 Cancel
               </button>
-              <button
+              <Button
                 type="submit"
                 disabled={saving || credType.fields_schema.length === 0}
-                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                loading={saving}
+                className="flex-1"
               >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  'Connect'
-                )}
-              </button>
+                {!saving && <>Connect</>}
+                {saving && <>Saving…</>}
+              </Button>
             </div>
           </form>
         )}
@@ -555,12 +547,12 @@ function ConnectionCard({
   return (
     <div
       className={cn(
-        'bg-card border rounded-2xl p-5 flex flex-col gap-4 transition-all duration-200',
+        'bg-card border rounded-lg p-5 flex flex-col gap-4 transition-colors duration-150',
         isOn ? 'border-border/60' : 'border-dashed border-border/50 opacity-70'
       )}
     >
       <div className="flex items-start gap-3">
-        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 bg-muted/60">
+        <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted/60">
           <Icon style={{ color }} className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -736,7 +728,7 @@ function CustomServerRow({
 }) {
   const isOn = server.effective_enabled;
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-card border border-border/60 rounded-xl">
+    <div className="flex items-center gap-3 px-4 py-3 bg-card border border-border/60 rounded-lg">
       <Terminal className="w-4 h-4 text-muted-foreground flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-foreground truncate">{server.label}</p>
@@ -750,7 +742,7 @@ function CustomServerRow({
       <ConnectionSwitch isOn={isOn} onToggle={onToggle} disabled={busy} label={server.label} />
       <button
         onClick={onEdit}
-        className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={`Edit ${server.label}`}
       >
         <Settings2 className="w-4 h-4" />
@@ -998,8 +990,8 @@ export default function Connections() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+            <Spinner size="lg" />
       </div>
     );
   }
@@ -1023,7 +1015,7 @@ export default function Connections() {
       />
 
       {serversQuery.error && (
-        <div className="mx-4 md:mx-8 mt-4 bg-destructive/10 text-destructive p-4 rounded-xl border border-destructive/20 flex items-center gap-3">
+        <div className="mx-4 md:mx-8 mt-4 bg-destructive/10 text-destructive p-4 rounded-lg border border-destructive/20 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <p className="text-sm font-medium">
             Could not load your connections. Please try again later.
@@ -1120,7 +1112,7 @@ export default function Connections() {
                   setEditingServer(null);
                   setServerModalOpen(true);
                 }}
-                className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-lg text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 Add custom server
@@ -1169,8 +1161,8 @@ export default function Connections() {
       />
 
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
-          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-sm p-8">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-sm p-8">
             <div className="w-14 h-14 bg-destructive/10 rounded-full flex items-center justify-center mb-6 mx-auto">
               <Trash2 className="w-7 h-7 text-destructive" />
             </div>
@@ -1183,14 +1175,14 @@ export default function Connections() {
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="flex-1 px-4 py-3 border border-border/60 rounded-xl font-bold text-sm hover:bg-muted transition-colors"
+                className="flex-1 px-4 py-3 border border-border/60 rounded-lg font-bold text-sm hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => deleteServerMutation.mutate(confirmDelete.id)}
                 disabled={deleteServerMutation.isPending}
-                className="flex-1 px-4 py-3 bg-destructive text-destructive-foreground rounded-xl font-bold text-sm hover:bg-destructive/90 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-3 bg-destructive text-destructive-foreground rounded-lg font-bold text-sm hover:bg-destructive/90 transition-colors disabled:opacity-50"
               >
                 Remove
               </button>

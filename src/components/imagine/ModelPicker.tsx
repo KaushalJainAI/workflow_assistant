@@ -180,7 +180,7 @@ export function ModelPicker({
         onClick={openPanel}
         title={selected?.id}
         className={cn(
-          'flex items-center gap-2 rounded-xl border border-border/60 bg-background/60',
+          'flex items-center gap-2 rounded-lg border border-border/60 bg-background/60',
           'hover:bg-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
           compact ? 'px-2.5 py-1.5 max-w-[190px]' : 'w-full px-3 py-2.5',
         )}
@@ -204,7 +204,7 @@ export function ModelPicker({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[10vh] bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[10vh] bg-black/50"
           onClick={closePanel}
           role="presentation"
         >
@@ -213,7 +213,7 @@ export function ModelPicker({
             aria-modal="true"
             aria-label={`Select a ${kind} model`}
             onClick={e => e.stopPropagation()}
-            className="w-full max-w-lg max-h-[70vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+            className="w-full max-w-lg max-h-[70vh] flex flex-col rounded-lg border border-border bg-card shadow-lg overflow-hidden"
           >
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60">
               <Search size={16} className="text-muted-foreground shrink-0" />

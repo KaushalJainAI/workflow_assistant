@@ -156,7 +156,7 @@ export default function OAuthCallback() {
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">{message}</p>
           <button
             onClick={() => window.close()}
-            className="mt-6 px-5 py-2 rounded-xl border border-border/60 text-sm font-semibold hover:bg-muted transition-colors"
+            className="mt-6 px-5 py-2 rounded-lg border border-border/60 text-sm font-semibold hover:bg-muted transition-colors"
           >
             Close
           </button>

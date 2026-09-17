@@ -194,7 +194,7 @@ export default function Select({
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleTriggerKeyDown}
         className={cn(
-          "w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-background/50 border border-input rounded-xl hover:bg-accent/50 hover:border-primary/30 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20",
+          "w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-background border border-input rounded-lg hover:bg-secondary transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           isOpen && "border-primary/50 ring-2 ring-primary/20"
         )}
         aria-haspopup="listbox"
@@ -219,7 +219,7 @@ export default function Select({
       {/* Dropdown Menu */}
       {isOpen && (
         <div
-          className="absolute z-50 w-full mt-2 bg-card/95 backdrop-blur-xl border border-border/60 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top p-1"
+          className="absolute z-50 w-full mt-2 bg-card border border-border rounded-lg shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top p-1"
           onKeyDown={handleDropdownKeyDown}
           role="listbox"
         >

@@ -71,7 +71,7 @@ export function PillSelect<T extends string | number>({
       {open && (
         // Opens upward: the prompt bar sits low in the viewport, so a
         // downward menu would be clipped by the results grid below it.
-        <div className="absolute bottom-full left-0 mb-1.5 z-30 min-w-[112px] max-h-[240px] overflow-y-auto rounded-xl border border-border bg-card shadow-xl p-1 custom-scrollbar">
+        <div className="absolute bottom-full left-0 mb-1.5 z-30 min-w-[112px] max-h-[240px] overflow-y-auto rounded-lg border border-border bg-card shadow-lg p-1 custom-scrollbar">
           <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">
             {label}
           </div>

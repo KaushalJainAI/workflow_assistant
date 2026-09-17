@@ -17,7 +17,8 @@ export const GOOGLE_SCOPES: Record<string, string[]> = {
   /* `gmail.modify` alone cannot send: the connector ships `send_message` and
      `create_draft`, and a connection that reports success and then fails on the
      first send is the exact failure this map exists to prevent.
-     `settings.basic` covers the vacation/filter/forwarding tools.
+     `settings.basic` is kept so tokens issued before the native tools keep
+     their grant; no native tool uses it yet.
      `settings.sharing` (delegates, send-as, S/MIME) is deliberately NOT asked
      for — it is a restricted scope that drags the whole app into a heavier
      Google verification review, and it buys a handful of rarely-used tools. */
@@ -27,21 +28,16 @@ export const GOOGLE_SCOPES: Record<string, string[]> = {
     'https://www.googleapis.com/auth/gmail.settings.basic',
   ],
   'google-calendar': ['https://www.googleapis.com/auth/calendar'],
-  /* Drive and Sheets are ONE package (`@isaacphi/mcp-gdrive`) exposing four
-     tools: gdrive_search, gdrive_read_file, gsheets_read, gsheets_update_cell.
-     So both connectors need both scopes — a user who connects only Sheets and
-     is then offered gdrive_search would watch it fail on a missing scope, which
-     is the "connected, then broken on first use" failure this map exists to
-     prevent. Keep these two lists identical while they share a package.
-     `drive.readonly` rather than full `drive`: the package never writes to
-     Drive, and the narrower scope is a smaller ask on the consent screen. */
-  'google-sheets': [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive.readonly',
-  ],
+  /* Drive and Sheets are served natively by the backend since 2026-09-17
+     (`chat/tools/google/drive.py`) as separate tool sets, so each card asks
+     only for what its own tools call. `drive.readonly` covers search and read;
+     `drive.file` is what `drive_create_file` needs, and it is the narrow scope —
+     only files this app created — rather than full `drive`. Sheets tools address
+     a spreadsheet by id, so `spreadsheets` alone is enough. */
+  'google-sheets': ['https://www.googleapis.com/auth/spreadsheets'],
   'google-drive': [
-    'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/drive.file',
   ],
   /* Docs has no working connector; kept so the row still resolves if one lands. */
   'google-docs': ['https://www.googleapis.com/auth/documents'],

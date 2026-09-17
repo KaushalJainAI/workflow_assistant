@@ -45,6 +45,7 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
+import { Button } from '../components/ui/Button';
 import toolsService, {
   type ToolCategory,
   type ToolChange,
@@ -222,7 +223,7 @@ function ToolRow({
         }
       }}
       className={cn(
-        'group flex items-start gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors cursor-pointer',
+        'group flex items-start gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors cursor-pointer',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
         off
           ? 'border-dashed border-border/60 bg-muted/20'
@@ -303,7 +304,7 @@ function CategorySection({
   return (
     <section
       className={cn(
-        'bg-card border rounded-2xl overflow-hidden transition-colors',
+        'bg-card border rounded-lg overflow-hidden transition-colors',
         onCount === 0 && tools.length > 0
           ? 'border-dashed border-border/60'
           : 'border-border/60',
@@ -316,7 +317,7 @@ function CategorySection({
           className="flex items-center gap-3 flex-1 min-w-0 text-left disabled:cursor-default"
           aria-expanded={open}
         >
-          <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
             <Icon className="w-4 h-4 text-primary" />
           </div>
           <div className="min-w-0">
@@ -370,7 +371,7 @@ function CategorySection({
 
       {category.note && (
         <div className="px-4 pb-4">
-          <div className="flex gap-2 text-[12px] text-muted-foreground bg-muted/40 border border-border/60 rounded-xl px-3 py-2.5">
+          <div className="flex gap-2 text-[12px] text-muted-foreground bg-muted/40 border border-border/60 rounded-lg px-3 py-2.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>
               {category.note}
@@ -439,7 +440,7 @@ function SettingsEditor({
         {tool.settings.map((setting) => (
           <div
             key={setting.key}
-            className="border border-border/60 rounded-xl px-3 py-3 bg-background/40"
+            className="border border-border/60 rounded-lg px-3 py-3 bg-background/40"
           >
             <div className="flex items-center justify-between gap-3">
               <label htmlFor={`${tool.name}-${setting.key}`} className="text-[13px] font-semibold">
@@ -469,23 +470,25 @@ function SettingsEditor({
         ))}
       </div>
       <div className="flex items-center gap-2 mt-3">
-        <button
+        <Button
           onClick={() => onSave(draft)}
           disabled={!dirty || busy}
-          className="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+          loading={busy}
+          size="md"
         >
           {busy ? 'Saving...' : 'Save settings'}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
+          size="md"
           onClick={() =>
             setDraft(Object.fromEntries(tool.settings.map((s) => [s.key, s.default])))
           }
           disabled={atDefaults || busy}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-border hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           Defaults
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -525,7 +528,7 @@ function ToolDrawer({
   return (
     <div className="fixed inset-0 z-50 flex">
       <button
-        className="flex-1 bg-black/40 backdrop-blur-sm"
+        className="flex-1 bg-black/50"
         onClick={onClose}
         aria-label="Close details"
       />
@@ -533,9 +536,9 @@ function ToolDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={tool.name}
-        className="w-full max-w-[480px] bg-card border-l border-border h-full overflow-y-auto shadow-2xl custom-scrollbar"
+        className="w-full max-w-[480px] bg-card border-l border-border h-full overflow-y-auto shadow-lg custom-scrollbar"
       >
-        <div className="sticky top-0 bg-card/95 backdrop-blur-xl border-b border-border px-5 py-4 flex items-start justify-between gap-4 z-10">
+        <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-start justify-between gap-4 z-10">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <Chip>{categoryLabel}</Chip>
@@ -569,7 +572,7 @@ function ToolDrawer({
               what the assistant can do, so it does not belong under the fold. */}
           <div
             className={cn(
-              'flex items-start gap-3 rounded-xl border px-4 py-3',
+              'flex items-start gap-3 rounded-lg border px-4 py-3',
               tool.enabled ? 'border-border bg-muted/30' : 'border-dashed border-border bg-muted/20',
             )}
           >
@@ -616,12 +619,12 @@ function ToolDrawer({
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
-            <div className="bg-muted/40 border border-border/60 rounded-xl px-3 py-2.5">
+            <div className="bg-muted/40 border border-border/60 rounded-lg px-3 py-2.5">
               <div className="text-muted-foreground text-[11px]">Effect</div>
               <div className="font-semibold">{effect.label}</div>
               <div className="text-[11px] text-muted-foreground mt-1">{effect.blurb}</div>
             </div>
-            <div className="bg-muted/40 border border-border/60 rounded-xl px-3 py-2.5">
+            <div className="bg-muted/40 border border-border/60 rounded-lg px-3 py-2.5">
               <div className="text-muted-foreground text-[11px]">Availability</div>
               <div className="font-semibold">
                 {tool.alwaysAvailable ? 'Always on' : tool.requires ? 'Conditional' : 'By grant'}
@@ -641,7 +644,7 @@ function ToolDrawer({
               <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
                 Parameters
               </h3>
-              <div className="border border-border/60 rounded-xl overflow-hidden divide-y divide-border/60">
+              <div className="border border-border/60 rounded-lg overflow-hidden divide-y divide-border/60">
                 {paramEntries.map(([key, def]) => (
                   <div key={key} className="px-3 py-2.5 flex gap-3">
                     <span className="text-[13px] font-mono font-medium shrink-0">
@@ -660,17 +663,15 @@ function ToolDrawer({
           )}
 
           <div className="flex gap-2 pt-1">
-            <Link
-              to="/agents/new"
-              className="flex-1 text-center px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              Use it in an agent
+            <Link to="/agents/new" className="flex-1">
+              <Button size="md" className="w-full">
+                Use it in an agent
+              </Button>
             </Link>
-            <Link
-              to="/connections"
-              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-secondary"
-            >
-              Connections
+            <Link to="/connections">
+              <Button variant="secondary" size="md">
+                Connections
+              </Button>
             </Link>
           </div>
           <p className="text-[11px] text-muted-foreground">
@@ -780,7 +781,7 @@ export default function Tools() {
         <PageHeader icon={Wrench} title="Tools" subtitle="Loading your tool library…" />
         <div className="flex-1 p-4 md:p-8 space-y-3">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-20 rounded-2xl bg-card border border-border/60 animate-pulse" />
+            <div key={i} className="h-20 rounded-lg bg-card border border-border/60 animate-pulse" />
           ))}
         </div>
       </div>
@@ -797,12 +798,9 @@ export default function Tools() {
           <p className="text-[12px] text-muted-foreground mt-1">
             The library is code, so nothing is lost — this is a connection problem.
           </p>
-          <button
-            onClick={() => refetch()}
-            className="mt-4 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-          >
+          <Button size="md" onClick={() => refetch()} className="mt-4">
             Try again
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -817,11 +815,10 @@ export default function Tools() {
           changedCount > 0 ? ` · ${changedCount} changed from default` : ''
         }`}
         actions={
-          <Link
-            to="/agents/new"
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 whitespace-nowrap"
-          >
-            New agent
+          <Link to="/agents/new">
+            <Button size="md" className="whitespace-nowrap">
+              New agent
+            </Button>
           </Link>
         }
       >
@@ -853,7 +850,7 @@ export default function Tools() {
       </PageHeader>
 
       {mutation.isError && (
-        <div className="mx-4 md:mx-8 mt-4 bg-destructive/10 text-destructive p-3 rounded-xl border border-destructive/20 flex items-center gap-3">
+        <div className="mx-4 md:mx-8 mt-4 bg-destructive/10 text-destructive p-3 rounded-lg border border-destructive/20 flex items-center gap-3">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <p className="text-sm font-medium">
             That change didn't save. Nothing has been switched off — try again.

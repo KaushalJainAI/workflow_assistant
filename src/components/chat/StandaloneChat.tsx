@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useDeferredValue } from 'react';
 import {
   RUN_STATUS_EVENT,
   abortChatRun,
@@ -60,7 +60,7 @@ import TodoPanel from './TodoPanel';
 import MarkdownMessage from './MarkdownMessage';
 import TranscriptSkeleton from './TranscriptSkeleton';
 import { forgetTranscript, readTranscript, writeTranscript } from '../../lib/transcriptCache';
-import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData } from '../../api/chat';
+import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData, ChatSessionSummary } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useChatStream, type StreamEvent } from '../../hooks/useChatStream';
@@ -229,6 +229,10 @@ export default function StandaloneChat() {
   // Bound as consts so a `&&` guard narrows them inside event handlers too,
   // which a `live.x` property read does not.
   const { pendingToolCall, blockedAttachments } = live;
+  // The answer being streamed re-parses its whole markdown on every update.
+  // Deferred, so that work yields to typing in the composer rather than
+  // making the box lag behind the keys while an answer is arriving.
+  const streamedContent = useDeferredValue(live.content);
 
   const [showSessionSettings, setShowSessionSettings] = useState(false);
   const [systemPromptDraft, setSystemPromptDraft] = useState('');
@@ -348,7 +352,7 @@ export default function StandaloneChat() {
     }
     // Small delay to let useQuery fetch initial data if empty
     const timer = setTimeout(() => {
-      const sessions = queryClient.getQueryData<ChatSession[]>(['chatSessions']);
+      const sessions = queryClient.getQueryData<ChatSessionSummary[]>(['chatSessions']);
       if (sessions && sessions.length > 0) {
         loadConversation(sessions[0].id);
       }
@@ -490,7 +494,7 @@ export default function StandaloneChat() {
 
     try {
       await chatService.deleteSession(id);
-      queryClient.setQueryData<ChatSession[]>(['chatSessions'], (old = []) => old.filter(c => c.id !== id));
+      queryClient.setQueryData<ChatSessionSummary[]>(['chatSessions'], (old = []) => old.filter(c => c.id !== id));
       // Both caches too, or the deleted thread paints again on the next reload.
       queryClient.removeQueries({ queryKey: ['chatSession', id] });
       forgetTranscript(id);
@@ -796,7 +800,6 @@ export default function StandaloneChat() {
         break;
       }
 
-
       case 'done': {
         // The `done` frame carries whole persisted messages. `StreamEvent`
         // fields are `unknown` by design, so the assertion happens once, here,
@@ -1029,7 +1032,7 @@ export default function StandaloneChat() {
           currentSessionId = newSession.id;
           setConversationId(newSession.id);
           setCurrentSession(newSession);
-          queryClient.setQueryData<ChatSession[]>(['chatSessions'], (old = []) => [newSession, ...old]);
+          queryClient.setQueryData<ChatSessionSummary[]>(['chatSessions'], (old = []) => [newSession, ...old]);
           if (showHistory) loadHistory();
         }
 
@@ -1110,7 +1113,7 @@ export default function StandaloneChat() {
     <div className="flex h-full w-full bg-background overflow-hidden relative">
       {/* No decorative wash. The three blurred orbs that used to sit here were
           off-palette (raw `purple-500`, not the `--agent` violet) and pushed a
-          glassmorphic look the Fluent tokens do not have. An answer surface
+         morphic look the Fluent tokens do not have. An answer surface
           reads better on a flat canvas — the content is the ornament. */}
 
       {/* Guest banner — encourage login without blocking chat. On mobile it's a
@@ -1127,7 +1130,7 @@ export default function StandaloneChat() {
       )}
       <div
         className={cn(
-          "h-full bg-card/80 backdrop-blur-xl border-r border-border/60 transition-all duration-300 ease-in-out flex flex-col shadow-2xl overflow-hidden",
+          "h-full bg-card/80 border-r border-border/60 transition-colors duration-300 ease-in-out flex flex-col shadow-lg overflow-hidden",
           // Mobile: fixed overlay
           "fixed md:relative left-0 top-0 z-40 md:z-30 md:flex-shrink-0",
           showHistory
@@ -1157,7 +1160,7 @@ export default function StandaloneChat() {
                 startNewConversation();
                 setShowHistory(false);
               }}
-              className="w-full h-11 flex items-center gap-3 px-4 rounded-xl bg-primary/10 hover:bg-primary/20 text-sm font-semibold transition"
+              className="w-full h-11 flex items-center gap-3 px-4 rounded-lg bg-primary/10 hover:bg-primary/20 text-sm font-semibold transition"
             >
               <Plus className="w-4 h-4" />
               New conversation
@@ -1169,7 +1172,7 @@ export default function StandaloneChat() {
               <div
                 key={conv.id}
                 className={cn(
-                  "w-full p-3 rounded-xl text-left transition flex items-center gap-3 text-xs group relative cursor-pointer",
+                  "w-full p-3 rounded-lg text-left transition flex items-center gap-3 text-xs group relative cursor-pointer",
                   conversationId === conv.id
                     ? "bg-primary/10 border border-primary/30"
                     : "hover:bg-muted/60"
@@ -1215,7 +1218,7 @@ export default function StandaloneChat() {
                 </div>
                 <button
                   onClick={(e) => handleDeleteConversation(e, conv.id)}
-                  className="p-1.5 hover:bg-destructive hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm shrink-0 bg-background/50"
+                  className="p-1.5 hover:bg-destructive hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-colors shadow-sm shrink-0 bg-background/50"
                   title="Delete Conversation"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1227,11 +1230,11 @@ export default function StandaloneChat() {
       </div>
 
       {/* 2. Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full relative min-w-0 z-10 transition-all duration-300">
+      <div className="flex-1 flex flex-col h-full relative min-w-0 z-10 transition-colors duration-300">
         
         {/* Transparent Header — leaves space on mobile for the global hamburger and guest banner */}
         <header className={cn(
-          "h-16 shrink-0 flex items-center px-4 md:px-6 justify-between border-b border-border/40 backdrop-blur-md bg-background/50",
+          "h-16 shrink-0 flex items-center px-4 md:px-6 justify-between border-b border-border/40 bg-background/50",
           // Guest: the banner band (56px on mobile, ~38px on desktop) overlays
           // the top — push the header below it instead of stretching it.
           isGuest && "mt-14 md:mt-10"
@@ -1245,7 +1248,7 @@ export default function StandaloneChat() {
             {!showHistory && (
               <button
                 onClick={() => setShowHistory(true)}
-                className="p-2.5 md:p-3 bg-card/40 border border-border/60 hover:bg-card/60 rounded-2xl transition-all text-muted-foreground group shrink-0"
+                className="p-2.5 md:p-3 bg-card/40 border border-border/60 hover:bg-card/60 rounded-lg transition-colors text-muted-foreground group shrink-0"
                 aria-label="Conversation history"
               >
                 <History className="w-5 h-5 group-hover:text-primary transition-colors" />
@@ -1267,8 +1270,8 @@ export default function StandaloneChat() {
                  onClick={() => setShowSessionSettings(true)}
                  title="Memory is off for this chat — click to change"
                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-500/40
-                            bg-amber-500/10 text-[11px] font-semibold text-amber-500
-                            transition-all duration-200 hover:bg-amber-500/20
+                            bg-warning-subtle text-[11px] font-semibold text-amber-500
+                            transition-colors duration-200 hover:bg-amber-500/20
                             animate-in fade-in slide-in-from-right-2"
                >
                  <BrainCircuit className="w-3.5 h-3.5" />
@@ -1304,7 +1307,7 @@ export default function StandaloneChat() {
                    setShowSessionSettings(true);
                  }}
                  title="Chat settings"
-                 className="p-1.5 rounded-lg text-muted-foreground transition-all duration-200
+                 className="p-1.5 rounded-lg text-muted-foreground transition-colors duration-200
                             hover:bg-muted hover:text-foreground active:scale-95"
                >
                  <Settings2 className="w-4 h-4" />
@@ -1321,7 +1324,7 @@ export default function StandaloneChat() {
             onClick={() => setShowSessionSettings(false)}
           >
             <div
-              className="w-full max-w-lg mx-4 rounded-2xl border border-border bg-card shadow-2xl
+              className="w-full max-w-lg mx-4 rounded-lg border border-border bg-card shadow-lg
                          animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out"
               onClick={e => e.stopPropagation()}
             >
@@ -1350,15 +1353,15 @@ export default function StandaloneChat() {
                     onChange={e => setSystemPromptDraft(e.target.value)}
                     rows={5}
                     placeholder="e.g. Answer concisely. Prefer tables over prose. Always cite sources."
-                    className="mt-2 w-full resize-y rounded-xl border border-border bg-background px-3 py-2
+                    className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2
                                text-xs leading-relaxed text-foreground outline-none
-                               transition-all duration-200 placeholder:text-muted-foreground/50
+                               transition-colors duration-200 placeholder:text-muted-foreground/50
                                focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
 
                 {!isGuest ? (
-                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-3.5">
+                  <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/20 p-3.5">
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-foreground">Memory</div>
                       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
@@ -1391,11 +1394,11 @@ export default function StandaloneChat() {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-start justify-between gap-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5">
+                  <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-warning-subtle p-3.5">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                         <span>Memory</span>
-                        <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-600">Login required</span>
+                        <span className="rounded border border-border bg-card px-1.5 py-0.5 micro-label">Login required</span>
                       </div>
                       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                         Conversation memory is only available to logged-in users. Log in to let the assistant remember previous turns.
@@ -1427,7 +1430,7 @@ export default function StandaloneChat() {
                   disabled={isSavingSettings}
                   onClick={() => handleSaveSessionSettings({ system_prompt: systemPromptDraft })}
                   className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold
-                             text-primary-foreground transition-all duration-200
+                             text-primary-foreground transition-colors duration-200
                              hover:brightness-110 active:scale-95 disabled:opacity-50"
                 >
                   {isSavingSettings && <Loader2 className="w-3 h-3 animate-spin" />}
@@ -1441,7 +1444,7 @@ export default function StandaloneChat() {
         {/* Dynamic Transition Area */}
         <div 
           className={cn(
-            "flex-1 overflow-y-auto px-4 md:px-6 transition-all duration-1000 ease-in-out relative",
+            "flex-1 overflow-y-auto px-4 md:px-6 transition-colors duration-1000 ease-in-out relative",
             // Initial state: truly center the hero (no asymmetric padding that
             // shoves it upward and leaves a dead zone above the composer).
             // Transcript: only enough head room to clear the sticky header —
@@ -1476,7 +1479,7 @@ export default function StandaloneChat() {
                   <BrainCircuit className="w-6 h-6 text-agent" />
                 </div>
                 <div className="space-y-2">
-                  <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground">
+                  <h1 className="text-2xl md:text-3xl font-semibold text-foreground">
                     What should I take off your plate?
                   </h1>
                   <p className="text-muted-foreground text-base max-w-xl mx-auto leading-relaxed px-2">
@@ -1557,24 +1560,24 @@ export default function StandaloneChat() {
                       )}>
 
                         {message.role === 'system' ? (
-                          <div className="bg-muted/30 p-4 rounded-3xl shadow-sm border border-border/40 inline-flex flex-col gap-3 min-w-[300px] max-w-sm">
+                          <div className="bg-muted p-4 rounded-lg shadow-sm border border-border inline-flex flex-col gap-3 min-w-[300px] max-w-sm">
                             <div className="flex items-start gap-3">
-                               <div className="w-10 h-10 rounded-xl bg-background border border-border/50 flex items-center justify-center shrink-0">
-                                  {message.metadata?.file_type === 'image' ? <ImageIcon className="w-5 h-5 text-emerald-500" /> :
-                                   message.metadata?.file_type === 'pdf' ? <FileIcon className="w-5 h-5 text-red-500" /> :
-                                   message.metadata?.file_type === 'pptx' ? <FileIcon className="w-5 h-5 text-orange-500" /> :
-                                   <FileIcon className="w-5 h-5 text-blue-500" />}
+                               <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
+                                  {message.metadata?.file_type === 'image' ? <ImageIcon className="w-5 h-5 text-success" /> :
+                                   message.metadata?.file_type === 'pdf' ? <FileIcon className="w-5 h-5 text-destructive" /> :
+                                   message.metadata?.file_type === 'pptx' ? <FileIcon className="w-5 h-5 text-warning" /> :
+                                   <FileIcon className="w-5 h-5 text-primary" />}
                                </div>
                                <div className="flex-1 min-w-0 pr-8 relative">
-                                  <p className="text-sm font-bold text-foreground truncate max-w-[90%]">
+                                  <p className="text-sm font-semibold text-foreground truncate max-w-[90%]">
                                     {message.content.match(/\*\*([^*]+)\*\*/)?.[1] || "Uploaded File"}
                                   </p>
                                   <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-[10px]  font-bold text-muted-foreground/60 bg-background px-1.5 py-0.5 rounded">
+                                    <span className="micro-label bg-card px-1.5 py-0.5 rounded border border-border">
                                       {message.metadata?.file_type || 'File'}
                                     </span>
                                     {message.metadata?.has_extracted_text && (
-                                       <span className="text-[10px]  font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                                       <span className="text-[11px] font-semibold text-success bg-success-subtle px-1.5 py-0.5 rounded border border-border">
                                          Parsed
                                        </span>
                                     )}
@@ -1594,7 +1597,7 @@ export default function StandaloneChat() {
                                   <button
                                     onClick={() => handleRewriteMessage(message.id as number)}
                                     disabled={deletingMsgId === message.id}
-                                    className="absolute right-8 top-0 p-1.5 text-muted-foreground/40 hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors disabled:opacity-50"
+                                    className="absolute right-8 top-0 p-1.5 text-muted-foreground/40 hover:text-amber-500 hover:bg-warning-subtle rounded-lg transition-colors disabled:opacity-50"
                                     title="Rewind conversation from here (deletes this and following)"
                                   >
                                     <RotateCcw className="w-4 h-4" />
@@ -1621,14 +1624,14 @@ export default function StandaloneChat() {
                               <button
                                 onClick={() => togglePanel('summary', message.id as number)}
                                 className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
                                   isPanelOpen('summary', message.id)
                                     ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
                                 <FileText className={cn("w-4 h-4", isPanelOpen('summary', message.id) ? "text-primary" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold tracking-tight">Summary</span>
+                                <span className="text-[12px] font-bold">Summary</span>
                                 <div className="flex-1" />
                                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('summary', message.id) && "rotate-180")} />
                               </button>
@@ -1640,14 +1643,14 @@ export default function StandaloneChat() {
                               <button
                                 onClick={() => togglePanel('thinking', message.id as number)}
                                 className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
                                   isPanelOpen('thinking', message.id)
                                     ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
                                 <BrainCircuit className={cn("w-4 h-4", isPanelOpen('thinking', message.id) ? "text-primary" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold tracking-tight">Reasoning</span>
+                                <span className="text-[12px] font-bold">Reasoning</span>
                                 {/* Length hint: without it there is no way to
                                     tell a one-line thought from six paragraphs
                                     before committing to opening it. */}
@@ -1664,14 +1667,14 @@ export default function StandaloneChat() {
                               <button
                                 onClick={() => togglePanel('activity', message.id as number)}
                                 className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
                                   isPanelOpen('activity', message.id)
-                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-600 shadow-sm" 
+                                    ? "bg-warning-subtle border-border text-amber-600 shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
                                 <Zap className={cn("w-4 h-4", isPanelOpen('activity', message.id) ? "text-amber-600" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold tracking-tight">Activity</span>
+                                <span className="text-[12px] font-bold">Activity</span>
                                 <div className="flex-1" />
                                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('activity', message.id) && "rotate-180")} />
                               </button>
@@ -1683,14 +1686,14 @@ export default function StandaloneChat() {
                               <button
                                 onClick={() => togglePanel('code', message.id as number)}
                                 className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-xl transition-all border w-full",
+                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
                                   isPanelOpen('code', message.id)
-                                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" 
+                                    ? "bg-success-subtle border-emerald-500/30 text-emerald-600 shadow-sm" 
                                     : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
                                 )}
                               >
                                 <Code className={cn("w-4 h-4", isPanelOpen('code', message.id) ? "text-emerald-600" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold tracking-tight">Code</span>
+                                <span className="text-[12px] font-bold">Code</span>
                                 <div className="flex-1" />
                                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('code', message.id) && "rotate-180")} />
                               </button>
@@ -1702,10 +1705,10 @@ export default function StandaloneChat() {
                       {/* Expanded Summary Content */}
                       {message.role === 'assistant' && message.metadata?.summary && (
                         <CollapsiblePanel open={isPanelOpen('summary', message.id)}>
-                        <div className="mt-2 p-5 bg-card/40 backdrop-blur-md border border-primary/20 rounded-2xl animate-in slide-in-from-top-2 duration-300 shadow-sm relative overflow-hidden group">
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40" />
+                        <div className="mt-2 p-4 bg-card border border-border rounded-lg shadow-sm relative overflow-hidden">
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
                           {/* Model-written summary — markdown via the shared renderer. */}
-                          <div className="text-[14px] font-medium text-foreground/90 leading-relaxed italic tracking-tight">
+                          <div className="text-[14px] text-foreground leading-relaxed italic">
                             <MarkdownMessage content={message.metadata.summary} variant="compact" />
                           </div>
                         </div>
@@ -1715,11 +1718,10 @@ export default function StandaloneChat() {
                       {/* Expanded Thinking Content */}
                       {message.role === 'assistant' && message.metadata?.thinking && (
                         <CollapsiblePanel open={isPanelOpen('thinking', message.id)}>
-                        <div className="mt-2 overflow-hidden rounded-2xl border border-primary/20 bg-muted/20
-                                        animate-in fade-in slide-in-from-top-2 duration-300 ease-out">
-                          <div className="flex items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-2">
-                            <BrainCircuit className="h-3 w-3 text-primary/60" />
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card">
+                          <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2">
+                            <BrainCircuit className="h-3 w-3 text-muted-foreground" />
+                            <span className="micro-label">
                               How the assistant got here
                             </span>
                           </div>
@@ -1747,24 +1749,23 @@ export default function StandaloneChat() {
                       {/* Tool Activity Trace — shows which tools the agent called */}
                       {message.role === 'assistant' && message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('activity', message.id)}>
-                        <div className="mt-2 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                        <div className="mt-2 p-4 bg-warning-subtle border border-border rounded-lg">
                           <div className="flex items-center gap-3 px-1 mb-3">
-                            <Zap className="w-3.5 h-3.5 text-amber-500/70" />
-                            <span className="text-[11px] font-semibold  text-amber-600/70">Agent activity log</span>
-                            <div className="h-px flex-1 bg-amber-500/10" />
+                            <Zap className="w-3.5 h-3.5 text-warning" />
+                            <span className="micro-label">Agent activity log</span>
+                            <div className="h-px flex-1 bg-border" />
                           </div>
                           <div className="space-y-1">
                             {(message.metadata?.tool_trace ?? []).map((trace, i) => (
                               <div
                                 key={i}
-                                className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-left-2 py-2 group/trace border-b border-amber-500/5 last:border-0"
-                                style={{ animationDelay: `${i * 30}ms` }}
+                                className="flex flex-col gap-1.5 py-2 border-b border-border last:border-0"
                               >
-                                <div className="flex items-center gap-3.5 text-[14px] text-muted-foreground">
-                                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10 text-[10px] font-semibold text-amber-600 shrink-0 border border-amber-500/10">
+                                <div className="flex items-center gap-3 text-[14px] text-muted-foreground">
+                                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-muted text-[11px] font-semibold text-muted-foreground shrink-0 border border-border">
                                     {trace.iteration || i + 1}
                                   </span>
-                                  <span className="font-mono font-bold text-amber-600/80 text-[14px]">{trace.tool}</span>
+                                  <span className="font-mono font-semibold text-foreground text-[13px]">{trace.tool}</span>
                                   {(trace.args?.query || trace.args?.question) && (
                                     <span className="truncate max-w-[360px] text-foreground/60 italic text-[13px] pl-1">"{stripXmlTags(trace.args.query || trace.args.question)}"</span>
                                   )}
@@ -1774,7 +1775,7 @@ export default function StandaloneChat() {
                                 </div>
                                 {trace.thought && (
                                   <div className="pl-[38px] flex flex-col gap-1">
-                                     <div className="text-[13px] text-muted-foreground/70 italic leading-relaxed border-l-2 border-amber-500/10 pl-3 ai-activity-markdown pb-1">
+                                     <div className="text-[13px] text-muted-foreground italic leading-relaxed border-l-2 border-border pl-3 pb-1">
                                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                           {trace.thought}
                                         </ReactMarkdown>
@@ -1791,29 +1792,29 @@ export default function StandaloneChat() {
                       {/* Code Execution Log — shows sandbox results */}
                       {message.role === 'assistant' && message.metadata?.code_executions && (message.metadata?.code_executions?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('code', message.id)}>
-                        <div className="mt-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                        <div className="mt-2 p-4 bg-card border border-border rounded-lg">
                           <div className="flex items-center gap-3 px-1 mb-3">
-                            <Code className="w-3.5 h-3.5 text-emerald-500/70" />
-                            <span className="text-[11px] font-semibold  text-emerald-600/70">Secure sandbox code</span>
-                            <div className="h-px flex-1 bg-emerald-500/10" />
+                            <Code className="w-3.5 h-3.5 text-success" />
+                            <span className="micro-label">Secure sandbox code</span>
+                            <div className="h-px flex-1 bg-border" />
                           </div>
                           <div className="space-y-4">
                             {(message.metadata?.code_executions ?? []).map((exec, i) => (
-                              <div key={i} className="space-y-2 border-b border-emerald-500/5 last:border-0 pb-4 last:pb-0">
+                              <div key={i} className="space-y-2 border-b border-border last:border-0 pb-4 last:pb-0">
                                 <div className="flex items-center gap-2">
-                                   <span className="text-[10px] font-semibold text-emerald-600/50">Execution #{exec.iteration || i+1}</span>
-                                   <div className="h-px flex-1 bg-emerald-500/5" />
+                                   <span className="micro-label">Execution #{exec.iteration || i+1}</span>
+                                   <div className="h-px flex-1 bg-border" />
                                 </div>
-                                <div className="rounded-xl overflow-hidden border border-emerald-500/10 bg-zinc-950 shadow-sm">
-                                   <div className="px-3 py-1.5 bg-zinc-900/50 flex items-center justify-between border-b border-white/5">
-                                      <span className="text-[9px] font-bold text-zinc-500 ">Input code</span>
+                                <div className="rounded-lg overflow-hidden border border-border bg-muted shadow-sm">
+                                   <div className="px-3 py-1.5 bg-muted flex items-center justify-between border-b border-border">
+                                      <span className="micro-label">Input code</span>
                                    </div>
                                    <pre className="p-4 text-[13px] overflow-x-auto text-zinc-300 font-mono leading-relaxed bg-zinc-950">
                                       <code>{exec.code}</code>
                                    </pre>
                                 </div>
                                 {(exec.output || exec.result) && (
-                                   <div className="rounded-xl overflow-hidden border border-blue-500/10 bg-zinc-950/50 shadow-sm">
+                                   <div className="rounded-lg overflow-hidden border border-border bg-card shadow-sm">
                                       <div className="px-3 py-1.5 bg-zinc-900/50 flex items-center justify-between border-b border-white/5">
                                          <span className="text-[9px] font-bold text-zinc-500 ">Execution output</span>
                                       </div>
@@ -1970,7 +1971,7 @@ export default function StandaloneChat() {
                               setCopiedId(`msg-${index}`);
                               setTimeout(() => setCopiedId(null), 2000);
                             }}
-                            className="text-muted-foreground hover:text-primary transition-all p-1.5 hover:bg-primary/5 rounded-lg"
+                            className="text-muted-foreground hover:text-primary transition-colors p-1.5 hover:bg-primary/5 rounded-lg"
                             title="Copy message"
                           >
                             {copiedId === `msg-${index}` ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
@@ -1979,7 +1980,7 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => handleRewriteMessage(message.id as number)}
                               disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-amber-500 transition-all p-1.5 hover:bg-amber-500/10 rounded-lg disabled:opacity-50"
+                              className="text-muted-foreground hover:text-amber-500 transition-colors p-1.5 hover:bg-warning-subtle rounded-lg disabled:opacity-50"
                               title="Rewrite prompt (regenerates response without subsequent context)"
                             >
                               <RotateCcw className="w-4 h-4" />
@@ -1989,7 +1990,7 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => handleRewindAfterMessage(message.id as number)}
                               disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-emerald-500 transition-all p-1.5 hover:bg-emerald-500/10 rounded-lg disabled:opacity-50"
+                              className="text-muted-foreground hover:text-emerald-500 transition-colors p-1.5 hover:bg-success-subtle rounded-lg disabled:opacity-50"
                               title="Reverse context (keep this message, delete answers)"
                             >
                               <ArrowUpFromLine className="w-4 h-4" />
@@ -1999,7 +2000,7 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => handleEditMessage(message.id as number, message.content)}
                               disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-blue-500 transition-all p-1.5 hover:bg-blue-500/10 rounded-lg disabled:opacity-50"
+                              className="text-muted-foreground hover:text-blue-500 transition-colors p-1.5 hover:bg-blue-500/10 rounded-lg disabled:opacity-50"
                               title="Edit and resend message"
                             >
                               <Pencil className="w-4 h-4" />
@@ -2008,7 +2009,7 @@ export default function StandaloneChat() {
                           <button
                             onClick={() => handleDeleteMessage(message.id as number)}
                             disabled={deletingMsgId === message.id}
-                            className="text-muted-foreground hover:text-red-500 transition-all p-1.5 hover:bg-red-500/10 rounded-lg disabled:opacity-50"
+                            className="text-muted-foreground hover:text-red-500 transition-colors p-1.5 hover:bg-red-500/10 rounded-lg disabled:opacity-50"
                             title="Delete message"
                           >
                             {deletingMsgId === message.id ? (
@@ -2079,7 +2080,7 @@ export default function StandaloneChat() {
                         {live.thinking && (
                           <button
                             onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-all text-[10px] font-semibold  text-primary/60"
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/5 border border-primary/10 hover:bg-primary/10 transition-colors text-[10px] font-semibold  text-primary/60"
                           >
                             <BrainCircuit className="w-3 h-3" />
                             {isReasoningExpanded ? 'Hide reasoning' : 'View reasoning'}
@@ -2089,7 +2090,7 @@ export default function StandaloneChat() {
                       </div>
 
                       {live.thinking && isReasoningExpanded && (
-                        <div className="mt-2 p-4 rounded-2xl bg-muted/30 border border-border/40 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="mt-2 p-4 rounded-lg bg-muted/30 border border-border/40 animate-in fade-in slide-in-from-top-2 duration-300">
                           <div className="flex items-center gap-2 mb-3">
                             <BrainCircuit className="w-3.5 h-3.5 text-primary/60" />
                             <span className="text-[10px] font-semibold  text-muted-foreground/60">Internal processing</span>
@@ -2138,7 +2139,7 @@ export default function StandaloneChat() {
                             across the handoff, it does not arrive at it. */}
                         {live.content && (
                           <div className="prose prose-base dark:prose-invert max-w-none ai-chat-prose text-[16px] leading-[1.75] text-foreground">
-                            <MarkdownMessage content={live.content} sources={live.sources} />
+                            <MarkdownMessage content={streamedContent} sources={live.sources} />
                           </div>
                         )}
 
@@ -2182,7 +2183,7 @@ export default function StandaloneChat() {
                                              <BrainCircuit className="w-3.5 h-3.5 text-primary/60" />
                                           </div>
                                         ) : (
-                                          <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/20 text-xs font-semibold text-amber-600 shrink-0 border border-amber-500/20 shadow-sm">
+                                          <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/20 text-xs font-semibold text-amber-600 shrink-0 border border-border shadow-sm">
                                              {activity.iteration || '?'}
                                           </span>
                                         )}
@@ -2210,7 +2211,7 @@ export default function StandaloneChat() {
                                           {thought && (
                                             <div className="mt-1.5 group/thought relative">
                                               <div className={cn(
-                                                "text-[13.5px] text-muted-foreground/75 italic leading-relaxed border-l-2 border-primary/20 pl-3 transition-all duration-300 ai-activity-markdown pb-1",
+                                                "text-[13.5px] text-muted-foreground/75 italic leading-relaxed border-l-2 border-primary/20 pl-3 transition-colors duration-300 ai-activity-markdown pb-1",
                                                 isLongThought && openPanelId('activity') === null && "max-h-[80px] overflow-hidden mask-fade-bottom"
                                               )}>
                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -2252,15 +2253,15 @@ export default function StandaloneChat() {
                             {isLiveCodeExpanded && (
                               <div className="space-y-3">
                                 {live.codeExecutions.map((exec, i) => (
-                                  <div key={i} className="rounded-2xl overflow-hidden border border-emerald-500/20 bg-emerald-500/5 animate-in slide-in-from-bottom-2 duration-300">
-                                    <div className="px-4 py-2 bg-emerald-500/10 flex items-center justify-between border-b border-emerald-500/10">
+                                  <div key={i} className="rounded-lg overflow-hidden border border-border bg-success-subtle animate-in slide-in-from-bottom-2 duration-300">
+                                    <div className="px-4 py-2 bg-success-subtle flex items-center justify-between border-b border-emerald-500/10">
                                        <div className="flex items-center gap-2">
                                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                           <span className="text-[10px] font-semibold text-emerald-600 ">Active Execution {i+1}</span>
                                        </div>
                                     </div>
                                     <div className="p-4 space-y-3">
-                                       <pre className="text-[13px] text-foreground/80 font-mono bg-zinc-950/50 p-3 rounded-lg overflow-x-auto border border-white/5">
+                                       <pre className="text-[13px] text-foreground/80 font-mono bg-card p-3 rounded-lg overflow-x-auto border border-white/5">
                                           <code>{exec.code}</code>
                                        </pre>
                                        {(exec.output || exec.result) && (
@@ -2283,30 +2284,22 @@ export default function StandaloneChat() {
                           </div>
                         )}
 
-                        {/* Media Generation Animation (Visualize/Motion) */}
+                        {/* Media Generation status (Visualize/Motion) */}
                         {(live.status?.phase === 'visualizing' || live.status?.phase === 'motion_generating') && (
-                          <div className="mt-4 relative overflow-hidden rounded-3xl border border-primary/20 bg-muted/20 aspect-video max-w-sm w-full group/media">
-                            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent animate-pulse" />
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center p-6">
-                              <div className="relative">
-                                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-ping duration-[3000ms]" />
-                                {live.status.phase === 'visualizing' ? (
-                                    <ImageIcon className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
-                                ) : (
-                                    <Video className="w-12 h-12 text-primary/40 animate-bounce duration-[2000ms]" />
-                                )}
-                              </div>
-                              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-700">
-                                 <h4 className="text-sm font-semibold  text-primary/60">
-                                    {live.status.phase === 'visualizing' ? 'Developing vision' : 'Composing motion'}
-                                 </h4>
-                                 <p className="text-xs text-muted-foreground/60 font-medium italic">
-                                    "{activeIntent === 'image' ? 'Infusing pixels with intelligence...' : 'Stitching frames through the latent space...'}"
-                                 </p>
-                              </div>
+                          <div className="mt-4 rounded-lg border border-border bg-muted aspect-video max-w-sm w-full flex flex-col items-center justify-center gap-3 text-center p-6">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              {live.status.phase === 'visualizing' ? (
+                                  <ImageIcon className="w-6 h-6" />
+                              ) : (
+                                  <Video className="w-6 h-6" />
+                              )}
+                              <span className="text-sm font-semibold text-foreground">
+                                  {live.status.phase === 'visualizing' ? 'Generating image' : 'Generating video'}
+                              </span>
                             </div>
-                            {/* Scanning beam effect */}
-                            <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-transparent via-primary/10 to-transparent skew-x-12 -translate-x-[200%] animate-shimmer-fast" />
+                            <p className="text-xs text-muted-foreground">
+                                Working on your media — this stays here when done.
+                            </p>
                           </div>
                         )}
 
@@ -2332,7 +2325,7 @@ export default function StandaloneChat() {
                                 onClick={() => setIsLiveMediaExpanded(!isLiveMediaExpanded)}
                                 className={cn(
                                   "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
-                                  isLiveMediaExpanded ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
+                                  isLiveMediaExpanded ? "bg-success-subtle border-emerald-500/30 text-emerald-600 shadow-sm" : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50"
                                 )}
                               >
                                 <ImageIcon className={cn("w-3.5 h-3.5", isLiveMediaExpanded ? "text-emerald-600" : "text-muted-foreground/60 group-hover:text-emerald-500")} />
@@ -2357,7 +2350,7 @@ export default function StandaloneChat() {
                               />
                             ))}
                             {live.sources.length > 3 && (
-                              <div className="flex items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/20 text-[10px] font-bold text-muted-foreground/40 italic">
+                              <div className="flex items-center justify-center rounded-lg border border-dashed border-border/40 bg-muted/20 text-[10px] font-bold text-muted-foreground/40 italic">
                                  +{live.sources.length - 3} more...
                               </div>
                             )}
@@ -2388,7 +2381,7 @@ export default function StandaloneChat() {
                                )] : []
                              ))}
                              {(live.images.length > 4 || live.videos.length > 4) && (
-                               <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-xl bg-muted/20 border border-dashed border-border/40 text-[9px] font-semibold text-muted-foreground/30  text-center px-2">
+                               <div className="w-24 h-20 shrink-0 flex items-center justify-center rounded-lg bg-muted/20 border border-dashed border-border/40 text-[9px] font-semibold text-muted-foreground/30  text-center px-2">
                                   +{live.images.length + live.videos.length - 8} more
                                </div>
                              )}
@@ -2410,13 +2403,13 @@ export default function StandaloneChat() {
 
             {isUploading && (
               <div className="flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-border/40 shadow-md bg-muted text-muted-foreground">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border border-border/40 shadow-md bg-muted text-muted-foreground">
                   <Settings2 className="w-5 h-5"/>
                 </div>
                 <div className="max-w-[92%] md:max-w-[85%] space-y-3">
-                  <div className="bg-muted/30 p-4 rounded-3xl shadow-sm border border-border/40 inline-flex flex-col gap-3 min-w-[300px] max-w-sm w-full">
+                  <div className="bg-muted/30 p-4 rounded-lg shadow-sm border border-border/40 inline-flex flex-col gap-3 min-w-[300px] max-w-sm w-full">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-background border border-border/50 flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-lg bg-background border border-border/50 flex items-center justify-center shrink-0">
                         <Loader2 className="w-5 h-5 text-primary animate-spin" />
                       </div>
                       <div className="flex-1">
@@ -2432,18 +2425,18 @@ export default function StandaloneChat() {
             {/* Approval UI */}
             {pendingToolCall && (
               <div className="flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20 shadow-lg shadow-amber-500/20">
+                <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 border border-border shadow-lg shadow-amber-500/20">
                   <Shield className="w-6 h-6 text-white" />
                 </div>
                 <div className="flex-1 space-y-4 max-w-[92%] md:max-w-[85%]">
-                  <div className="bg-card/60 p-6 rounded-3xl rounded-tl-none shadow-sm glass border border-amber-500/30 space-y-4">
+                  <div className="bg-card/60 p-6 rounded-lg rounded-tl-none shadow-sm border border-border space-y-4">
                     {/* The heading is what is about to happen, not the word
                         "Permission". A card that leads with the demand and
                         buries the act behind `JSON.stringify` teaches people
                         to approve without reading, which is the one outcome
                         an approval screen must not produce. */}
                     <div className="space-y-1">
-                      <h3 className="text-lg font-semibold tracking-tight text-foreground">
+                      <h3 className="text-lg font-semibold text-foreground">
                         {pendingToolCall.detail?.title ?? 'Permission required'}
                       </h3>
                       <p className="text-muted-foreground text-sm">
@@ -2454,7 +2447,7 @@ export default function StandaloneChat() {
                     </div>
 
                     {pendingToolCall.detail?.fields?.length ? (
-                      <dl className="rounded-2xl border border-border/40 overflow-hidden divide-y divide-border/40">
+                      <dl className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/40">
                         {pendingToolCall.detail.fields.map((field) => (
                           <div key={field.label} className="flex gap-3 px-4 py-2.5 bg-muted/20">
                             <dt className="text-[12px] font-medium text-muted-foreground w-24 shrink-0">
@@ -2478,7 +2471,7 @@ export default function StandaloneChat() {
                         <ChevronRight className="w-3 h-3 transition-transform group-open/raw:rotate-90" />
                         Show raw arguments
                       </summary>
-                      <div className="mt-2 bg-muted/30 p-3 rounded-xl border border-border/40 space-y-2 overflow-hidden">
+                      <div className="mt-2 bg-muted/30 p-3 rounded-lg border border-border/40 space-y-2 overflow-hidden">
                         <div className="font-mono text-[11px] text-muted-foreground break-all">
                           {pendingToolCall.tool}
                         </div>
@@ -2492,14 +2485,14 @@ export default function StandaloneChat() {
                       <div className="flex gap-3">
                         <button
                           onClick={() => handleApproveTool(pendingToolCall.call_id, 'once')}
-                          className="flex-1 h-11 bg-primary text-primary-foreground font-semibold rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
+                          className="flex-1 h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:shadow-lg transition-colors flex items-center justify-center gap-2 group"
                         >
                           <Check className="w-4 h-4" />
                           Approve
                         </button>
                         <button
                           onClick={() => handleDenyTool(pendingToolCall.call_id)}
-                          className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-xl hover:bg-muted/80 transition-all flex items-center justify-center gap-2"
+                          className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-lg hover:bg-muted/80 transition-colors flex items-center justify-center gap-2"
                         >
                           <X className="w-4 h-4" />
                           Deny
@@ -2513,13 +2506,13 @@ export default function StandaloneChat() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleApproveTool(pendingToolCall.call_id, 'session')}
-                          className="flex-1 h-9 text-xs font-medium text-muted-foreground rounded-xl border border-border/50 hover:bg-muted/50 hover:text-foreground transition-all"
+                          className="flex-1 h-9 text-xs font-medium text-muted-foreground rounded-lg border border-border/50 hover:bg-muted/50 hover:text-foreground transition-colors"
                         >
                           Allow for this chat
                         </button>
                         <button
                           onClick={() => handleApproveTool(pendingToolCall.call_id, 'always')}
-                          className="flex-1 h-9 text-xs font-medium text-muted-foreground/70 rounded-xl border border-border/40 hover:bg-muted/50 hover:text-foreground transition-all"
+                          className="flex-1 h-9 text-xs font-medium text-muted-foreground/70 rounded-lg border border-border/40 hover:bg-muted/50 hover:text-foreground transition-colors"
                         >
                           Always allow
                         </button>
@@ -2538,7 +2531,7 @@ export default function StandaloneChat() {
         <footer className={cn(
           // pb uses the safe-area inset so the composer toolbar clears the
           // phone gesture bar (needs viewport-fit=cover in index.html).
-          "shrink-0 transition-all duration-1000 ease-in-out px-4",
+          "shrink-0 transition-colors duration-1000 ease-in-out px-4",
           isInitialState
             ? "pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-16"
             : "pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-6 pt-2"
@@ -2553,7 +2546,7 @@ export default function StandaloneChat() {
                 const followUps = lastAssistant?.metadata?.follow_ups;
                 if (!followUps || followUps.length === 0) return null;
                 return (
-                  <div className="mb-3 animate-in fade-in slide-in-from-bottom-4 duration-500 bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl overflow-hidden glass">
+                  <div className="mb-3 animate-in fade-in slide-in-from-bottom-4 duration-500 bg-card/60 border border-border/50 rounded-lg overflow-hidden">
                     <button 
                       onClick={() => setIsFollowUpsExpanded(!isFollowUpsExpanded)}
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
@@ -2569,7 +2562,7 @@ export default function StandaloneChat() {
                     </button>
                     
                     <div className={cn(
-                      "grid transition-all duration-300 ease-in-out",
+                      "grid transition-colors duration-300 ease-in-out",
                       isFollowUpsExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
                     )}>
                       <div className="overflow-hidden">
@@ -2583,13 +2576,13 @@ export default function StandaloneChat() {
                               // cascade reads as suggestions worth a glance.
                               style={{ animationDelay: `${i * 70}ms`, animationFillMode: 'backwards' }}
                               className="group flex flex-1 min-w-[200px] items-center gap-2.5 px-4 py-2.5 bg-background
-                                         border border-border/50 rounded-xl shadow-sm text-left
+                                         border border-border/50 rounded-lg shadow-sm text-left
                                          text-muted-foreground hover:text-foreground
                                          hover:bg-primary/5 hover:border-primary/20 hover:shadow-md
-                                         transition-all duration-200 ease-out active:scale-[0.98]
+                                         transition-colors duration-200 ease-out active:scale-[0.98]
                                          animate-in fade-in slide-in-from-bottom-2"
                             >
-                              <Zap className="w-3.5 h-3.5 shrink-0 opacity-30 transition-all duration-200 group-hover:opacity-100 group-hover:text-primary group-hover:scale-110" />
+                              <Zap className="w-3.5 h-3.5 shrink-0 opacity-30 transition-colors duration-200 group-hover:opacity-100 group-hover:text-primary group-hover:scale-110" />
                               <span className="text-[13px] font-medium leading-snug">{q}</span>
                             </button>
                           ))}
@@ -2604,7 +2597,7 @@ export default function StandaloneChat() {
                   rather than a toast: the fix is to change model, and the user
                   needs the message to still be on screen while they do it. */}
               {blockedAttachments && (
-                <div className="mb-2 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10
+                <div className="mb-2 flex items-start gap-2.5 rounded-lg border border-border bg-warning-subtle
                                 px-3.5 py-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <FileIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
                   <p className="flex-1 text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
@@ -2626,7 +2619,7 @@ export default function StandaloneChat() {
                  {/* Active Reference Pill */}
                  {activeReference && (
                    <div className="flex animate-in fade-in slide-in-from-bottom-2 duration-300 absolute bottom-full mb-3 left-4">
-                     <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl group backdrop-blur-md">
+                     <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-success-subtle border border-border rounded-lg group">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="text-[10px] font-semibold  text-emerald-600 shrink-0">Reference</span>
                           <div className="w-px h-3 bg-emerald-500/30 shrink-0" />
@@ -2648,7 +2641,7 @@ export default function StandaloneChat() {
                     thing on the page; a border that turns primary plus the
                     standard focus ring says "focused" in the same language as
                     every other input in the app. */}
-                <div className="relative flex flex-col bg-card border border-border-strong rounded-3xl shadow-sm transition-colors duration-150 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring">
+                <div className="relative flex flex-col bg-card border border-border rounded-lg shadow-sm transition-colors duration-150 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring">
                   
                   {/* Textarea row */}
                   <div className="p-4 pb-0">
@@ -2702,7 +2695,7 @@ export default function StandaloneChat() {
                             onClick={() => toggleIntent(tool.key)}
                             className={cn(
                               "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[10px] font-bold shrink-0 border",
-                              "transition-all duration-200 ease-out active:scale-95",
+                              "transition-colors duration-200 ease-out active:scale-95",
                               activeIntent === tool.key
                                 ? tool.color === 'blue' ? 'bg-blue-500/15 border-blue-500/40 text-blue-500'
                                 : 'bg-purple-500/15 border-purple-500/40 text-purple-500'
@@ -2740,7 +2733,7 @@ export default function StandaloneChat() {
                         <button 
                           onClick={() => setShowModelDropdown(!showModelDropdown)}
                           className={cn(
-                            "flex items-center gap-2 h-8 px-3 rounded-lg transition-all text-[10px] font-bold  border",
+                            "flex items-center gap-2 h-8 px-3 rounded-lg transition-colors text-[10px] font-bold  border",
                             showModelDropdown 
                               ? "bg-primary/10 border-primary/30 text-primary"
                               : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
@@ -2773,7 +2766,7 @@ export default function StandaloneChat() {
                             {/* Backdrop */}
                             <div className="fixed inset-0 z-[9998]" onClick={() => setShowModelDropdown(false)} />
                             
-                            <div className="absolute bottom-[calc(100%+8px)] right-0 w-[300px] bg-card border border-border rounded-2xl shadow-2xl z-[9999] backdrop-blur-2xl overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
+                            <div className="absolute bottom-[calc(100%+8px)] right-0 w-[300px] bg-card border border-border rounded-lg shadow-lg z-[9999] backdrop-blur-2xl overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
                               
                               {/* Provider Grid */}
                               <div className="p-3 border-b border-border/30">
@@ -2789,7 +2782,7 @@ export default function StandaloneChat() {
                                         }
                                       }}
                                       className={cn(
-                                        "flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-all",
+                                        "flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-colors",
                                         llmProvider === p.slug
                                           ? "bg-primary/10 border-primary/30 text-primary shadow-sm ring-1 ring-primary/10"
                                           : "border-transparent hover:bg-muted/50 text-muted-foreground hover:text-foreground",
@@ -2836,7 +2829,7 @@ export default function StandaloneChat() {
                                         setShowModelDropdown(false);
                                       }}
                                       className={cn(
-                                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all text-[12px]",
+                                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-[12px]",
                                         llmModel === m.value
                                           ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 font-bold"
                                           : "hover:bg-muted/50 text-foreground/70 font-medium"
@@ -2848,7 +2841,7 @@ export default function StandaloneChat() {
                                           "text-[7px] font-semibold  px-1.5 py-0.5 rounded shrink-0",
                                           llmModel === m.value
                                             ? "bg-primary-foreground/20 text-primary-foreground"
-                                            : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                                            : "bg-success-subtle text-emerald-500 border border-border"
                                         )}>Free</span>
                                       )}
                                     </button>
@@ -2898,7 +2891,7 @@ export default function StandaloneChat() {
                       )}
                       {droppedSteers > 0 && (
                         <span
-                          className="mr-1 shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px]
+                          className="mr-1 shrink-0 rounded-full bg-warning-subtle px-2 py-0.5 text-[11px]
                                      font-medium tabular-nums text-amber-600 dark:text-amber-400"
                           title="The mailbox was full; the oldest messages were dropped"
                         >
@@ -2908,7 +2901,7 @@ export default function StandaloneChat() {
 
                       {/* Voice button */}
                       <button
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-colors"
                         title="Voice input"
                       >
                         <Mic className="w-4 h-4" />

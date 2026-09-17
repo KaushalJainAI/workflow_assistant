@@ -46,7 +46,7 @@ interface MCPServerModalProps {
 }
 
 const inputCls =
-  'w-full px-4 py-2.5 bg-background border border-border/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm';
+  'w-full px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary transition-colors text-sm';
 const monoCls = cn(inputCls, 'font-mono');
 const labelCls = 'block text-sm font-bold mb-2';
 const tooltipCls =
@@ -71,7 +71,7 @@ export default function MCPServerModal({
 
   // ---- Basic config -------------------------------------------------------
   const [name, setName] = useState('');
-  const [type, setType] = useState<MCPServerType>('stdio');
+  const [type, setType] = useState<MCPServerType>('http');
   // Remote covers both URL transports. The toggle offers "local vs remote"
   // rather than three buttons, because streamable-HTTP vs deprecated-SSE is not
   // a choice a user should have to understand: new remote servers are created
@@ -147,7 +147,9 @@ export default function MCPServerModal({
       setEnabled(initialData.enabled);
     } else {
       setName('');
-      setType('stdio');
+      /* Remote first: production refuses local-process servers
+         (`MCP_ALLOW_STDIO=False`), and a hosted endpoint costs this box no memory. */
+      setType('http');
       setCommand('');
       setUrl('');
       setArgsRows(['']);
@@ -308,12 +310,12 @@ export default function MCPServerModal({
   const smallSelectCls = cn(selectCls, 'py-2');
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
-      <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-in fade-in duration-200">
+      <div className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-2xl mx-4 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-6 border-b border-border/40 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-xl text-primary">
+            <div className="p-2 bg-primary/10 rounded-lg text-primary">
               <Cpu className="w-5 h-5" />
             </div>
             <div>
@@ -336,7 +338,7 @@ export default function MCPServerModal({
         {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
           {error && (
-            <div className="p-4 bg-destructive/10 text-destructive border border-destructive/20 rounded-xl text-sm flex items-start gap-3">
+            <div className="p-4 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg text-sm flex items-start gap-3">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
               <div className="font-medium">{error}</div>
             </div>
@@ -366,7 +368,7 @@ export default function MCPServerModal({
                     type="button"
                     onClick={() => setType('stdio')}
                     className={cn(
-                      'flex items-center justify-center gap-2 p-3 border rounded-xl transition-all font-semibold text-sm',
+                      'flex items-center justify-center gap-2 p-3 border rounded-lg transition-colors font-semibold text-sm',
                       type === 'stdio'
                         ? 'bg-primary/10 border-primary text-primary'
                         : 'border-border/60 hover:border-border hover:bg-muted/50'
@@ -379,7 +381,7 @@ export default function MCPServerModal({
                     type="button"
                     onClick={() => setType(isRemote ? type : 'http')}
                     className={cn(
-                      'flex items-center justify-center gap-2 p-3 border rounded-xl transition-all font-semibold text-sm',
+                      'flex items-center justify-center gap-2 p-3 border rounded-lg transition-colors font-semibold text-sm',
                       isRemote
                         ? 'bg-primary/10 border-primary text-primary'
                         : 'border-border/60 hover:border-border hover:bg-muted/50'
@@ -531,7 +533,7 @@ export default function MCPServerModal({
                         type="button"
                         onClick={() => toggleCred(ct.slug)}
                         className={cn(
-                          'w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all',
+                          'w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors',
                           requiredCreds.includes(ct.slug)
                             ? 'bg-primary/5 border-primary/30 text-primary shadow-sm ring-1 ring-primary/20'
                             : 'border-border/40 hover:bg-muted/50'
@@ -541,7 +543,7 @@ export default function MCPServerModal({
                           className={cn(
                             'w-2 h-2 rounded-full',
                             requiredCreds.includes(ct.slug)
-                              ? 'bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]'
+                              ? 'bg-primary'
                               : 'bg-muted-foreground/30'
                           )}
                         />
@@ -709,7 +711,7 @@ export default function MCPServerModal({
           </div>
 
           {/* Status */}
-          <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/40">
+          <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/40">
             <div>
               <div className="text-sm font-bold">Enabled</div>
               <div className="text-xs text-muted-foreground">
@@ -738,7 +740,7 @@ export default function MCPServerModal({
           </div>
 
           {/* JSON preview */}
-          <div className="border border-border/40 rounded-xl overflow-hidden">
+          <div className="border border-border/40 rounded-lg overflow-hidden">
             <button
               type="button"
               onClick={() => setShowPreview((v) => !v)}
@@ -760,7 +762,7 @@ export default function MCPServerModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-6 py-2.5 border border-border/60 rounded-xl font-bold text-sm hover:bg-muted transition-all active:scale-95"
+            className="px-6 py-2.5 border border-border/60 rounded-lg font-bold text-sm hover:bg-muted transition-colors"
             disabled={saving}
           >
             Cancel
@@ -769,7 +771,7 @@ export default function MCPServerModal({
             type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-8 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center gap-2 active:scale-95 disabled:opacity-70 disabled:active:scale-100"
+            className="btn-primary px-6 py-2.5 disabled:opacity-70"
           >
             {saving ? (
               <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />

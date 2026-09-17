@@ -8,8 +8,8 @@ import { Link } from 'react-router-dom';
  */
 export function MissingCredentialBanner({ detail }: { detail?: string }) {
   return (
-    <div className="mx-6 mt-4 rounded-2xl border border-amber-500/40 bg-amber-500/5 p-4 flex items-start gap-3">
-      <div className="shrink-0 mt-0.5 h-9 w-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
+    <div className="mx-6 mt-4 rounded-lg border border-border bg-warning-subtle p-4 flex items-start gap-3">
+      <div className="shrink-0 mt-0.5 h-9 w-9 rounded-lg bg-warning-subtle border border-border flex items-center justify-center">
         <KeyRound size={16} className="text-amber-600 dark:text-amber-400" />
       </div>
       <div className="flex-1 min-w-0">

@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  User, 
-  Mail, 
-  Shield, 
-  CreditCard, 
-  LogOut, 
-  Save, 
-  Loader2,
-  AlertCircle,
-  Check,
+import {
+  User,
+  Mail,
+  Shield,
+  CreditCard,
+  LogOut,
+  Save,
   ArrowLeft
 } from 'lucide-react';
 import { useAuth } from '../contexts/authState';
 import authService from '../api/auth';
+import { Button } from '../components/ui/Button';
+import { Alert } from '../components/ui/Alert';
+import { Spinner } from '../components/ui/Loading';
 
 export default function Profile() {
   const { user, logout, refreshUser, isLoading } = useAuth();
@@ -147,7 +147,7 @@ export default function Profile() {
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -171,23 +171,13 @@ export default function Profile() {
         </div>
 
         {/* Status Messages */}
-        {error && (
-          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive animate-scale-in">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span className="text-sm">{error}</span>
-          </div>
-        )}
-        {success && (
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center gap-2 text-emerald-400 animate-scale-in">
-            <Check className="w-4 h-4 flex-shrink-0" />
-            <span className="text-sm">{success}</span>
-          </div>
-        )}
+        {error && <Alert tone="error">{error}</Alert>}
+        {success && <Alert tone="success">{success}</Alert>}
 
         {/* Profile Card */}
-        <div className="bg-card border border-border/60 rounded-xl p-6">
+        <div className="bg-card border border-border rounded-lg p-6">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl ring-4 ring-primary/5">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl border border-border">
               {user?.name ? user.name.slice(0, 2).toUpperCase() : user?.email?.slice(0, 2).toUpperCase() || '??'}
             </div>
             <div>
@@ -233,7 +223,7 @@ export default function Profile() {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-colors duration-150"
                   placeholder="Your name"
                 />
               </div>
@@ -250,7 +240,7 @@ export default function Profile() {
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 pl-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-all duration-200"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 pl-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary/50 transition-colors duration-150"
                   placeholder="your@email.com"
                   disabled // Email typically can't be changed
                 />
@@ -258,27 +248,22 @@ export default function Profile() {
               <p className="text-xs text-muted-foreground mt-1">Email cannot be changed</p>
             </div>
 
-            <button
+            <Button
               type="submit"
-              disabled={isSaving}
-              className="inline-flex items-center justify-center rounded-lg text-sm font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-sm active:scale-[0.98]"
+              loading={isSaving}
             >
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
+              {!isSaving && (
                 <>
                   <Save className="mr-2 h-4 w-4" />
                   Save Changes
                 </>
               )}
-            </button>
+              {isSaving && <>Saving...</>}
+            </Button>
           </form>
         </div>
 
-        <div className="bg-card border border-border/60 rounded-xl p-6">
+        <div className="bg-card border border-border/60 rounded-lg p-6">
           <h3 className="text-lg font-semibold mb-4">Change password</h3>
 
           {passwordStep === 'start' && (
@@ -290,14 +275,14 @@ export default function Profile() {
                   type="password"
                   value={passwordForm.oldPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
-                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                   required
                 />
               </div>
-              <button disabled={isPasswordSaving} className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground h-10 px-4 py-2 text-sm font-semibold disabled:opacity-50">
-                {isPasswordSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Send OTP
-              </button>
+              <Button loading={isPasswordSaving}>
+                {!isPasswordSaving && <>Send OTP</>}
+                {isPasswordSaving && <>Sending...</>}
+              </Button>
             </form>
           )}
 
@@ -311,31 +296,31 @@ export default function Profile() {
                   maxLength={6}
                   value={passwordForm.otpCode}
                   onChange={(e) => setPasswordForm({ ...passwordForm, otpCode: e.target.value.replace(/\D/g, '') })}
-                  className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-center tracking-[0.4em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-center tracking-[0.4em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                   required
                 />
               </div>
-              <button disabled={isPasswordSaving || passwordForm.otpCode.length !== 6} className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground h-10 px-4 py-2 text-sm font-semibold disabled:opacity-50">
-                {isPasswordSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Verify OTP
-              </button>
+              <Button disabled={isPasswordSaving || passwordForm.otpCode.length !== 6} loading={isPasswordSaving}>
+                {!isPasswordSaving && <>Verify OTP</>}
+                {isPasswordSaving && <>Verifying...</>}
+              </Button>
             </form>
           )}
 
           {passwordStep === 'reset' && (
             <form onSubmit={submitPasswordChange} className="space-y-4">
-              <input type="password" placeholder="New password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" required />
-              <input type="password" placeholder="Confirm new password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} className="flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" required />
-              <button disabled={isPasswordSaving} className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground h-10 px-4 py-2 text-sm font-semibold disabled:opacity-50">
-                {isPasswordSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Update Password
-              </button>
+              <input type="password" placeholder="New password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" required />
+              <input type="password" placeholder="Confirm new password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" required />
+              <Button loading={isPasswordSaving}>
+                {!isPasswordSaving && <>Update Password</>}
+                {isPasswordSaving && <>Updating...</>}
+              </Button>
             </form>
           )}
         </div>
 
         {/* Danger Zone */}
-        <div className="bg-card border border-border/60 rounded-xl p-6">
+        <div className="bg-card border border-border/60 rounded-lg p-6">
           <h3 className="text-lg font-semibold mb-4 text-destructive">Account actions</h3>
           
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
@@ -356,8 +341,8 @@ export default function Profile() {
 
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 entrance-overlay">
+          <div className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-sm mx-4 p-6 entrance-modal">
             <h3 className="text-lg font-semibold mb-2">Sign out?</h3>
             <p className="text-muted-foreground mb-4">
               Are you sure you want to sign out of your account?

@@ -36,6 +36,7 @@ import {
 import RevisionEntry from '../components/agents/RevisionEntry';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
 import { SendButton } from '../components/ui/SendButton';
+import { Switch } from '../components/ui/Switch';
 import ScheduleEditor from '../components/schedules/ScheduleEditor';
 import { EFFORT_LABELS } from '../hooks/useEffortSelection';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../hooks/useChatModelSelection';
@@ -274,19 +275,11 @@ function Toggle({ on, onChange, label, hint }: {
       type="button"
       role="switch"
       aria-checked={on}
+      aria-label={label}
       onClick={() => onChange(!on)}
       className="w-full flex items-start gap-2.5 text-left py-1 group"
     >
-      {/* The knob is placed by the track's own flexbox rather than by a hardcoded
-          offset: `justify-end` plus the track's padding lands it inside the track
-          whatever the two are sized to, so a change to either size cannot leave
-          the knob hanging over the edge. */}
-      <span className={cn(
-        'mt-0.5 w-8 h-[18px] p-[2px] rounded-full shrink-0 box-border',
-        'inline-flex items-center transition-colors',
-        on ? 'bg-primary justify-end' : 'bg-accent border border-border-strong justify-start')}>
-        <span className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm" />
-      </span>
+      <Switch checked={on} onChange={onChange} label={label} />
       <span className="min-w-0">
         <span className="block text-[13px] text-foreground">{label}</span>
         {hint && <span className="block text-[12px] text-muted-foreground">{hint}</span>}

@@ -143,7 +143,7 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
   };
 
   const composer = (
-    <div className="rounded-2xl border border-border/60 bg-card focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/5 transition-all">
+    <div className="rounded-lg border border-border/60 bg-card focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/5 transition-all">
       <textarea
         value={draft}
         onChange={e => setDraft(e.target.value)}
@@ -217,11 +217,11 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
   const historyPanel = propAgent ? null : (
     <>
       {showHistory && (
-        <div className="absolute inset-0 z-20 bg-black/30 backdrop-blur-sm md:hidden" onClick={() => setShowHistory(false)} />
+        <div className="absolute inset-0 z-20 bg-black/50 md:hidden" onClick={() => setShowHistory(false)} />
       )}
       <div
         className={cn(
-          'absolute inset-y-0 left-0 z-30 flex w-[280px] max-w-[85vw] flex-col border-r bg-card shadow-xl transition-transform duration-300 md:relative md:shadow-none',
+          'absolute inset-y-0 left-0 z-30 flex w-[280px] max-w-[85vw] flex-col border-r bg-card shadow-md transition-transform duration-300 md:relative md:shadow-none',
           showHistory ? 'translate-x-0' : '-translate-x-full md:hidden'
         )}
       >
@@ -242,7 +242,7 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
               newConversation();
               setShowHistory(false);
             }}
-            className="flex w-full items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            className="flex w-full items-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" /> New conversation
           </button>
@@ -268,7 +268,7 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
                     setShowHistory(false);
                   }}
                   className={cn(
-                    'group flex items-center gap-2 rounded-xl px-3 py-2.5 text-left cursor-pointer transition-colors',
+                    'group flex items-center gap-2 rounded-lg px-3 py-2.5 text-left cursor-pointer transition-colors',
                     conversationId === c.id ? 'bg-primary/10 border border-primary/20' : 'hover:bg-muted/60 border border-transparent'
                   )}
                 >
@@ -311,7 +311,7 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
           <div className="flex h-full flex-col items-center justify-center px-4 overflow-y-auto custom-scrollbar">
             <div className="w-full max-w-2xl space-y-5 py-8">
               <div className="text-center space-y-1.5">
-                <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10">
+                <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10">
                   <Palette size={20} className="text-primary" />
                 </div>
                 <h2 className="text-xl font-semibold pt-1.5">What should we make?</h2>
@@ -332,7 +332,7 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
                     <button
                       key={starter.text}
                       onClick={() => submit(starter.text)}
-                      className="group flex items-start gap-2.5 text-left px-3 py-2.5 rounded-xl border border-border/50 hover:border-border hover:bg-muted/40 transition-colors"
+                      className="group flex items-start gap-2.5 text-left px-3 py-2.5 rounded-lg border border-border/50 hover:border-border hover:bg-muted/40 transition-colors"
                     >
                       <Icon size={13} className="mt-0.5 shrink-0 text-muted-foreground/60 group-hover:text-primary transition-colors" />
                       <span className="text-xs leading-relaxed text-muted-foreground group-hover:text-foreground transition-colors">
@@ -353,7 +353,7 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
                   <div key={item.key} className={cn('flex', item.role === 'user' ? 'justify-end' : 'justify-start')}>
                     <div className={cn('max-w-[85%]', item.role === 'user' ? 'order-1' : 'order-none')}>
                       {item.role === 'user' ? (
-                        <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-md px-3.5 py-2 text-sm">{item.content}</div>
+                        <div className="bg-primary text-primary-foreground rounded-lg rounded-br-md px-3.5 py-2 text-sm">{item.content}</div>
                       ) : (
                         <div>
                           {/* Agent reply — markdown (bold, titles, lists) via the shared renderer. */}

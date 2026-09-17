@@ -159,7 +159,7 @@ function StatTile({
         />
         <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
       </div>
-      <div className="text-[28px] font-semibold leading-none tracking-tight">{value}</div>
+      <div className="text-3xl font-semibold leading-none">{value}</div>
       {sub && <p className="text-[12px] text-muted-foreground mt-1.5">{sub}</p>}
     </div>
   );
@@ -649,8 +649,8 @@ export default function Overview() {
               </section>
             ) : (
               <section className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center">
-                  <Check className="w-4 h-4 text-emerald-600" />
+                <div className="w-8 h-8 rounded-full bg-success-subtle border border-border flex items-center justify-center">
+                  <Check className="w-4 h-4 text-success" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">You're clear — nothing is waiting on you</p>
@@ -666,11 +666,11 @@ export default function Overview() {
                 <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-8">
                   <div className="shrink-0">
                     <p className="text-[13px] font-medium text-muted-foreground mb-1">Ran without you</p>
-                    <div className="text-[52px] font-semibold leading-none tracking-tight">{autonomy.pct}%</div>
+                    <div className="text-5xl font-semibold leading-none">{autonomy.pct}%</div>
                   </div>
                   <div className="flex-1 min-w-0 pb-1">
-                    <div className="h-2 rounded-full bg-agent-subtle overflow-hidden">
-                      <span className="block h-full rounded-full bg-chart-work" style={{ width: `${autonomy.pct}%` }} />
+                    <div className="h-2 rounded-md bg-muted overflow-hidden">
+                      <span className="block h-full bg-chart-work" style={{ width: `${autonomy.pct}%` }} />
                     </div>
                     <p className="text-[12px] text-muted-foreground mt-2 leading-relaxed">
                       <span className="tabular-nums text-foreground">{autonomy.auto}</span> run

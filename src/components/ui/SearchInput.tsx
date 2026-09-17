@@ -12,7 +12,7 @@ export default function SearchInput({ className, containerClassName, ...props }:
       <input 
         type="text" 
         className={cn(
-          "w-full h-11 pl-11 pr-4 rounded-xl bg-background/50 border border-border/60 focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground shadow-sm",
+          "w-full h-11 pl-11 pr-4 rounded-lg bg-background border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary transition-colors text-foreground placeholder:text-muted-foreground shadow-sm",
           className
         )}
         {...props}

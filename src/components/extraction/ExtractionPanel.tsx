@@ -140,11 +140,11 @@ function ExtractModal({ schema, onClose }: { schema: ExtractionSchema; onClose: 
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300"
+      className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-6 animate-in fade-in duration-300"
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in"
+        className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-lg overflow-hidden entrance-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-border/60 flex items-center justify-between">
@@ -155,7 +155,7 @@ function ExtractModal({ schema, onClose }: { schema: ExtractionSchema; onClose: 
               {Math.round(schema.confidence_threshold * 100)}% confidence are held for review.
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-all">
+          <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -210,7 +210,7 @@ function ExtractModal({ schema, onClose }: { schema: ExtractionSchema; onClose: 
           <button
             onClick={() => run.mutate([...checked])}
             disabled={checked.size === 0 || run.isPending}
-            className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+            className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {run.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
             Extract {checked.size > 0 ? `${checked.size} document${checked.size === 1 ? '' : 's'}` : ''}

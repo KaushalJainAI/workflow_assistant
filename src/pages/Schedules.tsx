@@ -67,6 +67,7 @@ import { cn } from '../lib/utils';
 import { apiErrorMessage } from '../lib/apiError';
 import PageHeader from '../components/layout/PageHeader';
 import Select from '../components/ui/Select';
+import { Switch } from '../components/ui/Switch';
 import ScheduleEditor from '../components/schedules/ScheduleEditor';
 import WebhookEditor from '../components/schedules/WebhookEditor';
 import {
@@ -278,7 +279,7 @@ function TriggerModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-border/60 bg-card shadow-xl"
+        className="w-full max-w-lg rounded-lg border border-border/60 bg-card shadow-md"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
@@ -398,7 +399,7 @@ function TriggerCard({ trigger, onEdit }: {
 
   return (
     <div className={cn(
-      'rounded-xl border border-border/60 bg-card p-4',
+      'rounded-lg border border-border/60 bg-card p-4',
       !trigger.enabled && 'opacity-70',
     )}>
       <div className="flex items-start justify-between gap-4">
@@ -436,16 +437,12 @@ function TriggerCard({ trigger, onEdit }: {
           )}
         </div>
 
-        <label className="flex items-center gap-2 shrink-0 cursor-pointer">
-          <input
-            type="checkbox"
-            className="sr-only peer"
-            checked={trigger.enabled}
-            disabled={toggle.isPending}
-            onChange={(e) => toggle.mutate(e.target.checked)}
-          />
-          <span className="w-9 h-5 rounded-full bg-secondary peer-checked:bg-primary transition-colors relative after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
-        </label>
+        <Switch
+          checked={trigger.enabled}
+          onChange={(next) => toggle.mutate(next)}
+          label={`${trigger.enabled ? 'Pause' : 'Enable'} schedule`}
+          disabled={toggle.isPending}
+        />
       </div>
 
       {isSchedule && (
@@ -676,7 +673,7 @@ function NewTriggerPicker({ onPick, onCancel }: {
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-xl border border-border/60 bg-card p-4 shadow-xl"
+        className="w-full max-w-sm rounded-lg border border-border/60 bg-card p-4 shadow-md"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-[15px] font-semibold">What should start a run?</h2>
@@ -806,7 +803,7 @@ export default function Schedules() {
             <Loader2 className="w-4 h-4 animate-spin" /> Loading…
           </div>
         ) : triggers.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/60 p-8 text-center">
+          <div className="rounded-lg border border-dashed border-border/60 p-8 text-center">
             <CalendarClock className="w-8 h-8 mx-auto text-muted-foreground/50" />
             <p className="mt-3 text-sm font-medium">Nothing runs on its own yet</p>
             <p className="mt-1 text-[13px] text-muted-foreground">

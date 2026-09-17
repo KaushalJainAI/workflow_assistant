@@ -111,7 +111,7 @@ export default function NotificationsTab() {
       </div>
 
       {notifications.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-border/60 rounded-xl bg-card/30">
+        <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-card/30">
           <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-50" />
           <p className="text-muted-foreground font-medium">No notifications yet</p>
           <p className="text-xs text-muted-foreground/70 mt-1">Nothing new</p>
@@ -122,7 +122,7 @@ export default function NotificationsTab() {
             <div 
               key={notification.id} 
               className={cn(
-                "p-4 rounded-xl border transition-all flex gap-4 items-start",
+                "p-4 rounded-lg border transition-all flex gap-4 items-start",
                 notification.is_read 
                   ? "bg-card/30 border-border/40 opacity-70" 
                   : "bg-card/80 border-primary/20 shadow-sm"

@@ -57,7 +57,7 @@ export function Lightbox({ isOpen, onClose, result, onDelete }: LightboxProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-background/95 backdrop-blur-xl"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-background"
       onClick={onClose}
       role="presentation"
     >
@@ -73,7 +73,7 @@ export function Lightbox({ isOpen, onClose, result, onDelete }: LightboxProps) {
         role="dialog"
         aria-modal="true"
         onClick={e => e.stopPropagation()}
-        className="relative flex flex-col md:flex-row w-full max-w-6xl max-h-[90vh] bg-card border border-border/50 rounded-2xl overflow-hidden shadow-2xl"
+        className="relative flex flex-col md:flex-row w-full max-w-6xl max-h-[90vh] bg-card border border-border/50 rounded-lg overflow-hidden shadow-lg"
       >
         <div className="flex-1 bg-black/5 flex items-center justify-center overflow-hidden min-h-[40vh] p-4">
           {result.type === 'image' && (
@@ -140,7 +140,7 @@ export function Lightbox({ isOpen, onClose, result, onDelete }: LightboxProps) {
             <button
               onClick={() => void handleDownload()}
               disabled={isDownloading}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {isDownloading ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -156,7 +156,7 @@ export function Lightbox({ isOpen, onClose, result, onDelete }: LightboxProps) {
                   onClose();
                 }}
                 title="Delete"
-                className="p-2.5 rounded-xl bg-muted/50 hover:bg-destructive hover:text-white border border-border/50 transition-colors"
+                className="p-2.5 rounded-lg bg-muted/50 hover:bg-destructive hover:text-white border border-border/50 transition-colors"
               >
                 <Trash2 size={16} />
               </button>

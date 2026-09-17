@@ -116,7 +116,7 @@ export default function PublicAgent() {
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-5 py-10 md:py-16">
         <div className="flex items-start gap-4 mb-5">
-          <span className="w-12 h-12 rounded-xl bg-agent-subtle border border-agent-line text-agent flex items-center justify-center shrink-0">
+          <span className="w-12 h-12 rounded-lg bg-agent-subtle border border-agent-line text-agent flex items-center justify-center shrink-0">
             <Bot className="w-6 h-6" />
           </span>
           <div className="min-w-0">

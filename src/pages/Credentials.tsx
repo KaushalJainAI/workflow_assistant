@@ -137,12 +137,12 @@ export default function Credentials() {
   const renderCredentialCard = (credential: Credential) => (
     <div
       key={credential.id}
-      className="group relative bg-card border border-border/60 rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col"
+      className="group relative bg-card border border-border rounded-lg p-6 card-hover cursor-pointer flex flex-col"
       onClick={() => setViewingCredential(credential)}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+          <div className="p-3 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
             {(() => {
                 const type = credentialTypes.find(t => t.id === credential.credential_type);
                 return renderIcon(type?.icon || 'Key');
@@ -157,7 +157,9 @@ export default function Credentials() {
         </div>
         <div className="relative">
           <button 
-            className="p-1.5 hover:bg-muted rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+            className="p-1.5 hover:bg-muted rounded-lg opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-within:opacity-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Credential actions"
+            aria-expanded={openDropdown === credential.id}
             onClick={(e) => {
               e.stopPropagation();
               setOpenDropdown(openDropdown === credential.id ? null : credential.id);
@@ -167,7 +169,7 @@ export default function Credentials() {
           </button>
           
           {openDropdown === credential.id && (
-            <div className="absolute right-0 top-full mt-1 bg-card border border-border/60 rounded-xl shadow-2xl z-10 py-1 min-w-32 animate-scale-in">
+            <div role="menu" className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-10 py-1 min-w-32 entrance-modal">
               <button
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
                 onClick={(e) => {
@@ -249,7 +251,7 @@ export default function Credentials() {
                 setEditingCredential(null);
                 setShowModal(true);
             }}
-            className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold transition-all shadow-lg shadow-primary/20 active:scale-95 hover:bg-primary/90"
+            className="btn-primary px-4 py-2"
           >
             <Plus className="w-4 h-4" />
             Add Credential
@@ -261,7 +263,7 @@ export default function Credentials() {
             <button
               onClick={() => setActiveTab('verified')}
               className={cn(
-                "pb-3 text-sm font-semibold transition-all relative flex items-center gap-2",
+                "pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2",
                 activeTab === 'verified' ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -272,7 +274,7 @@ export default function Credentials() {
             <button
               onClick={() => setActiveTab('unverified')}
               className={cn(
-                "pb-3 text-sm font-semibold transition-all relative flex items-center gap-2",
+                "pb-3 text-sm font-semibold transition-colors relative flex items-center gap-2",
                 activeTab === 'unverified' ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -311,7 +313,7 @@ export default function Credentials() {
 
         {/* Empty State */}
         {displayedCredentials.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+          <div className="flex flex-col items-center justify-center py-20 entrance-overlay">
             <div className={cn(
               "w-20 h-20 rounded-full flex items-center justify-center mb-6",
               activeTab === 'verified' ? "bg-emerald-500/10" : "bg-muted/30"
@@ -336,7 +338,7 @@ export default function Credentials() {
                     setEditingCredential(null);
                     setShowModal(true);
                 }}
-                className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/20 active:scale-[0.98] font-semibold"
+                className="btn-primary px-4 py-2"
               >
                 <Plus className="w-5 h-5" />
                 Add First Credential
@@ -359,8 +361,8 @@ export default function Credentials() {
 
       {/* View Credential Modal */}
       {viewingCredential && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-lg mx-4 animate-scale-in">
+        <div className="overlay flex items-center justify-center z-50 entrance-overlay">
+          <div className="modal w-full max-w-lg mx-4 entrance-modal">
              {/* ... View Mode Content Stays ... */}
             <div className="p-6 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -431,7 +433,7 @@ export default function Credentials() {
               <div className="flex gap-2">
                 <button 
                     onClick={() => handleVerifyCredential(viewingCredential.id)}
-                    className="flex items-center gap-2 px-4 py-2 border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 rounded-lg hover:bg-emerald-500/20 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg bg-success-subtle text-success hover:bg-success-subtle/80 transition-colors"
                 >
                     <Shield className="w-4 h-4" />
                     Verify
@@ -457,8 +459,8 @@ export default function Credentials() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-card border border-border/60 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
+        <div className="overlay flex items-center justify-center z-50 entrance-overlay">
+          <div className="modal w-full max-w-sm mx-4 p-6 entrance-modal">
             <h3 className="text-lg font-semibold mb-2">Delete credential?</h3>
             <p className="text-muted-foreground mb-4">
               This action cannot be undone. Workflows using this credential will stop working.

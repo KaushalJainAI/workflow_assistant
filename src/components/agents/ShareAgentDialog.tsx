@@ -368,7 +368,7 @@ export default function ShareAgentDialog({
 
   return (
     <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
         <div className="flex items-start justify-between gap-4 p-5 border-b border-border">
           <div>
             <h2 className="font-semibold text-lg">Share {agentName}</h2>

@@ -27,30 +27,7 @@ interface Props {
   isLoading?: boolean;
 }
 
-/** Deterministic accent per provider, so a model keeps its colour. */
-const PROVIDER_ACCENT: Record<string, string> = {
-  google: 'from-blue-500 to-emerald-500',
-  openai: 'from-emerald-500 to-teal-600',
-  'bytedance-seed': 'from-rose-500 to-orange-500',
-  bytedance: 'from-rose-500 to-orange-500',
-  'black-forest-labs': 'from-neutral-600 to-neutral-900',
-  qwen: 'from-purple-500 to-indigo-600',
-  'x-ai': 'from-slate-600 to-slate-900',
-  microsoft: 'from-sky-500 to-cyan-600',
-  recraft: 'from-fuchsia-500 to-pink-600',
-  krea: 'from-amber-500 to-orange-600',
-  sourceful: 'from-teal-500 to-green-600',
-  minimax: 'from-red-500 to-rose-600',
-  kwaivgi: 'from-orange-500 to-amber-600',
-  runway: 'from-indigo-500 to-violet-600',
-  alibaba: 'from-orange-400 to-red-500',
-  mistralai: 'from-orange-500 to-yellow-500',
-  hexgrad: 'from-lime-500 to-green-600',
-};
-
-function accentFor(provider: string): string {
-  return PROVIDER_ACCENT[provider] ?? 'from-primary to-primary/50';
-}
+/** Tagline for the tile meta line. */
 
 /** Trims the provider prefix most catalog names carry, e.g. "Google: Veo". */
 function shortName(model: ModelCapability): string {
@@ -101,7 +78,7 @@ export function ModelRail({
         {[0, 1, 2, 3].map(i => (
           <div
             key={i}
-            className="h-[68px] w-[132px] shrink-0 rounded-xl border border-border/50 bg-muted/30 animate-pulse"
+            className="h-[68px] w-[132px] shrink-0 rounded-lg border border-border/50 bg-muted/30 animate-pulse"
           />
         ))}
       </div>
@@ -110,7 +87,7 @@ export function ModelRail({
 
   if (models.length === 0) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-dashed border-border/60 px-4 py-3">
+      <div className="flex items-center gap-3 rounded-lg border border-dashed border-border/60 px-4 py-3">
         <p className="text-xs text-muted-foreground flex-1">
           No {kind} models available. Check your OpenRouter credential, then refresh.
         </p>
@@ -143,7 +120,7 @@ export function ModelRail({
             onClick={() => onChange(model.id)}
             title={model.id}
             className={cn(
-              'group relative shrink-0 snap-start w-[142px] rounded-xl border p-2.5 text-left transition-all',
+              'group relative shrink-0 snap-start w-[142px] rounded-lg border p-2.5 text-left transition-all',
               isActive
                 ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
                 : 'border-border/60 hover:border-border hover:bg-muted/40',
@@ -151,11 +128,10 @@ export function ModelRail({
           >
             <div className="flex items-start gap-2">
               <div
-                className={cn(
-                  'h-7 w-7 shrink-0 rounded-lg bg-gradient-to-br',
-                  accentFor(model.provider),
-                )}
-              />
+                className="h-7 w-7 shrink-0 rounded-md bg-muted border border-border flex items-center justify-center text-[11px] font-bold text-muted-foreground"
+              >
+                {shortName(model).slice(0, 1).toUpperCase()}
+              </div>
               {isActive && (
                 <span className="ml-auto h-4 w-4 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0">
                   <Check size={10} strokeWidth={3} />
@@ -179,7 +155,7 @@ export function ModelRail({
 
       <button
         onClick={onBrowseAll}
-        className="shrink-0 snap-start w-[142px] rounded-xl border border-dashed border-border/60 p-2.5 text-left hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+        className="shrink-0 snap-start w-[142px] rounded-lg border border-dashed border-border/60 p-2.5 text-left hover:border-primary/50 hover:bg-primary/5 transition-colors group"
       >
         <div className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
           <Layers size={14} className="text-muted-foreground group-hover:text-primary" />

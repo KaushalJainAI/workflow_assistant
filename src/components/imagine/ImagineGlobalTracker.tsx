@@ -21,10 +21,10 @@ export function ImagineGlobalTracker() {
 
   return (
     <div className="fixed bottom-4 right-4 z-40 max-w-sm w-[calc(100vw-2rem)] sm:w-80">
-      <div className="rounded-2xl border border-border/60 bg-card/95 backdrop-blur-xl shadow-xl overflow-hidden">
+      <div className="rounded-lg border border-border bg-card shadow-md overflow-hidden">
         {/* Collapsed bar */}
         <div className="flex items-center gap-3 px-4 py-3">
-          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
             <Loader2 size={18} className="animate-spin text-primary" />
           </div>
           <div className="min-w-0 flex-1">

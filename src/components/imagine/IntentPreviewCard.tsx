@@ -37,7 +37,7 @@ export function IntentPreviewCard({
   );
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/80 backdrop-blur p-4 my-2 shadow-sm">
+    <div className="rounded-lg border border-border bg-card p-4 my-2 shadow-sm">
       <div className="flex items-center gap-2 mb-3">
         <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
           <Icon size={16} />
