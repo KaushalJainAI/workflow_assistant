@@ -115,6 +115,10 @@ export function propose(
   if (has(t, 'search the web', 'look up', 'research', 'find online', 'web')) tools.webSearch = true;
   if (has(t, 'scrape', 'website', 'web page', 'url')) tools.scrape = true;
   if (has(t, 'file', 'pdf', 'document', 'upload', 'invoice')) tools.fileOps = true;
+  if (has(t, 'deck', 'slides', 'presentation', 'powerpoint', 'pptx', 'excel', 'xlsx',
+             'workbook', 'word doc', 'docx')) tools.office = true;
+  if (has(t, 'image', 'illustration', 'picture', 'cover art')) tools.media = true;
+  if (has(t, 'publish', 'share a link', 'public page')) tools.publish = true;
   if (has(t, 'knowledge base', 'our docs', 'company doc', 'policy', 'sop')) tools.rag = true;
   if (has(t, 'shell', 'command line', 'terminal', 'bash')) tools.shell = true;
   for (const k of Object.keys(tools) as (keyof typeof tools)[]) {

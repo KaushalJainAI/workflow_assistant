@@ -18,9 +18,14 @@
 import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, ExternalLink, Globe2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Copy, ExternalLink, FileText, Globe2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
+import { documentsHrefFor, linkablePath } from '../../lib/vfsPath';
+import { languageFor } from '../../lib/codeLanguage';
+import CodeView from '../files/CodeView';
+import { useFilePreview } from '../files/filePreviewState';
 
 export interface MarkdownSource {
   url: string;
@@ -54,8 +59,10 @@ const PILL_STYLES: Record<MarkdownVariant, string> = {
 };
 
 const CARD_STYLES: Record<MarkdownVariant, string> = {
-  compact: 'max-w-[240px] p-2 rounded-lg gap-1',
-  full: 'max-w-[280px] p-2.5 rounded-xl gap-1.5',
+  // Viewport clamp first: near the screen edge on a phone the centred card
+  // would otherwise paint past the viewport and read as a collision.
+  compact: 'max-w-[calc(100vw-3rem)] sm:max-w-[240px] p-2 rounded-lg gap-1',
+  full: 'max-w-[calc(100vw-3rem)] sm:max-w-[280px] p-2.5 rounded-xl gap-1.5',
 };
 
 /**
@@ -110,25 +117,23 @@ function Citation({
   );
 }
 
-/** Fenced code block with a language chip and a copy button. */
-function CodeBlock({
-  language,
-  className,
-  children,
-  ...props
-}: {
-  language: string;
-  className?: string;
-  children: ReactNode;
-}) {
+/**
+ * Fenced code block with a language chip, a copy button, and highlighting.
+ *
+ * The body is `CodeView`, the same renderer the file previews use. Line numbers
+ * appear only past a few lines: on a two-line snippet they are noise, and on a
+ * forty-line one they are how a person says "line 23 is wrong".
+ */
+function CodeBlock({ tag, children }: { tag: string; children: ReactNode }) {
   const text = String(children).replace(/\n$/, '');
+  const lines = text.split('\n').length;
 
   return (
     <div className="relative my-6 rounded-lg overflow-hidden border border-border bg-card shadow-sm">
       <div className="flex items-center justify-between px-4 py-2.5 bg-muted border-b border-border">
         <div className="flex items-center gap-2">
           <span className="micro-label">
-            {language || 'CODE'}
+            {tag.toUpperCase() || 'CODE'}
           </span>
         </div>
         <button
@@ -143,14 +148,34 @@ function CodeBlock({
           <span className="text-[11px] font-semibold">Copy</span>
         </button>
       </div>
-      <div className="relative">
-        <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed custom-scrollbar">
-          <code className={cn(className, 'block')} {...props}>
-            {children}
-          </code>
-        </pre>
-      </div>
+      <CodeView code={text} language={languageFor(tag)} lineNumbers={lines > 4} className="max-h-[560px]" />
     </div>
+  );
+}
+
+/**
+ * A file path the tools wrote, as a link.
+ *
+ * Inside a `FilePreviewProvider` (the chat, the runs page) a plain click opens
+ * the file in a drawer beside the answer; anywhere else — and on a modified
+ * click anywhere — it is an ordinary link to the Documents page.
+ */
+function FilePathLink({ path }: { path: string }) {
+  const openPreview = useFilePreview();
+  return (
+    <Link
+      to={documentsHrefFor(path)}
+      onClick={(e) => {
+        if (!openPreview || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        openPreview({ path });
+      }}
+      title={`Open ${path}`}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/5 font-mono text-sm border border-primary/25 text-primary no-underline hover:bg-primary/15 hover:border-primary/40 transition-colors align-baseline break-all"
+    >
+      <FileText className="w-3.5 h-3.5 shrink-0 opacity-70" />
+      {path}
+    </Link>
   );
 }
 
@@ -217,12 +242,12 @@ function MarkdownMessage({
       code: ({ node: _node, inline, className: codeClass, children, ...props }: CodeProps) => {
         const match = /language-(\w+)/.exec(codeClass || '');
         if (!inline && match) {
-          return (
-            <CodeBlock language={match[1].toUpperCase()} className={codeClass} {...props}>
-              {children}
-            </CodeBlock>
-          );
+          return <CodeBlock tag={match[1]}>{children}</CodeBlock>;
         }
+        // A path the file tools wrote is a place the user can go, not text
+        // to copy into a search box. See `lib/vfsPath.ts` for which paths.
+        const filePath = typeof children === 'string' ? linkablePath(children) : null;
+        if (filePath) return <FilePathLink path={filePath} />;
         return (
           <code
             className={cn(

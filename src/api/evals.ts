@@ -13,7 +13,7 @@
  */
 import apiClient from './client';
 
-export type SupervisionPolicy = 'none' | 'disagreement' | 'sample' | 'all';
+export type SupervisionPolicy = 'none' | 'failures' | 'disagreement' | 'sampled' | 'all';
 
 export type RunStatus =
   | 'queued' | 'running' | 'awaiting_review' | 'completed' | 'failed' | 'cancelled';
@@ -251,6 +251,16 @@ const evalsService = {
 
   scorecard: async (agentId: number): Promise<unknown> => {
     const { data } = await apiClient.get(`/eval/agents/${agentId}/scorecard/`);
+    return data;
+  },
+
+  judgeCalibration: async (): Promise<unknown> => {
+    const { data } = await apiClient.get('/eval/judge/calibration/');
+    return data;
+  },
+
+  caseFromRun: async (body: { execution_id: string; suite_id?: number }): Promise<EvalCase> => {
+    const { data } = await apiClient.post<EvalCase>('/eval/cases/from-run/', body);
     return data;
   },
 };

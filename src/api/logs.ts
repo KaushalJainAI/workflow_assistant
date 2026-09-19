@@ -17,7 +17,7 @@ import apiClient from './client';
 // Execution types
 
 /** Who started a run. `trigger_type` says how; this says what. */
-export type RunCaller = 'api' | 'chat' | 'orchestrator' | 'trigger';
+export type RunCaller = 'api' | 'chat' | 'orchestrator' | 'trigger' | 'eval';
 
 export interface ExecutionLog extends CostFields {
   id?: number;
@@ -132,7 +132,7 @@ export interface RevisionSummary {
   id: number;
   number: number;
   summary: string;
-  source: 'create' | 'update' | 'backfill';
+  source: 'create' | 'update' | 'backfill' | 'restore';
   created_at: string;
 }
 
@@ -174,7 +174,7 @@ export interface AgentRevision {
   id: number;
   number: number;
   summary: string;
-  source: 'create' | 'update' | 'backfill';
+  source: 'create' | 'update' | 'backfill' | 'restore';
   diff: RevisionDiff;
   changed_by: string | null;
   /** Runs that executed under this revision — has it been tried enough to judge? */
@@ -261,7 +261,21 @@ export interface CostBreakdown {
    */
   total_credits: number;
   total_tokens: number;
+  /** Agent runs only. `chat` and `all_cost_usd` add conversations. */
   total_cost_usd: string;
+  total_cost_source?: CostSource;
+  /** Conversations, priced per answer. Absent on an older server. */
+  chat?: {
+    messages: number;
+    tokens: number;
+    cost_usd: string;
+    cost_source: CostSource;
+    /** How many answers each kind of key paid for. */
+    paid_by: { platform: number; own_key: number };
+  };
+  /** Agents and chat together, labelled by the weaker of the two. */
+  all_cost_usd?: string;
+  all_cost_source?: CostSource;
   total_input_tokens: number;
   total_output_tokens: number;
   total_cached_read_tokens: number;
@@ -344,6 +358,24 @@ async listExecutions(params?: {
   async getExecution(executionId: string): Promise<ExecutionDetail> {
     const response = await apiClient.get<ExecutionDetail>(`/logs/executions/${executionId}/`);
     return response.data;
+  },
+
+  async submitFeedback(body: {
+    target: 'execution' | 'message'; id: string | number;
+    rating: 1 | -1; reason?: string; comment?: string;
+  }): Promise<unknown> {
+    const { data } = await apiClient.put('/logs/feedback/', body);
+    return data;
+  },
+
+  async clearFeedback(target: 'execution' | 'message', id: string | number): Promise<unknown> {
+    const { data } = await apiClient.delete('/logs/feedback/', { params: { target, id } });
+    return data;
+  },
+
+  async quality(days = 30): Promise<unknown> {
+    const { data } = await apiClient.get('/logs/insights/quality/', { params: { days } });
+    return data;
   },
 
   // ========== Configuration history ==========

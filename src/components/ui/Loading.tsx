@@ -42,25 +42,6 @@ export function Spinner({
   );
 }
 
-/** `count` stacked skeleton rows — the list/table case, which is most of them. */
-export function SkeletonRows({ count = 5, className }: { count?: number; className?: string }) {
-  return (
-    <div className={cn('space-y-3', className)} role="status" aria-label="Loading">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 rounded-lg border border-border/50 p-4">
-          <Skeleton className="h-9 w-9 rounded-lg" />
-          <div className="flex-1 space-y-2">
-            {/* Staggered widths: uniform bars read as a broken table rather
-                than as content that is on its way. */}
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /**
  * Full-screen loader for a boot-time wait. The ring and the label fade in
  * after a beat so a fast check (the common case) never flashes a loader.

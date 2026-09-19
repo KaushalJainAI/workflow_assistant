@@ -23,8 +23,14 @@
  * anyway.
  */
 
-/** The default landing page, and what every refusal falls back to. */
-export const DEFAULT_LANDING = '/';
+/**
+ * The default landing page, and what every refusal falls back to.
+ *
+ * First login opens a fresh Ask chat (`/ai-chat` with no session), not the
+ * landing wrapper at `/` — one less redirect and the composer is the first
+ * thing a new user sees.
+ */
+export const DEFAULT_LANDING = '/ai-chat';
 
 /**
  * The safe redirect target from a `?next=` parameter, or `DEFAULT_LANDING`.

@@ -6,18 +6,22 @@
  * deterministic layer underneath.
  */
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Sliders, LayoutGrid, Share2 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Sliders, LayoutGrid, Share2, Play, Archive, ArchiveRestore } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Spinner } from '../components/ui/Loading';
 import agentsService, { type Agent } from '../api/agents';
-import { AUTONOMY_COPY, TRIGGER_COPY } from '../types/agentConfig';
+import {
+  AUTONOMY_COPY, STATUS_COPY, TRIGGER_COPY, type AgentStatus,
+} from '../types/agentConfig';
 import { mcpService } from '../api/mcp';
 import ShareAgentDialog from '../components/agents/ShareAgentDialog';
+import RunAgentDialog from '../components/agents/RunAgentDialog';
 
 /* Autonomy is the whole safety story, so it is the most prominent field on the
    card: how much this agent may do before it has to stop and ask. */
@@ -35,8 +39,33 @@ const TOOL_NAMES: Record<string, string> = {
   webSearch: 'Web search',
   scrape: 'Read pages',
   fileOps: 'Files',
+  office: 'Office files',
+  media: 'Images',
+  publish: 'Publishing',
+  browser: 'Browser',
   rag: 'Knowledge base',
+  mcp: 'Connectors',
+  subAgents: 'Other agents',
 };
+
+/** Chips shown before the rest fold into "+N". A card is for recognising an
+ *  agent at a glance; the full list is one click away in the builder. */
+const MAX_CHIPS = 3;
+
+/** What the card says the agent is for.
+ *
+ * `brief` is the agent's whole instruction set — often a page of prose written
+ * for a model, not a person — so it is never shown here in full. `description`
+ * is the one line meant for this; without one, the brief's first sentence
+ * stands in, and the card clamps whatever it gets to two lines. */
+function summary(agent: Agent): string {
+  const line = agent.description?.trim();
+  if (line) return line;
+  const brief = (agent.brief ?? '').trim();
+  if (!brief) return 'No description yet.';
+  const first = brief.split(/(?<=[.!?])\s|\n/)[0].trim();
+  return first.length > 160 ? `${first.slice(0, 157).trimEnd()}…` : first;
+}
 
 /** "Finance agent" -> "FA". One letter per word beats slicing the first two
  *  characters, which turns every agent into "AG"-shaped mush. */
@@ -56,8 +85,11 @@ function initials(name: string) {
  * runtime drops it too, so a chip reading "Gmail" for a connection that no
  * longer resolves would be the one misleading thing this list could say. */
 function grants(agent: Agent, names: Map<number, string>) {
+  // The generic `mcp` grant is dropped when named connections follow it:
+  // "Connectors" beside "Gmail" and "Google Drive" says the same thing twice.
+  const named = (agent.connectors ?? []).length > 0;
   const tools = Object.entries(agent.tools ?? {})
-    .filter(([, on]) => on)
+    .filter(([k, on]) => on && !(k === 'mcp' && named))
     .map(([k]) => TOOL_NAMES[k] ?? k);
   // A stored connection is either a bare id or `{id, mode, tools}`; a
   // read-only one says so here, because "Gmail" and "Gmail (read only)" are
@@ -105,9 +137,26 @@ export default function Agents() {
   /* Which agent's share dialog is open, if any. The dialog previews before it
      publishes, so opening it is safe and commits nothing. */
   const [sharing, setSharing] = useState<Agent | null>(null);
-  const { data: agents = [], isLoading, isError } = useQuery({
+  const [runningAgent, setRunningAgent] = useState<Agent | null>(null);
+  const { data: allAgents = [], isLoading, isError } = useQuery({
     queryKey: ['agents'],
     queryFn: () => agentsService.list(),
+  });
+  // Archived agents are filed away, not gone: behind a toggle, restorable.
+  // Before archive was settable the only way to clear an agent out of this
+  // list was to delete it, which also took its run history.
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedCount = allAgents.filter((a) => a.status === 'archived').length;
+  const agents = allAgents.filter((a) =>
+    showArchived ? a.status === 'archived' : a.status !== 'archived');
+  const queryClient = useQueryClient();
+  const restore = useMutation({
+    mutationFn: (id: number) => agentsService.update(id, { status: 'active' }),
+    onSuccess: (agent) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success(`${agent.name} restored`);
+    },
+    onError: () => toast.error('Could not restore that agent.'),
   });
   /* Connection names for the capability chips. An agent stores ids; the label
      belongs to the connector row, so it is fetched rather than mapped here. */
@@ -118,10 +167,10 @@ export default function Agents() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const totalRuns = agents.reduce((n, a) => n + (a.runs ?? 0), 0);
+  const totalRuns = allAgents.reduce((n, a) => n + (a.runs ?? 0), 0);
   const subtitle = isLoading
     ? 'Loading…'
-    : `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'} · ${totalRuns} runs`;
+    : `${allAgents.length - archivedCount} ${allAgents.length - archivedCount === 1 ? 'agent' : 'agents'} · ${totalRuns} runs`;
 
   return (
     <div className="h-full flex flex-col">
@@ -131,6 +180,13 @@ export default function Agents() {
         subtitle={subtitle}
         actions={
           <div className="flex items-center gap-2">
+          {(archivedCount > 0 || showArchived) && (
+            <Button variant="secondary" size="md"
+              onClick={() => setShowArchived((v) => !v)}>
+              <Archive className="w-4 h-4" />
+              {showArchived ? 'Back to agents' : `Archived (${archivedCount})`}
+            </Button>
+          )}
           <Link to="/templates">
             <Button variant="secondary" size="md">
               <LayoutGrid className="w-4 h-4" />
@@ -157,6 +213,8 @@ export default function Agents() {
           <p className="text-[13px] text-destructive py-12">
             Could not load your agents. Reload the page to try again.
           </p>
+        ) : agents.length === 0 && showArchived ? (
+          <p className="text-[13px] text-muted-foreground py-12">Nothing is archived.</p>
         ) : agents.length === 0 ? (
           <EmptyStateView />
         ) : (
@@ -164,6 +222,7 @@ export default function Agents() {
             {agents.map((a) => {
               // Before the first run there is no honest percentage to show.
               const pct = a.runs ? Math.round((a.unattended / a.runs) * 100) : null;
+              const chips = grants(a, connectorNames);
               return (
                 /* The whole card opens the builder, prefilled. A list you cannot
                    click into is a dead end — and editing an agent is the same act
@@ -191,49 +250,72 @@ export default function Agents() {
                         <ShieldCheck className="w-3 h-3" />
                         {AUTONOMY_COPY[a.autonomy].label}
                       </span>
+                      {/* Only the statuses that change behaviour: a
+                          paused agent's schedules are not firing. */}
+                      {(a.status === 'paused' || a.status === 'archived') && (
+                        <span className="inline-flex items-center mt-1 ml-1.5 px-1.5 py-0.5 rounded border border-border text-[11px] font-semibold text-muted-foreground"
+                          title={STATUS_COPY[a.status as AgentStatus]?.hint}>
+                          {STATUS_COPY[a.status as AgentStatus]?.label ?? a.status}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">
-                    {a.brief || 'No description yet.'}
+                  <p
+                    className="text-[13px] text-muted-foreground leading-relaxed mb-3 line-clamp-2 min-h-[2.6em]"
+                    title={a.description || undefined}
+                  >
+                    {summary(a)}
                   </p>
 
-                  <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mb-3">
-                    <Clock className="w-3 h-3" />
-                    {TRIGGER_COPY[a.schedule ? 'maintenance' : 'goal'].label}
-                    {a.schedule && <span className="font-mono">· {a.schedule}</span>}
-                  </div>
+                  {chips.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {chips.slice(0, MAX_CHIPS).map((t) => (
+                        <span
+                          key={t}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary border border-border text-[11px] text-muted-foreground"
+                        >
+                          <Wrench className="w-3 h-3" />
+                          {t}
+                        </span>
+                      ))}
+                      {chips.length > MAX_CHIPS && (
+                        <span
+                          className="inline-flex items-center px-1.5 py-0.5 rounded border border-dashed border-border text-[11px] text-muted-foreground"
+                          title={chips.slice(MAX_CHIPS).join(', ')}
+                        >
+                          +{chips.length - MAX_CHIPS} more
+                        </span>
+                      )}
+                    </div>
+                  )}
 
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {grants(a, connectorNames).map((t) => (
-                      <span
-                        key={t}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary border border-border text-[11px] text-muted-foreground"
-                      >
-                        <Wrench className="w-3 h-3" />
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* How much of its work needed nobody — the number that tells you
-                      whether delegating to this agent is actually paying off. */}
+                  {/* One footer line: when it runs and what it has done. The
+                      bar is how much of its work needed nobody — the number
+                      that says whether delegating to it is paying off — and it
+                      only appears once there is a run to measure. */}
                   <div className="pt-3 border-t border-border">
-                    <div className="flex items-center justify-between text-[12px] mb-1.5">
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        <Zap className="w-3 h-3" />
-                        {pct === null ? 'Not run yet' : `${pct}% handled without you`}
+                    <div className="flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
+                      <span className="flex items-center gap-1 min-w-0 truncate">
+                        <Clock className="w-3 h-3 shrink-0" />
+                        {TRIGGER_COPY[a.schedule ? 'maintenance' : 'goal'].label}
                       </span>
-                      <span className="text-muted-foreground tabular-nums">
-                        {a.runs} runs{a.spend ? ` · ₹${a.spend}` : ''}
+                      <span className="tabular-nums shrink-0">
+                        {a.runs ? `${a.runs} ${a.runs === 1 ? 'run' : 'runs'}` : 'Not run yet'}
+                        {a.spend ? ` · ₹${a.spend}` : ''}
                       </span>
                     </div>
-                    <div className="h-1.5 bg-secondary rounded overflow-hidden">
-                      <span
-                        className="block h-full bg-agent rounded"
-                        style={{ width: `${pct ?? 0}%` }}
-                      />
-                    </div>
+                    {pct !== null && (
+                      <div className="mt-2 flex items-center gap-2" title="Share of runs that finished without needing you">
+                        <div className="h-1 flex-1 bg-secondary rounded overflow-hidden">
+                          <span className="block h-full bg-agent rounded" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground tabular-nums">
+                          <Zap className="w-3 h-3" />
+                          {pct}% on its own
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </Link>
 
@@ -251,6 +333,28 @@ export default function Agents() {
                   {/* Sharing sits on the agent rather than on Explore, because
                       what you publish is something you own — and the dialog
                       shows the whole payload before anything leaves. */}
+                  {/* Run by hand. The execute endpoint had no caller in the
+                      app, so an agent could only be run by asking chat to. */}
+                  {a.status === 'archived' ? (
+                    <button
+                      type="button"
+                      onClick={() => restore.mutate(a.id)}
+                      disabled={restore.isPending}
+                      className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+                    >
+                      <ArchiveRestore className="w-3 h-3" />
+                      Restore
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setRunningAgent(a)}
+                      className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+                    >
+                      <Play className="w-3 h-3" />
+                      Run
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setSharing(a)}
@@ -266,6 +370,15 @@ export default function Agents() {
           </div>
         )}
       </div>
+
+      {runningAgent && (
+        <RunAgentDialog
+          agentId={runningAgent.id}
+          agentName={runningAgent.name}
+          brief={runningAgent.brief}
+          onClose={() => setRunningAgent(null)}
+        />
+      )}
 
       {sharing && (
         <ShareAgentDialog

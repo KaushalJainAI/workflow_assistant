@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
-import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData } from '../api/chat';
+import type { ChartSpec, FileCardData, TodoItem, HtmlArtifact as HtmlArtifactData } from '../api/chat';
 import type { ChatMediaItem, CodeExecutionEntry } from '../api/chat';
 
 /**
@@ -114,6 +114,7 @@ export interface ChatStreamState {
   artifacts: HtmlArtifactData[];
   charts: ChartSpec[];
   todos: TodoItem[];
+  files: FileCardData[];
   blockedAttachments: { message: string; items: BlockedAttachment[] } | null;
   pendingToolCall: PendingToolCall | null;
 }
@@ -130,6 +131,7 @@ const EMPTY: ChatStreamState = {
   artifacts: [],
   charts: [],
   todos: [],
+  files: [],
   blockedAttachments: null,
   pendingToolCall: null,
 };
@@ -201,6 +203,10 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
       // list every time, so applying this as a delta would reconstruct a state
       // the server never sent.
       return { ...state, todos: arr<TodoItem>(event.todos) };
+    case 'files_update':
+      // Whole list, like todos: a second write to one file updates its entry
+      // on the server, so appending here would show it twice.
+      return { ...state, files: arr<FileCardData>(event.files) };
     case 'chart':
       // The whole spec is appended as sent. Charts are not merged or deduped:
       // a turn that draws two charts meant two charts, and the backend has

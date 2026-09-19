@@ -17,12 +17,18 @@ import {
   ShieldCheck, Clock, Layers, Save, RotateCcw, Check, Globe, Loader2, Trash2,
   FileOutput,
   History,
+  Play,
+  Archive,
+  Copy,
+  Activity,
+  FlaskConical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import nodeService from '../api/nodeService';
 import skillsService from '../api/skills';
 import { mcpService } from '../api/mcp';
-import agentsService from '../api/agents';
+import agentsService, { type Agent } from '../api/agents';
+import { useRestoreRevision } from '../hooks/useRestoreRevision';
 import { logsService } from '../api';
 import { cn } from '../lib/utils';
 import MultiSelect from '../components/ui/MultiSelect';
@@ -34,6 +40,10 @@ import {
   type OutputContract, type ConnectorChoice, type ConnectorMode,
 } from '../types/agentConfig';
 import RevisionEntry from '../components/agents/RevisionEntry';
+import RunAgentDialog from '../components/agents/RunAgentDialog';
+import ConnectorToolPicker from '../components/agents/ConnectorToolPicker';
+import AgentScorecard from '../components/agents/AgentScorecard';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
 import { SendButton } from '../components/ui/SendButton';
 import { Switch } from '../components/ui/Switch';
@@ -95,7 +105,12 @@ function Section({ icon: Icon, title, hint, notEnforced, children }: {
  */
 const INLINE_REVISIONS = 3;
 
-function RevisionHistory({ agentId }: { agentId: number }) {
+function RevisionHistory({ agentId, onRestored }: {
+  agentId: number;
+  /** The board shows the saved config; after a restore it must show the new one. */
+  onRestored: (agent: Agent) => void;
+}) {
+  const { restore, pending } = useRestoreRevision(agentId, onRestored);
   const { data, isLoading } = useQuery({
     queryKey: ['agent-revisions', agentId, INLINE_REVISIONS],
     queryFn: () => logsService.listRevisions(agentId, { limit: INLINE_REVISIONS }),
@@ -120,8 +135,10 @@ function RevisionHistory({ agentId }: { agentId: number }) {
   return (
     <>
       <ol className="space-y-2">
-        {revisions.map((rev) => (
-          <RevisionEntry key={rev.id} revision={rev} />
+        {revisions.map((rev, i) => (
+          <RevisionEntry key={rev.id} revision={rev}
+            onRestore={i === 0 ? undefined : () => restore(rev.number)}
+            restoring={pending === rev.number} />
         ))}
       </ol>
       <Link
@@ -213,6 +230,14 @@ function setConnectorMode(
   });
 }
 
+/** Set the named tools of one `selected` connection. */
+function setConnectorTools(
+  choices: ConnectorChoice[], id: number, tools: string[],
+): ConnectorChoice[] {
+  return choices.map((choice) =>
+    connectorId(choice) === id ? { id, mode: 'selected' as const, tools } : choice);
+}
+
 /** Apply a MultiSelect's id list, keeping the mode already chosen for each. */
 function reconcileConnectors(
   current: ConnectorChoice[], selectedIds: string[],
@@ -288,6 +313,16 @@ function Toggle({ on, onChange, label, hint }: {
   );
 }
 
+/** Grants the runtime does not serve (`runtime.UNSERVED_GRANTS`). */
+const UNSERVED_TOOLS = new Set<string>(['shell']);
+
+/** Why another agent cannot run this one, or null if it can. */
+function delegationBlocker(a: { status?: string; allowUnattended?: boolean }): string | null {
+  if (a.status === 'paused') return 'Paused — delegation to it is refused.';
+  if (!a.allowUnattended) return 'Not cleared to run automatically — delegation to it is refused.';
+  return null;
+}
+
 /* ---------- page ---------- */
 
 export default function AgentBuilder() {
@@ -329,16 +364,23 @@ export default function AgentBuilder() {
   // effect: the board is seeded before it first paints instead of flashing the
   // platform default and then re-rendering.
   const [userDefaultsApplied, setUserDefaultsApplied] = useState(false);
+  /** What a new agent starts from: the account's own choices in Settings.
+   *  Temperature and timezone were stored there and never reached a new agent;
+   *  the zone falls back to the browser's when Settings still holds the
+   *  untouched `UTC`, which is what this board did before. */
+  const accountDefaults = (): Partial<AgentConfig> => ({
+    provider: user?.llm_provider || DEFAULT_AGENT.provider,
+    model: user?.llm_model || DEFAULT_AGENT.model,
+    effort: user?.llm_effort ?? DEFAULT_AGENT.effort,
+    temperature: user?.default_temperature ?? DEFAULT_AGENT.temperature,
+    scheduleTimezone: user?.timezone && user.timezone !== 'UTC'
+      ? user.timezone : DEFAULT_AGENT.scheduleTimezone,
+  });
   if (isNew && !userDefaultsApplied && user) {
     setUserDefaultsApplied(true);
     if (touched.size === 0) setCfg((c) => {
       if (c.provider !== DEFAULT_AGENT.provider || c.model !== '' || c.effort !== DEFAULT_AGENT.effort) return c;
-      return {
-        ...c,
-        provider: user.llm_provider || c.provider,
-        model: user.llm_model || c.model,
-        effort: user.llm_effort ?? c.effort,
-      };
+      return { ...c, ...accountDefaults() };
     });
   }
 
@@ -400,14 +442,63 @@ export default function AgentBuilder() {
   // board first and then overwrite it, and any edit made in that gap would be
   // silently discarded.
   const [loadedId, setLoadedId] = useState<number | null>(null);
+  // The conversation that configured this agent, kept server-side so a reload
+  // does not throw away the reason behind every knob it moved. Seeded once,
+  // and only into an empty pane — never over a conversation in progress.
+  const { data: savedChat } = useQuery({
+    queryKey: ['agent-builder-chat', agentId],
+    queryFn: () => agentsService.builderChat(agentId!),
+    enabled: agentId != null,
+    staleTime: Infinity,
+  });
+  // The newest revision, so the scorecard can say a score is from an older
+  // configuration. Shares the inline history's query key, so no extra request.
+  const { data: newestRevisions } = useQuery({
+    queryKey: ['agent-revisions', agentId, 3],
+    queryFn: () => logsService.listRevisions(agentId!, { limit: 3 }),
+    enabled: agentId != null,
+  });
+  const latestRevision = newestRevisions?.results?.[0]?.number ?? null;
+  const [chatSeeded, setChatSeeded] = useState(false);
+  // React Router keeps this component mounted across `/agents/:id` changes
+  // (Duplicate navigates to the copy), so the pane has to be reset by hand or
+  // one agent's conversation would carry on under another's name.
+  const [chatFor, setChatFor] = useState(agentId);
+  if (chatFor !== agentId) {
+    setChatFor(agentId);
+    setMessages([]);
+    setChatSeeded(false);
+    setTouched(new Set());
+  }
+  if (!chatSeeded && savedChat) {
+    setChatSeeded(true);
+    if (messages.length === 0 && savedChat.messages.length > 0) {
+      setMessages(savedChat.messages.map((m) => ({
+        role: m.role, text: m.text,
+        changes: m.changes.length ? (m.changes as Change[]) : undefined,
+      })));
+    }
+  }
   // Whether the schedule editor is open on an agent that has no schedule
   // yet. Not derived from `cfg.schedule`: the editor has to be visible
   // *before* there is a cron to show, or there is nothing to type into.
   const [scheduling, setScheduling] = useState(false);
+  const [running, setRunning] = useState(false);
   if (existing && loadedId !== existing.id) {
     setLoadedId(existing.id);
     setCfg({ ...DEFAULT_AGENT, ...existing });
   }
+
+  // Whether the board differs from what is saved. A run uses the saved
+  // configuration, and leaving the page used to drop edits without a word.
+  const dirty = !isNew && !!existing
+    && JSON.stringify({ ...DEFAULT_AGENT, ...existing }) !== JSON.stringify(cfg);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   const save = useMutation({
     mutationFn: (config: AgentConfig) =>
@@ -417,6 +508,10 @@ export default function AgentBuilder() {
       queryClient.invalidateQueries({ queryKey: ['agent', id] });
       toast.success(isNew ? `${agent.name} created` : 'Saved');
       setTouched(new Set());
+      // Adopt what the server stored, not what was sent: it normalises (tag
+      // order, connector shape), and a board that differs from the saved copy
+      // by normalisation alone would read as unsaved forever.
+      if (!isNew) setCfg({ ...DEFAULT_AGENT, ...agent });
       if (isNew) navigate(`/agents/${agent.id}`, { replace: true });
     },
     // The server validates the same rules the board shows, so its message is
@@ -438,6 +533,41 @@ export default function AgentBuilder() {
       toast.success('Agent deleted');
       navigate('/agents');
     },
+    onError: () => toast.error('Could not delete this agent.'),
+  });
+  // Archive is the first answer to "get this out of my list": it keeps the
+  // agent restorable, where delete keeps only its runs.
+  const archive = useMutation({
+    mutationFn: () => agentsService.update(id!, { status: 'archived' }),
+    onSuccess: (agent) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success(`${agent.name} archived — restore it from Agents → Archived`);
+      navigate('/agents');
+    },
+    onError: () => toast.error('Could not archive this agent.'),
+  });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // A starting point for a similar agent. The copy has no schedule and starts
+  // as a draft: two agents firing the same job on the same clock is never what
+  // "duplicate" meant.
+  const duplicate = useMutation({
+    mutationFn: () => {
+      const source = { ...DEFAULT_AGENT, ...(existing ?? cfg) } as Record<string, unknown>;
+      for (const key of ['id', 'runs', 'unattended', 'spend', 'created_at',
+        'updated_at', 'extraSchedules', 'trigger']) delete source[key];
+      return agentsService.create({
+        ...(source as unknown as AgentConfig),
+        name: `${cfg.name} (copy)`,
+        status: 'draft',
+        schedule: '',
+      });
+    },
+    onSuccess: (agent) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success(`Created ${agent.name}`);
+      navigate(`/agents/${agent.id}`);
+    },
+    onError: () => toast.error('Could not duplicate this agent.'),
   });
 
   // What the pickers show. A blank model means "the account default" — the
@@ -508,7 +638,7 @@ export default function AgentBuilder() {
     // be too, or the builder re-proposes the default as a change every turn.
     const visibleCfg = { ...cfg, provider: displayProvider, model: effectiveModel };
     try {
-      const proposal = await agentsService.configure(text, visibleCfg, history);
+      const proposal = await agentsService.configure(text, visibleCfg, history, agentId);
       apply(proposal.reply, proposal.changes as Change[]);
     } catch {
       const { reply, changes } = propose(text, visibleCfg, connectorOptions);
@@ -538,12 +668,7 @@ export default function AgentBuilder() {
       // A new board starts at the account default, matching the seeding effect
       // above — resetting to the shipped constants would unpick the user's
       // own default from under them.
-      setCfg({
-        ...DEFAULT_AGENT,
-        provider: user?.llm_provider || DEFAULT_AGENT.provider,
-        model: user?.llm_model || DEFAULT_AGENT.model,
-        effort: user?.llm_effort ?? DEFAULT_AGENT.effort,
-      });
+      setCfg({ ...DEFAULT_AGENT, ...accountDefaults() });
     }
     setTouched(new Set());
     setMessages([]);
@@ -587,12 +712,46 @@ export default function AgentBuilder() {
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           {!isNew && (
             <button
-              onClick={() => {
-                if (confirm(`Delete ${cfg.name}? This cannot be undone.`)) remove.mutate();
-              }}
+              onClick={() => duplicate.mutate()}
+              disabled={duplicate.isPending}
+              title="Make a copy of the saved configuration, without its schedule"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border hover:bg-secondary">
+              <Copy className="w-4 h-4" />
+              Duplicate
+            </button>
+          )}
+          {!isNew && existing?.status !== 'archived' && (
+            <button
+              onClick={() => archive.mutate()}
+              disabled={archive.isPending}
+              title="Hide it and stop it running automatically. Restorable."
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border hover:bg-secondary">
+              <Archive className="w-4 h-4" />
+              Archive
+            </button>
+          )}
+          {!isNew && (
+            <button
+              onClick={() => setConfirmDelete(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border text-destructive hover:bg-destructive-subtle">
               <Trash2 className="w-4 h-4" />
               Delete
+            </button>
+          )}
+          {!isNew && agentId != null && (
+            <Link to={`/runs?agent=${agentId}`}
+              title="This agent's runs"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border hover:bg-secondary">
+              <Activity className="w-4 h-4" />
+              Runs
+            </Link>
+          )}
+          {!isNew && agentId != null && (
+            <button onClick={() => setRunning(true)}
+              title="Start a run of the saved configuration"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-border hover:bg-secondary">
+              <Play className="w-4 h-4" />
+              Run
             </button>
           )}
           <button onClick={reset}
@@ -778,6 +937,12 @@ export default function AgentBuilder() {
                   />
                 </Knob>
               </div>
+              {existing?.model_status === 'retired' && existing.model === effectiveModel && (
+                <p role="alert" className="text-[12px] text-destructive">
+                  This model has been retired, so runs will fail when they start.
+                  Pick another model and save.
+                </p>
+              )}
               {/* Always rendered, including for a model with no effort
                   control — see `EffortPicker`. Hiding it meant an existing
                   agent on a non-reasoning model showed no sign the setting
@@ -817,7 +982,7 @@ export default function AgentBuilder() {
               <Knob path="temperature" touched={touched} label="Temperature"
                     hint={cfg.temperature <= 0.2 ? 'deterministic' : cfg.temperature >= 0.7 ? 'varied' : 'balanced'}>
                 <div className="flex items-center gap-3">
-                  <input type="range" min={0} max={1} step={0.1} value={cfg.temperature}
+                  <input type="range" min={0} max={2} step={0.1} value={cfg.temperature}
                     onChange={(e) => set('temperature', Number(e.target.value))}
                     className="flex-1 accent-primary" />
                   <span className="w-8 text-right text-[13px] tabular-nums">{cfg.temperature.toFixed(1)}</span>
@@ -935,12 +1100,30 @@ export default function AgentBuilder() {
                 ['webSearch', 'Web search', 'Look things up it was not given.'],
                 ['scrape', 'Read web pages', 'Fetch and extract from a URL.'],
                 ['fileOps', 'Read and write files', 'Your own files, within the access level set above.'],
+                ['office', 'Make decks, sheets and docs', 'PowerPoint, Excel and Word files, saved where file access allows.'],
+                ['media', 'Generate images', 'Billed to your OpenRouter account; saved where file access allows.'],
+                ['publish', 'Publish pages', 'Share a report, page or file by link. Pauses before anything goes public.'],
+                ['browser', 'Use a browser', 'Read JavaScript pages; click and type only on the sites listed below.'],
                 ['rag', 'Knowledge base search', 'Retrieve from your indexed documents.'],
                 ['mcp', 'MCP servers (Plugins)', 'The tools from your connected plugins (MCP servers), using your connectors.'],
                 ['subAgents', 'Delegate to other agents', 'Hand whole tasks to agents you have built. Narrow which ones below.'],
               ] as const).map(([k, label, hint]) => (
                 <Knob key={k} path={`tools.${k}`} touched={touched} label="">
-                  <Toggle on={cfg.tools[k]} onChange={(v) => setTool(k, v)} label={label} hint={hint} />
+                  {UNSERVED_TOOLS.has(k) ? (
+                    // Nothing serves this grant yet (`runtime.UNSERVED_GRANTS`),
+                    // so a working switch would promise a tool no run is handed.
+                    // Shown, not hidden, so an agent that already has it on can
+                    // see it and turn it off.
+                    <div className="flex items-start gap-2.5 py-1 opacity-60">
+                      <Switch checked={cfg.tools[k]} onChange={(v) => { if (!v) setTool(k, false); }} label={label} />
+                      <span>
+                        <span className="block text-[13px]">{label}</span>
+                        <span className="block text-[12px] text-muted-foreground">Not available yet — runs are never given this tool.</span>
+                      </span>
+                    </div>
+                  ) : (
+                    <Toggle on={cfg.tools[k]} onChange={(v) => setTool(k, v)} label={label} hint={hint} />
+                  )}
                 </Knob>
               ))}
               <p className="px-2 text-[11px] text-muted-foreground">
@@ -973,7 +1156,7 @@ export default function AgentBuilder() {
                         <div key={id}
                           className="flex flex-wrap items-center gap-2 px-2 py-1.5 rounded border border-border bg-card">
                           <span className="text-[12px] font-medium mr-auto">{label}</span>
-                          {(['all', 'read'] as ConnectorMode[]).map((mode) => (
+                          {(['all', 'read', 'selected'] as ConnectorMode[]).map((mode) => (
                             <button key={mode} type="button"
                               onClick={() => set('connectors', setConnectorMode(cfg.connectors, id, mode))}
                               title={CONNECTOR_MODE_COPY[mode].hint}
@@ -985,21 +1168,47 @@ export default function AgentBuilder() {
                               {CONNECTOR_MODE_COPY[mode].label}
                             </button>
                           ))}
+                          {connectorMode(choice) === 'selected' && (
+                            <div className="basis-full">
+                              <ConnectorToolPicker
+                                serverId={id}
+                                value={typeof choice === 'number' ? [] : choice.tools}
+                                onChange={(tools) => set('connectors', setConnectorTools(cfg.connectors, id, tools))}
+                              />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
                     <p className="px-2 text-[11px] text-muted-foreground">
-                      {CONNECTOR_MODE_COPY.read.hint}
+                      {CONNECTOR_MODE_COPY.read.hint} {CONNECTOR_MODE_COPY.selected.hint}
                     </p>
                   </div>
                 )}
               </Knob>
+              {cfg.tools.browser && (
+                <Knob path="browserDomains" touched={touched} label="Sites it may act on"
+                      hint={cfg.browserDomains.length ? `${cfg.browserDomains.length} site${cfg.browserDomains.length === 1 ? '' : 's'}` : 'read only'}>
+                  <input
+                    value={cfg.browserDomains.join(', ')}
+                    onChange={(e) => set('browserDomains', e.target.value.split(',').map((d) => d.trim()).filter(Boolean))}
+                    placeholder="e.g. portal.supplier.com, forms.example.org"
+                    className="w-full h-9 px-3 rounded border border-input bg-background text-sm" />
+                  <p className="mt-1.5 px-2 text-[11px] text-muted-foreground">
+                    Empty means it can read any page but never click or type. Subdomains are included.
+                  </p>
+                </Knob>
+              )}
               {cfg.tools.subAgents && (
                 <Knob path="delegatesTo" touched={touched} label="Delegates to"
                       hint={cfg.delegatesTo.length ? `${cfg.delegatesTo.length} selected` : undefined}>
                   <MultiSelect
                     options={otherAgents.map((a) => ({
-                      id: String(a.id), label: a.name, hint: a.description,
+                      id: String(a.id), label: a.name,
+                      // A delegated run is unattended, so the runtime refuses a
+                      // target that is paused or not cleared to run on its own.
+                      // Said here, where the choice is made, not in a run log.
+                      hint: delegationBlocker(a) ?? a.description,
                     }))}
                     value={cfg.delegatesTo.map(String)}
                     onChange={(v) => set('delegatesTo', v.map(Number))}
@@ -1161,9 +1370,17 @@ export default function AgentBuilder() {
             </Section>
 
             {!isNew && agentId != null && (
+              <Section icon={FlaskConical} title="Evaluation"
+                       hint="How it scores on your test suites">
+                <AgentScorecard agentId={agentId} currentRevision={latestRevision} />
+              </Section>
+            )}
+
+            {!isNew && agentId != null && (
               <Section icon={History} title="Change history"
                        hint="Which configuration produced which runs">
-                <RevisionHistory agentId={agentId} />
+                <RevisionHistory agentId={agentId}
+                  onRestored={(agent) => { setCfg({ ...DEFAULT_AGENT, ...agent }); setTouched(new Set()); }} />
               </Section>
             )}
 
@@ -1202,12 +1419,20 @@ export default function AgentBuilder() {
                     showSearch
                     options={[
                       { value: '', label: 'Platform default (recommended)' },
+                      // Only models this account can run. The fold runs in the
+                      // middle of a long run, so a model that fails preflight
+                      // there is a run that dies half-way. The saved choice is
+                      // kept visible even if it has since become unrunnable,
+                      // so the picker never silently shows something else.
                       ...providers.flatMap((p) =>
-                        (p.models ?? []).map((mo) => ({
-                          value: mo.value,
-                          label: `${p.name} · ${mo.name}${mo.is_free ? ' · free' : ''}`,
-                          is_free: mo.is_free,
-                        }))
+                        (p.models ?? [])
+                          .filter((mo) => mo.available !== false || mo.value === cfg.summaryModel)
+                          .map((mo) => ({
+                            value: mo.value,
+                            label: `${p.name} · ${mo.name}${mo.is_free ? ' · free' : ''}`
+                              + (mo.available === false ? ' · no key' : ''),
+                            is_free: mo.is_free,
+                          }))
                       ),
                     ]}
                   />
@@ -1235,6 +1460,24 @@ export default function AgentBuilder() {
           </div>
         </div>
       </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete ${cfg.name}?`}
+          body="The agent, its schedules and its settings are removed for good. Its past runs stay on Runs, marked as deleted. To keep the agent, archive it instead."
+          busy={remove.isPending}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => remove.mutate()}
+        />
+      )}
+      {running && agentId != null && (
+        <RunAgentDialog
+          agentId={agentId}
+          agentName={cfg.name}
+          brief={existing?.brief ?? cfg.brief}
+          dirty={dirty}
+          onClose={() => setRunning(false)}
+        />
+      )}
     </div>
   );
 }

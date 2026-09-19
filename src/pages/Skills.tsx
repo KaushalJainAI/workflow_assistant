@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { 
-  Zap, 
-  Search, 
-  Plus, 
-  FileText, 
-  Share2, 
-  Trash2, 
-  X, 
+import {
+  GraduationCap,
+  Search,
+  Plus,
+  FileText,
+  Share2,
+  Trash2,
+  X,
   Loader2,
   Edit3,
   Eye,
@@ -155,31 +155,31 @@ export default function Skills() {
     return (
         // `h-full`, not `h-screen` — see the note in Documents.tsx.
         <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-500">
-            {/* Header */}
-            <header className="px-4 py-2 bg-card sticky top-0 z-20 border-b border-border">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            {/* Header — spacing follows PageHeader (px-4 py-6 md:px-8 md:py-8). */}
+            <header className="px-4 py-6 md:px-8 md:py-8 bg-card sticky top-0 z-20 border-b border-border">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                     {/* pl-12 on mobile clears the Sidebar's fixed hamburger. */}
-                    <div className="flex items-center gap-4 pl-12 md:pl-0">
-                        <div className="p-3 bg-primary/10 rounded-lg shrink-0">
-                            <Zap className="w-6 h-6 text-primary" />
+                    <div className="flex items-center gap-3 md:gap-4 pl-12 md:pl-0 min-w-0">
+                        <div className="p-2.5 md:p-3 bg-primary/10 rounded-lg shrink-0">
+                            <GraduationCap className="w-5 h-5 md:w-6 md:h-6 text-primary" />
                         </div>
-                        <div>
-                            <h1 className="text-2xl font-bold tracking-tight">Skills</h1>
-                            <p className="text-xs font-medium text-muted-foreground mt-0.5">
+                        <div className="min-w-0">
+                            <h1 className="text-xl md:text-2xl font-bold">Skills</h1>
+                            <p className="text-xs text-muted-foreground mt-0.5">
                                 Build, manage, and share AI skills to enhance your workflows
                             </p>
                         </div>
                     </div>
-                    <button 
+                    <button
                         onClick={handleCreateSkill}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-semibold transition-all hover:bg-primary/90"
+                        className="flex items-center gap-2 px-4 h-10 bg-primary text-primary-foreground rounded-lg text-sm font-semibold whitespace-nowrap transition-colors hover:bg-primary/90"
                     >
                         <Plus className="w-4 h-4" />
                         Create skill
                     </button>
                 </div>
 
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-center gap-8">
                         <button
                             onClick={() => {
@@ -209,10 +209,10 @@ export default function Skills() {
 
                 <div className="relative w-full md:w-[400px] group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         placeholder="Search skills..."
-                        className="w-full h-11 pl-11 pr-4 rounded-lg bg-background/50 border border-border/60 focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground shadow-sm"
+                        className="w-full h-11 pl-11 pr-4 rounded-lg bg-background border border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-colors text-foreground placeholder:text-muted-foreground shadow-sm"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -221,8 +221,8 @@ export default function Skills() {
             </div>
         </header>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-auto p-4 md:p-10">
+        {/* Main Content — matches the Tools page content gutter. */}
+        <main className="flex-1 overflow-auto px-4 md:px-8 py-6">
             <div className="max-w-7xl mx-auto">
                 {isLoading && currentSkills.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 gap-3">
@@ -425,7 +425,7 @@ export default function Skills() {
                                 </div>
                             )}
                             {(editorMode === 'preview' || editorMode === 'split') && (
-                                <div className="flex-1 overflow-auto bg-card p-4 md:p-10 max-w-none">
+                                <div className="flex-1 overflow-auto bg-card p-4 md:p-8 max-w-none">
                                     <div className="max-w-3xl mx-auto">
                                         {/* Full markdown via the shared renderer. */}
                                         <MarkdownMessage content={editContent} variant="full" />

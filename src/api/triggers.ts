@@ -31,6 +31,7 @@ export type FireOutcome =
   | 'late'
   | 'busy'
   | 'waiting'
+  | 'paused'
   | 'expired'
   | 'stopped'
   | 'refused'

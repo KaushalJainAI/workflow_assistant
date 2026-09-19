@@ -34,14 +34,19 @@ import {
   Coins,
   Download,
   Globe,
+  ImageIcon,
   Inbox,
   LayoutGrid,
   Loader2,
+  PenLine,
+  Presentation,
   Radar,
   Search,
   ShieldCheck,
   Sparkles,
+  Swords,
   Table2,
+  Target,
   User,
   Wrench,
   X,
@@ -72,7 +77,22 @@ const TEMPLATE_ICONS: Record<string, LucideIcon> = {
   'calendar-clock': CalendarClock,
   table: Table2,
   radar: Radar,
+  presentation: Presentation,
+  pen: PenLine,
+  sparkles: Sparkles,
+  image: ImageIcon,
+  globe: Globe,
+  swords: Swords,
+  target: Target,
 };
+
+/* One-click packs, keyed by the backend's `gallery.PACKS` slugs. */
+const PACKS: { slug: string; title: string; blurb: string; icon: LucideIcon }[] = [
+  { slug: 'office', title: 'Office pack — Analyst, Slides, Writer', icon: Presentation,
+    blurb: 'Three specialists that turn files into files: clean a spreadsheet, build a deck, write a report. One click, no setup.' },
+  { slug: 'research', title: 'Research pack — Deep research, Competitors, Publisher', icon: Search,
+    blurb: 'Sourced research three ways: a report, a comparison workbook, or a page you can share by link.' },
+];
 
 /* What each grant lets the agent do, in the second person, because that is the
    question the installer is actually answering: not "what tools does it have"
@@ -83,6 +103,10 @@ const GRANT_COPY: Record<string, string> = {
   codeExecution: 'Run Python in a sandbox',
   shell: 'Run shell commands',
   fileOps: 'Read and write your files',
+  office: 'Create PowerPoint, Excel and Word files',
+  media: 'Generate images on your OpenRouter account',
+  publish: 'Publish pages shareable by link',
+  browser: 'Use a web browser on allowed sites',
   rag: 'Search a knowledge base',
   mcp: 'Use your connections',
   subAgents: 'Delegate to your other agents',
@@ -435,6 +459,33 @@ export default function Templates() {
   const navigate = useNavigate();
   const [installing, setInstalling] = useState<AgentTemplate | null>(null);
   const [filter, setFilter] = useState('all');
+  const queryClient = useQueryClient();
+
+  const packInstall = useMutation({
+    mutationFn: (pack: string) => templatesService.installPack(pack),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agent-templates'] });
+      if (result.installed.length > 0) {
+        toast.success(
+          `Installed ${result.installed.map((i) => i.name).join(', ')}`,
+        );
+      } else {
+        toast.success('That pack is already installed');
+      }
+      if (result.skipped.length > 0) {
+        const needsSetup = result.skipped.filter((s) => s.reason === 'needs setup');
+        if (needsSetup.length > 0) {
+          toast.success(
+            `${needsSetup.map((s) => s.slug).join(', ')} need setup — open them to finish installing.`,
+          );
+        }
+      }
+    },
+    onError: () => {
+      toast.error('Could not install that pack.');
+    },
+  });
 
   /* A deep link is the only way to reach a `link`-visibility share, so it is
      fetched on its own rather than looked up in the grid — by design that
@@ -492,6 +543,35 @@ export default function Templates() {
           author's comes with it: no credentials, no documents, no runs. You can
           publish your own from the Agents page.
         </p>
+
+        {(filter === 'all' || filter === 'curated') && (
+          <div className="mb-5 grid max-w-4xl gap-3 md:grid-cols-2">
+            {PACKS.map((pack) => (
+              <div key={pack.slug} className="rounded border border-agent-line bg-agent-subtle p-4 flex items-start gap-3">
+                <span className="w-9 h-9 rounded bg-card border border-agent-line text-agent flex items-center justify-center shrink-0">
+                  <pack.icon className="w-4 h-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-foreground text-[14px]">{pack.title}</h3>
+                  <p className="text-[13px] text-muted-foreground leading-relaxed mt-1">{pack.blurb}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={packInstall.isPending}
+                  onClick={() => packInstall.mutate(pack.slug)}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-[12px] font-semibold hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {packInstall.isPending && packInstall.variables === pack.slug ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  Install
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-1 mb-5">
           {FILTERS.map((f) => (

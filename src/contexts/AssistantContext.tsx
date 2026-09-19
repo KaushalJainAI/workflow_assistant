@@ -22,8 +22,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // `UserProfile.llm_provider` and `llm_model` — so choosing a model here
   // silently rewrote the account default that Settings edits, and every place
   // seeded from it. Two surfaces writing one row is not two settings.
-  // The credential is still synced, because that genuinely is account-level:
-  // it says which stored key to use, not which model this surface prefers.
+  // The credential used to be synced to `settings/update/`; no model call ever
+  // read what it wrote, and the route was retired 2026-09-18. Which key a call
+  // uses is resolved per provider by `llm.access`, from the user's vault.
   const { user } = useAuth();
   const [llmProvider, setLlmProvider] = useState(
     () => localStorage.getItem('orchestrator_llm_provider') || '',
@@ -41,7 +42,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // would race the profile load and could overwrite a local choice made before
   // it landed. Falling back at read time cannot.
   const effectiveProvider = llmProvider || user?.llm_provider || DEFAULT_PROVIDER;
-  const [llmCredential, setLlmCredential] = useState<string | null>(localStorage.getItem('orchestrator_llm_credential'));
 
   // Every function on the context value is memoised. They are all listed in the
   // `useMemo` at the bottom, so a fresh identity per render made that memo
@@ -121,27 +121,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     }
   }, [dynamicProviders]);
 
-  const updateLlmCredential = useCallback(async (credential: string | null) => {
-    setLlmCredential(credential);
-    if (credential) {
-      localStorage.setItem('orchestrator_llm_credential', credential);
-    } else {
-      localStorage.removeItem('orchestrator_llm_credential');
-    }
-    
-    // Credential only. The endpoint writes each field it is given, so sending
-    // the provider/model alongside is what used to drag the account default
-    // along with a credential change.
-    try {
-      const { apiClient } = await import('../api');
-      await apiClient.post('/orchestrator/settings/update/', {
-        llm_credential: credential ?? '',
-      });
-    } catch (err) {
-      console.warn('Failed to sync Assistant credential change to backend:', err);
-    }
-  }, []);
-
   const updateLlmModel = useCallback((model: string) => {
     setLlmModel(model);
     localStorage.setItem('orchestrator_llm_model', model);
@@ -153,33 +132,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     // empty string rather than removed, which would read as "never chose" and
     // fall back to the account default on the next load.
     localStorage.setItem('orchestrator_llm_effort', level);
-  }, []);
-
-  const syncLlmSettings = useCallback(async (
-    provider: string, model: string, credential?: string | null,
-  ) => {
-    setLlmProvider(provider);
-    setLlmModel(model);
-    if (credential !== undefined) setLlmCredential(credential);
-    
-    localStorage.setItem('orchestrator_llm_provider', provider);
-    localStorage.setItem('orchestrator_llm_model', model);
-    if (credential !== undefined) {
-      if (credential) localStorage.setItem('orchestrator_llm_credential', credential);
-      else localStorage.removeItem('orchestrator_llm_credential');
-    }
-    
-    // Only the credential reaches the account; provider and model stay local.
-    if (credential !== undefined) {
-      try {
-        const { apiClient } = await import('../api');
-        await apiClient.post('/orchestrator/settings/update/', {
-          llm_credential: credential ?? '',
-        });
-      } catch (err) {
-        console.warn('Failed to sync Assistant credential to backend:', err);
-      }
-    }
   }, []);
 
   const refreshCredentials = useCallback(async () => {
@@ -203,16 +155,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       setLlmModel: updateLlmModel,
       llmEffort,
       setLlmEffort: updateLlmEffort,
-      llmCredential,
-      setLlmCredential: updateLlmCredential,
-      syncLlmSettings,
       hasCredentials,
       refreshCredentials,
     }),
     [isAssistantOpen, toggleAssistant, openAssistant, closeAssistant,
      effectiveProvider, updateLlmProvider, effectiveModel, updateLlmModel,
-     llmEffort, updateLlmEffort, llmCredential,
-     updateLlmCredential, syncLlmSettings, hasCredentials, refreshCredentials],
+     llmEffort, updateLlmEffort, hasCredentials, refreshCredentials],
   );
 
   return (

@@ -12,7 +12,7 @@ export type TriggerMode = 'goal' | 'maintenance';
 export type Autonomy = 'plan' | 'review' | 'ask' | 'auto' | 'full';
 export type FileAccess = 'none' | 'readonly' | 'scoped' | 'read_all_write_own' | 'full';
 /** Lifecycle. `archived` exists on the server and is not offered as a save. */
-export type AgentStatus = 'draft' | 'active' | 'paused';
+export type AgentStatus = 'draft' | 'active' | 'paused' | 'archived';
 /** The closed registry in `agents/contracts.py`. Blank is prose. */
 export type OutputContract = '' | 'research' | 'extraction';
 
@@ -47,7 +47,7 @@ export interface AgentConfig {
   description: string;
   /** Short labels for grouping; also matched by agent search. */
   tags: string[];
-  /** draft | active | paused. Paused stops schedules without deleting. */
+  /** draft | active | paused | archived. Paused and archived stop schedules and delegation without deleting. */
   status: AgentStatus;
 
   // Model
@@ -81,6 +81,17 @@ export interface AgentConfig {
     webSearch: boolean;
     scrape: boolean;
     fileOps: boolean;
+    /** Create decks, workbooks and Word documents in its folder. Needs a
+     *  `fileAccess` other than none, like `fileOps`, to have somewhere to save. */
+    office: boolean;
+    /** Generate images, billed to the user's OpenRouter account. Saved into
+     *  its folder, so it needs a `fileAccess` other than none. */
+    media: boolean;
+    /** Publish hosted pages shareable by link. Outward-facing: above `link`
+     *  visibility it pauses for a human. */
+    publish: boolean;
+    /** A real browser: read JavaScript pages, and act on `browserDomains`. */
+    browser: boolean;
     rag: boolean;
     /** The user's own configured MCP servers. Off by default: these reach
      *  real systems under the user's credentials. */
@@ -111,6 +122,9 @@ export interface AgentConfig {
    * grants it had been refused. Empty means any of them.
    */
   delegatesTo: number[];
+  /** Sites `browser_act` may click and type on (hostnames; subdomains
+   *  included). Empty: it may browse but never act. */
+  browserDomains: string[];
   /** Skill ids, not titles — a title is not a stable reference. */
   skills: number[];
   useEnvironment: boolean;   // time / place
@@ -159,7 +173,6 @@ export interface AgentConfig {
   // Guardrails
   autonomy: Autonomy;
   notifyOnHitl: boolean;
-  reviewAgent: boolean;
   spendCapRupees: number;
   /**
    * Wall-clock ceiling on a single run, in seconds. Stored in seconds because
@@ -217,6 +230,10 @@ export const DEFAULT_AGENT: AgentConfig = {
     webSearch: true,
     scrape: false,
     fileOps: false,
+    office: false,
+    media: false,
+    publish: false,
+    browser: false,
     rag: true,
     mcp: false,
     subAgents: false,
@@ -226,6 +243,7 @@ export const DEFAULT_AGENT: AgentConfig = {
   knowledgeBases: [],
   skills: [],
   delegatesTo: [],
+  browserDomains: [],
   useEnvironment: false,
 
   outputContract: '',
@@ -237,7 +255,6 @@ export const DEFAULT_AGENT: AgentConfig = {
 
   autonomy: 'ask',
   notifyOnHitl: true,
-  reviewAgent: false,
   spendCapRupees: 500,
   maxRunSeconds: 15 * 60,
 
@@ -256,9 +273,13 @@ export const TRIGGER_COPY: Record<TriggerMode, { label: string; hint: string }> 
 };
 
 export const STATUS_COPY: Record<AgentStatus, { label: string; hint: string }> = {
-  draft: { label: 'Draft', hint: 'Not finished. Still runnable by you.' },
+  // A label, not a switch: 42 of 55 agents in dev are drafts only because it
+  // is the default, so enforcing it would silently stop most of them. See
+  // docs/AGENT_CONFIG_IMPROVEMENT_PLAN.md item 8.
+  draft: { label: 'Draft', hint: 'Still being set up. Runs exactly like Active — this is a label for you, not a switch.' },
   active: { label: 'Active', hint: 'Runs on its schedule, and other agents may delegate to it.' },
   paused: { label: 'Paused', hint: 'Schedules stop firing and no agent may delegate to it. Nothing is lost.' },
+  archived: { label: 'Archived', hint: 'Filed away: hidden from the list, never run automatically. Restore it any time.' },
 };
 
 // The closed registry in `agents/contracts.py`. Closed because the UI renders
@@ -319,22 +340,3 @@ export const FILE_ACCESS_COPY: Record<FileAccess, { label: string; hint: string 
   },
   full: { label: 'All your files', hint: 'Read and write anywhere in your files. Rarely justified.' },
 };
-
-/**
- * Shims for the old slug-based connector picker.
- * The builder now stores numeric MCPServer ids (agent_context.connectors) and
- * the Connections page is the source of truth — see `mcpService.list()`.
- * Kept only so `Agents.tsx` / `AgentBuilder.tsx` imports don't 500 on a missing
- * export; the live labels come from the API and this list is the fallback.
- */
-export const CONNECTOR_OPTIONS: { id: number; label: string }[] = [
-  { id: 5, label: 'Google Drive' },
-  { id: 6, label: 'Gmail' },
-  { id: 7, label: 'Google Calendar' },
-  { id: 8, label: 'Google Sheets' },
-  { id: 9, label: 'Google Docs' },
-  { id: 10, label: 'Notion' },
-  { id: 11, label: 'Slack' },
-  { id: 1, label: 'Files' },
-  { id: 2, label: 'Web pages' },
-];

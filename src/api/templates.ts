@@ -175,6 +175,23 @@ const templatesService = {
     return data;
   },
 
+  /**
+   * Install a pack (e.g. "office") in one click. Idempotent: what is already
+   * installed is skipped, and templates needing setup are listed rather than
+   * installed.
+   */
+  installPack: async (pack: string): Promise<{
+    pack: string;
+    installed: { slug: string; id: number; name: string }[];
+    skipped: { slug: string; reason: string }[];
+  }> => {
+    const { data } = await apiClient.post(
+      '/orchestrator/templates/install-pack/',
+      { pack },
+    );
+    return data;
+  },
+
   /** What publishing this agent would send. Writes nothing. */
   sharePreview: async (agentId: number | string): Promise<SharePreview> => {
     const { data } = await apiClient.get<SharePreview>(

@@ -43,6 +43,12 @@ export interface AIModel {
   is_free: boolean;
   description: string;
   /**
+   * Whether this account can run it right now: a key for its provider, or a
+   * free model on a platform key. Sent by `/api/llm/models/` all along and
+   * never read here, so pickers offered models that fail at preflight.
+   */
+  available?: boolean;
+  /**
    * Reasoning-effort rungs this model actually offers, cheapest first, from
    * `llm.effort.LADDER` on the backend. **Always present**, and `[]` is a real
    * answer — "this model has no effort control" — so a picker renders the

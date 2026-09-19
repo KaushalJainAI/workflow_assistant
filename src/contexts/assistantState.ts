@@ -25,9 +25,6 @@ export interface AssistantContextType {
    */
   llmEffort: string;
   setLlmEffort: (level: string) => void;
-  llmCredential: string | null;
-  setLlmCredential: (credential: string | null) => void;
-  syncLlmSettings: (provider: string, model: string, credential?: string | null) => Promise<void>;
   hasCredentials: boolean | null;
   refreshCredentials: () => Promise<void>;
 }

@@ -48,7 +48,9 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatService, type StandaloneChatMessage as ChatMessage, type ChatSession } from '../../api';
-import { describeCost, formatCost } from '../../lib/cost';
+import {
+  costQualifier, describeConversationCost, describeCost, formatCost,
+} from '../../lib/cost';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 import { TextSelectionMenu } from './TextSelectionMenu';
@@ -57,6 +59,8 @@ import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
 import ChartArtifact from './ChartArtifact';
 import TodoPanel from './TodoPanel';
+import FileCards from '../files/FileCards';
+import FilePreviewProvider from '../files/FilePreviewProvider';
 import MarkdownMessage from './MarkdownMessage';
 import TranscriptSkeleton from './TranscriptSkeleton';
 import { forgetTranscript, readTranscript, writeTranscript } from '../../lib/transcriptCache';
@@ -73,6 +77,7 @@ import { prettyModel } from '../../lib/modelNames';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/authState';
 import GuestBanner from './GuestBanner';
+import FeedbackControl from '../runs/FeedbackControl';
 import { SendButton } from '../ui/SendButton';
 import { apiErrorMessage } from '../../lib/apiError';
 
@@ -341,23 +346,17 @@ export default function StandaloneChat() {
     if (showHistory) loadHistory();
   }, [showHistory, loadHistory]);
 
-  // Reopen where the user left off: the persisted session if there is one,
-  // otherwise the newest. Either way the transcript is refetched, so a turn
-  // that finished in the background is present on arrival.
+  // Reopen where the user left off, and only there. A first login (or any
+  // arrival with no persisted session) stays on a fresh Ask hero with the
+  // composer front and centre — auto-opening the newest thread made a new
+  // user land mid-way through an old conversation instead of a new chat.
+  // The transcript is refetched, so a turn that finished in the background
+  // is present on arrival.
   useEffect(() => {
     if (isGuest) return; // Guests start with a fresh session each visit
     if (conversationId) {
       loadConversation(conversationId);
-      return;
     }
-    // Small delay to let useQuery fetch initial data if empty
-    const timer = setTimeout(() => {
-      const sessions = queryClient.getQueryData<ChatSessionSummary[]>(['chatSessions']);
-      if (sessions && sessions.length > 0) {
-        loadConversation(sessions[0].id);
-      }
-    }, 100);
-    return () => clearTimeout(timer);
     // Mount only, deliberately. This restores the session the user left open;
     // re-running it when `conversationId` changes would re-load the transcript
     // every time they switch conversations, fighting the explicit
@@ -1109,7 +1108,16 @@ export default function StandaloneChat() {
   // removed — the server-wide NVIDIA env key now backs the chat for any user
   // who hasn't set up a per-user credential.
 
+  // Fresh chat puts the caret in the composer on devices with a fine pointer.
+  // On a phone that would pop the keyboard over the hero, so it stays put.
+  useEffect(() => {
+    if (!isInitialState) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches) return;
+    textareaRef.current?.focus();
+  }, [isInitialState]);
+
   return (
+    <FilePreviewProvider>
     <div className="flex h-full w-full bg-background overflow-hidden relative">
       {/* No decorative wash. The three blurred orbs that used to sit here were
           off-palette (raw `purple-500`, not the `--agent` violet) and pushed a
@@ -1124,13 +1132,13 @@ export default function StandaloneChat() {
       {/* 1. History Sidebar — overlay drawer on mobile, in-flow on desktop */}
       {showHistory && (
         <div
-          className="md:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          className="md:hidden fixed inset-0 z-30 bg-black/50 animate-in fade-in duration-200"
           onClick={() => setShowHistory(false)}
         />
       )}
       <div
         className={cn(
-          "h-full bg-card/80 border-r border-border/60 transition-colors duration-300 ease-in-out flex flex-col shadow-lg overflow-hidden",
+          "h-full bg-card border-r border-border transition-colors duration-300 ease-in-out flex flex-col overflow-hidden",
           // Mobile: fixed overlay
           "fixed md:relative left-0 top-0 z-40 md:z-30 md:flex-shrink-0",
           showHistory
@@ -1139,43 +1147,44 @@ export default function StandaloneChat() {
         )}
       >
         <div className="w-[85vw] max-w-[320px] md:w-[300px] flex flex-col h-full">
-          <div className="h-16 px-6 flex items-center justify-between border-b border-border/40 shrink-0">
+          <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
             <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-primary/70" />
-              <h2 className="font-bold text-xs ">
+              <History className="w-4 h-4 text-muted-foreground" />
+              <h2 className="text-[13px] font-semibold tracking-tight">
                 Conversations
               </h2>
             </div>
             <button
               onClick={() => setShowHistory(false)}
-              className="p-2 hover:bg-muted rounded-lg transition"
+              aria-label="Close conversation history"
+              className="p-1.5 hover:bg-secondary rounded-md transition text-muted-foreground"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="p-4 shrink-0">
+          <div className="p-3 shrink-0">
             <button
               onClick={() => {
                 startNewConversation();
                 setShowHistory(false);
               }}
-              className="w-full h-11 flex items-center gap-3 px-4 rounded-lg bg-primary/10 hover:bg-primary/20 text-sm font-semibold transition"
+              className="w-full h-9 flex items-center gap-2 px-3 rounded-lg bg-muted/60 hover:bg-accent text-[13px] font-medium transition"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 text-muted-foreground" />
               New conversation
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 pb-6 space-y-2">
+          <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5 custom-scrollbar">
             {Array.isArray(conversations) && conversations.map((conv) => (
               <div
                 key={conv.id}
                 className={cn(
-                  "w-full p-3 rounded-lg text-left transition flex items-center gap-3 text-xs group relative cursor-pointer",
+                  "w-full px-3 py-2 rounded-lg text-left transition flex items-center gap-2.5 group relative cursor-pointer border",
                   conversationId === conv.id
-                    ? "bg-primary/10 border border-primary/30"
-                    : "hover:bg-muted/60"
+                    ? "bg-primary-subtle border-primary-line"
+                    : "border-transparent hover:bg-secondary"
                 )}
                 // `loadConversation`, not a second copy of it. This handler
                 // used to inline the same fetch, minus `setCurrentSession` and
@@ -1187,19 +1196,22 @@ export default function StandaloneChat() {
                   loadConversation(conv.id);
                 }}
               >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
                   {/* A conversation still streaming in the background says so
                       here — otherwise leaving it looks like cancelling it. */}
                   {runningKeys.includes(conv.id) ? (
-                    <Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
+                    <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-primary" />
                   ) : (
-                    <MessageSquare className="w-4 h-4 opacity-60 shrink-0" />
+                    <MessageSquare className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   )}
-                  <span className="truncate font-mono flex-1">
+                  <span
+                    className="truncate flex-1 text-[13px] font-normal text-foreground"
+                    title={conv.title || conv.id.slice(0, 18)}
+                  >
                     {conv.title || conv.id.slice(0, 18)}
                   </span>
                   {runningKeys.includes(conv.id) && conversationId !== conv.id && (
-                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-primary/80">
+                    <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary">
                       working
                     </span>
                   )}
@@ -1209,7 +1221,7 @@ export default function StandaloneChat() {
                       tells the reader less than blank space does. */}
                   {conv.cost_source && conv.cost_source !== 'unpriced' && (
                     <span
-                      className="shrink-0 text-[10px] text-muted-foreground tabular-nums"
+                      className="shrink-0 text-[11px] text-muted-foreground tabular-nums"
                       title={describeCost(conv.total_cost_usd, conv.cost_source)}
                     >
                       {formatCost(conv.total_cost_usd, conv.cost_source)}
@@ -1218,8 +1230,9 @@ export default function StandaloneChat() {
                 </div>
                 <button
                   onClick={(e) => handleDeleteConversation(e, conv.id)}
-                  className="p-1.5 hover:bg-destructive hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-colors shadow-sm shrink-0 bg-background/50"
-                  title="Delete Conversation"
+                  aria-label="Delete conversation"
+                  className="p-1 hover:bg-destructive-subtle hover:text-destructive rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-colors shrink-0 text-muted-foreground"
+                  title="Delete conversation"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1260,7 +1273,7 @@ export default function StandaloneChat() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
              {/* Memory state is shown in the header, not buried in the panel:
                  with it off the assistant behaves very differently, and a user
                  who forgot they switched it off reads that as the model being
@@ -1269,10 +1282,10 @@ export default function StandaloneChat() {
                <button
                  onClick={() => setShowSessionSettings(true)}
                  title="Memory is off for this chat — click to change"
-                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-500/40
-                            bg-warning-subtle text-[11px] font-semibold text-amber-500
-                            transition-colors duration-200 hover:bg-amber-500/20
-                            animate-in fade-in slide-in-from-right-2"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-500/40
+                             bg-warning-subtle text-[11px] font-semibold text-amber-500
+                             transition-colors duration-200 hover:bg-amber-500/20
+                             animate-in fade-in slide-in-from-right-2 shrink-0"
                >
                  <BrainCircuit className="w-3.5 h-3.5" />
                  Memory off
@@ -1288,12 +1301,19 @@ export default function StandaloneChat() {
                && currentSession.cost_source !== 'unpriced' && (
                <div
                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums"
-                 title={describeCost(
+                 title={describeConversationCost(
                    currentSession.total_cost_usd, currentSession.cost_source,
-                 ) + ` · ${(currentSession.total_tokens_used ?? 0).toLocaleString()} tokens this conversation`}
+                   currentSession.total_tokens_used ?? 0,
+                   currentSession.paid_by ?? '',
+                 )}
                >
                  <Coins className="w-3.5 h-3.5" />
                  {formatCost(currentSession.total_cost_usd, currentSession.cost_source)}
+                 {/* Never a bare figure: whether it was charged or estimated
+                     is half of what the number means. */}
+                 <span className="font-normal opacity-80">
+                   {costQualifier(currentSession.cost_source)}
+                 </span>
                </div>
              )}
              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
@@ -1516,8 +1536,11 @@ export default function StandaloneChat() {
                 </div>
               </div>
             ) : (
-              // Message List
-              <div className="space-y-12">
+              // Message List. One continuous thread: 24px on phones, 32px on
+              // desktop. The old 48px rhythm plus the 40px separator padding
+              // below stacked to ~88px of white between an answer's footer
+              // and the next question, which read as separate pages.
+              <div className="space-y-6 md:space-y-8">
                 {messages.map((message, index) => (
                   /* Perplexity turn: the question is a heading, the answer is
                      the page under it. No avatars, no bubbles, no alternating
@@ -1534,7 +1557,10 @@ export default function StandaloneChat() {
                     className={cn(
                       "group",
                       message.id !== settledId && "animate-in fade-in slide-in-from-bottom-2 duration-300",
-                      message.role === 'user' && index > 0 && "border-t border-border pt-10"
+                      // The rule is the separator; the padding is breathing
+                      // room for it. 20px on phones, 24px on desktop — the old
+                      // 40px stacked with the list rhythm into the ~88px gap.
+                      message.role === 'user' && index > 0 && "border-t border-border/70 pt-5 md:pt-6"
                     )}
                   >
                     {/* Section label. Violet for the agent, per the token rule
@@ -1547,11 +1573,13 @@ export default function StandaloneChat() {
                       </div>
                     )}
 
-                    <div className="w-full space-y-3">
+                    <div className="w-full min-w-0 space-y-3">
 
-                      {/* Query as heading / answer as body */}
+                      {/* Query as heading / answer as body. break-words so a
+                          long URL or token wraps instead of pushing the column
+                          past the viewport on a phone. */}
                       <div className={cn(
-                        "prose prose-base dark:prose-invert max-w-none ai-chat-prose",
+                        "prose prose-base dark:prose-invert max-w-none ai-chat-prose break-words min-w-0",
                         message.role === 'user'
                           ? "text-[17px] md:text-[19px] leading-[1.45] font-semibold tracking-[-0.01em] text-foreground"
                           : message.role === 'system'
@@ -1560,7 +1588,7 @@ export default function StandaloneChat() {
                       )}>
 
                         {message.role === 'system' ? (
-                          <div className="bg-muted p-4 rounded-lg shadow-sm border border-border inline-flex flex-col gap-3 min-w-[300px] max-w-sm">
+                          <div className="bg-muted p-4 rounded-lg shadow-sm border border-border inline-flex flex-col gap-3 min-w-0 w-full max-w-sm sm:min-w-[300px]">
                             <div className="flex items-start gap-3">
                                <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
                                   {message.metadata?.file_type === 'image' ? <ImageIcon className="w-5 h-5 text-success" /> :
@@ -1616,11 +1644,13 @@ export default function StandaloneChat() {
                           />
                         )}
                       </div>
-                      {/* Quick Summary, Reasoning & Activity Row */}
+                      {/* Quick Summary, Reasoning & Activity Row. Two columns on
+                          phones (a 140px minimum in a flex row made the third
+                          chip stretch and collide), a wrapping row on desktop. */}
                       {message.role === 'assistant' && (message.metadata?.summary || message.metadata?.thinking || (message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0) || message.metadata?.has_code_execution) && (
-                        <div className="flex flex-wrap gap-2 mt-4 mb-2">
+                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-4 mb-2">
                           {message.metadata?.summary && (
-                            <div className="flex-1 min-w-[140px] group/summary animate-in fade-in slide-in-from-top-2 duration-500">
+                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/summary animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
                                 onClick={() => togglePanel('summary', message.id as number)}
                                 className={cn(
@@ -1639,7 +1669,7 @@ export default function StandaloneChat() {
                           )}
 
                           {message.metadata?.thinking && (
-                            <div className="flex-1 min-w-[140px] group/thinking animate-in fade-in slide-in-from-top-2 duration-500">
+                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/thinking animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
                                 onClick={() => togglePanel('thinking', message.id as number)}
                                 className={cn(
@@ -1663,7 +1693,7 @@ export default function StandaloneChat() {
                             </div>
                           )}
                           {message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0 && (
-                            <div className="flex-1 min-w-[140px] group/activity animate-in fade-in slide-in-from-top-2 duration-500">
+                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/activity animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
                                 onClick={() => togglePanel('activity', message.id as number)}
                                 className={cn(
@@ -1682,7 +1712,7 @@ export default function StandaloneChat() {
                           )}
 
                           {message.metadata?.has_code_execution && message.metadata?.code_executions && (message.metadata?.code_executions?.length ?? 0) > 0 && (
-                            <div className="flex-1 min-w-[140px] group/code animate-in fade-in slide-in-from-top-2 duration-500">
+                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/code animate-in fade-in slide-in-from-top-2 duration-500">
                               <button
                                 onClick={() => togglePanel('code', message.id as number)}
                                 className={cn(
@@ -1767,10 +1797,10 @@ export default function StandaloneChat() {
                                   </span>
                                   <span className="font-mono font-semibold text-foreground text-[13px]">{trace.tool}</span>
                                   {(trace.args?.query || trace.args?.question) && (
-                                    <span className="truncate max-w-[360px] text-foreground/60 italic text-[13px] pl-1">"{stripXmlTags(trace.args.query || trace.args.question)}"</span>
+                                    <span className="truncate max-w-[40vw] sm:max-w-[360px] text-foreground/60 italic text-[13px] pl-1">"{stripXmlTags(trace.args.query || trace.args.question)}"</span>
                                   )}
                                   {trace.summary && !trace.args?.query && !trace.args?.question && (
-                                    <span className="truncate max-w-[360px] text-foreground/50 italic text-[12px] pl-1">{stripXmlTags(trace.summary)}</span>
+                                    <span className="truncate max-w-[40vw] sm:max-w-[360px] text-foreground/50 italic text-[12px] pl-1">{stripXmlTags(trace.summary)}</span>
                                   )}
                                 </div>
                                 {trace.thought && (
@@ -1833,7 +1863,7 @@ export default function StandaloneChat() {
 
                       {/* Discovered Media Row (Sources, Images, Videos on one line) */}
                       {message.role === 'assistant' && ((message.metadata?.sources?.length ?? 0) > 0 || (message.metadata?.images?.length ?? 0) > 0 || (message.metadata?.videos?.length ?? 0) > 0) && (
-                        <div className="mt-6 flex flex-wrap gap-2">
+                        <div className="mt-4 md:mt-5 flex flex-wrap gap-2">
                           {(message.metadata?.sources?.length ?? 0) > 0 && (
                             <button
                               onClick={() => togglePanel('sources', message.id as number)}
@@ -1878,7 +1908,7 @@ export default function StandaloneChat() {
                       {/* Content areas below the row triggers */}
                       {message.role === 'assistant' && (message.metadata?.sources?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('sources', message.id)}>
-                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 md:px-1">
                           {(message.metadata?.sources ?? []).map((item, i) => (
                             <MediaPreview 
                               key={i}
@@ -1896,7 +1926,7 @@ export default function StandaloneChat() {
 
                       {message.role === 'assistant' && (message.metadata?.images?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('images', message.id)}>
-                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 md:px-1">
                           {(message.metadata?.images ?? []).flatMap((item, i) => {
                             // No url, no tile. `any` used to let `undefined`
                             // through to MediaPreview's required `url` prop.
@@ -1918,7 +1948,7 @@ export default function StandaloneChat() {
 
                       {message.role === 'assistant' && (message.metadata?.videos?.length ?? 0) > 0 && (
                         <CollapsiblePanel open={isPanelOpen('videos', message.id)}>
-                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300 px-1">
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 md:px-1">
                           {(message.metadata?.videos ?? []).flatMap((item, i) => (
                             item.url ? [(
                               <MediaPreview
@@ -1943,6 +1973,10 @@ export default function StandaloneChat() {
                           <TodoPanel todos={message.metadata?.todos as TodoItem[]} />
                         )}
 
+                      {/* Files the turn saved, linked by id rather than by
+                          whatever path the prose happened to mention. */}
+                      <FileCards files={message.metadata?.files} />
+
                       {/* Rendered HTML artifacts, replayed from stored history. */}
                       {Array.isArray(message.metadata?.html_artifacts) &&
                         (message.metadata?.html_artifacts ?? []).map((art: HtmlArtifactData, i: number) => (
@@ -1963,15 +1997,19 @@ export default function StandaloneChat() {
                           right-aligned user bubble and would strand these
                           controls on the far side of the column. */}
                       {message.role !== 'system' && (
-                        <div className="flex items-center gap-4 mt-1 -ml-1.5">
-                        <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-1 -ml-1.5">
+                        {/* Always visible on touch (no hover there); larger
+                            hit targets on phones. Without this the row was an
+                            invisible strip of touch targets beside the model
+                            label on mobile. */}
+                        <div className="flex items-center gap-1 sm:gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity duration-300">
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(message.content);
                               setCopiedId(`msg-${index}`);
                               setTimeout(() => setCopiedId(null), 2000);
                             }}
-                            className="text-muted-foreground hover:text-primary transition-colors p-1.5 hover:bg-primary/5 rounded-lg"
+                            className="text-muted-foreground hover:text-primary transition-colors p-2 md:p-1.5 hover:bg-primary/5 rounded-lg"
                             title="Copy message"
                           >
                             {copiedId === `msg-${index}` ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
@@ -1980,17 +2018,24 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => handleRewriteMessage(message.id as number)}
                               disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-amber-500 transition-colors p-1.5 hover:bg-warning-subtle rounded-lg disabled:opacity-50"
+                              className="text-muted-foreground hover:text-amber-500 transition-colors p-2 md:p-1.5 hover:bg-warning-subtle rounded-lg disabled:opacity-50"
                               title="Rewrite prompt (regenerates response without subsequent context)"
                             >
                               <RotateCcw className="w-4 h-4" />
                             </button>
                           )}
+                          {message.role === 'assistant' && typeof message.id === 'number' && (
+                            <FeedbackControl
+                              target="message"
+                              id={message.id}
+                              initial={(message as { feedback?: { rating: number; reason: string; comment: string } | null }).feedback ?? null}
+                            />
+                          )}
                           {message.role === 'user' && (
                             <button
                               onClick={() => handleRewindAfterMessage(message.id as number)}
                               disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-emerald-500 transition-colors p-1.5 hover:bg-success-subtle rounded-lg disabled:opacity-50"
+                              className="text-muted-foreground hover:text-emerald-500 transition-colors p-2 md:p-1.5 hover:bg-success-subtle rounded-lg disabled:opacity-50"
                               title="Reverse context (keep this message, delete answers)"
                             >
                               <ArrowUpFromLine className="w-4 h-4" />
@@ -2000,7 +2045,7 @@ export default function StandaloneChat() {
                             <button
                               onClick={() => handleEditMessage(message.id as number, message.content)}
                               disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-blue-500 transition-colors p-1.5 hover:bg-blue-500/10 rounded-lg disabled:opacity-50"
+                              className="text-muted-foreground hover:text-blue-500 transition-colors p-2 md:p-1.5 hover:bg-blue-500/10 rounded-lg disabled:opacity-50"
                               title="Edit and resend message"
                             >
                               <Pencil className="w-4 h-4" />
@@ -2009,7 +2054,7 @@ export default function StandaloneChat() {
                           <button
                             onClick={() => handleDeleteMessage(message.id as number)}
                             disabled={deletingMsgId === message.id}
-                            className="text-muted-foreground hover:text-red-500 transition-colors p-1.5 hover:bg-red-500/10 rounded-lg disabled:opacity-50"
+                            className="text-muted-foreground hover:text-red-500 transition-colors p-2 md:p-1.5 hover:bg-red-500/10 rounded-lg disabled:opacity-50"
                             title="Delete message"
                           >
                             {deletingMsgId === message.id ? (
@@ -2027,7 +2072,7 @@ export default function StandaloneChat() {
                             information, and hiding it until hover means nobody
                             finds it. */}
                         {message.role === 'assistant' && message.metadata?.model && (
-                          <span className="ml-auto text-[11px] text-muted-foreground/70 whitespace-nowrap">
+                          <span className="ml-auto min-w-0 max-w-[50vw] sm:max-w-none truncate text-[11px] text-muted-foreground/70 whitespace-nowrap">
                             Prepared with{' '}
                             <span className="text-muted-foreground">
                               {prettyModel(message.metadata.model)}
@@ -2138,7 +2183,7 @@ export default function StandaloneChat() {
                             No entrance animation either: this content persists
                             across the handoff, it does not arrive at it. */}
                         {live.content && (
-                          <div className="prose prose-base dark:prose-invert max-w-none ai-chat-prose text-[16px] leading-[1.75] text-foreground">
+                          <div className="prose prose-base dark:prose-invert max-w-none ai-chat-prose break-words min-w-0 text-[16px] leading-[1.75] text-foreground">
                             <MarkdownMessage content={streamedContent} sources={live.sources} />
                           </div>
                         )}
@@ -2148,6 +2193,8 @@ export default function StandaloneChat() {
                         {/* The plan, updated live — this is what turns forty
                             tool calls into something a person can follow. */}
                         {live.todos.length > 0 && <TodoPanel todos={live.todos} live />}
+
+                        <FileCards files={live.files} />
 
                         {/* Artifacts as they arrive, before the turn is persisted. */}
                         {live.artifacts.map((art, i) => (
@@ -2205,7 +2252,7 @@ export default function StandaloneChat() {
                                               model about an image it cannot see. Showing the question it
                                               asked is legible in a way "calling ask_vision..." is not. */}
                                           {!isThought && (argText(activity.args?.query) || argText(activity.args?.question)) && (
-                                             <span className="truncate max-w-[340px] text-foreground/60 italic text-[13px] font-medium opacity-80">"{stripXmlTags(argText(activity.args?.query) || argText(activity.args?.question))}"</span>
+                                             <span className="truncate max-w-[40vw] sm:max-w-[340px] text-foreground/60 italic text-[13px] font-medium opacity-80">"{stripXmlTags(argText(activity.args?.query) || argText(activity.args?.question))}"</span>
                                           )}
                                       
                                           {thought && (
@@ -2402,11 +2449,11 @@ export default function StandaloneChat() {
             )}
 
             {isUploading && (
-              <div className="flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className="flex gap-3 md:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border border-border/40 shadow-md bg-muted text-muted-foreground">
                   <Settings2 className="w-5 h-5"/>
                 </div>
-                <div className="max-w-[92%] md:max-w-[85%] space-y-3">
+                <div className="min-w-0 flex-1 max-w-[92%] md:max-w-[85%] space-y-3">
                   <div className="bg-muted/30 p-4 rounded-lg shadow-sm border border-border/40 inline-flex flex-col gap-3 min-w-[300px] max-w-sm w-full">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-lg bg-background border border-border/50 flex items-center justify-center shrink-0">
@@ -2424,11 +2471,11 @@ export default function StandaloneChat() {
 
             {/* Approval UI */}
             {pendingToolCall && (
-              <div className="flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex gap-3 md:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 border border-border shadow-lg shadow-amber-500/20">
                   <Shield className="w-6 h-6 text-white" />
                 </div>
-                <div className="flex-1 space-y-4 max-w-[92%] md:max-w-[85%]">
+                <div className="min-w-0 flex-1 space-y-4 max-w-[92%] md:max-w-[85%]">
                   <div className="bg-card/60 p-6 rounded-lg rounded-tl-none shadow-sm border border-border space-y-4">
                     {/* The heading is what is about to happen, not the word
                         "Permission". A card that leads with the demand and
@@ -2678,10 +2725,10 @@ export default function StandaloneChat() {
                   </div>
 
                   {/* Bottom toolbar — pills + voice + model + send, all inside the chatbox */}
-                  <div className="flex items-center justify-between px-3 pb-3 pt-1 gap-2">
+                  <div className="flex items-center justify-between px-2 sm:px-3 pb-3 pt-1 gap-1.5 sm:gap-2">
                     {/* Left: intent pills */}
-                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pr-1">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1 basis-0">
+                      <div className="flex items-center gap-1.5 min-w-0 max-w-full overflow-x-auto scrollbar-none scroll-rail pr-1">
                         {[
                           // Coding / Files / Workflow removed along with the
                           // server-side tools that backed them. A pill that sets
@@ -2712,8 +2759,11 @@ export default function StandaloneChat() {
                       </div>
                     </div>
 
-                    {/* Right: model + voice + send */}
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Right: model + voice + send. shrink-0 so the send
+                        button is never squeezed off screen; min-w-0 plus the
+                        viewport caps below so queued/dropped badges and the
+                        model label truncate instead of colliding on phones. */}
+                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 shrink-0">
                       {/* Model selector. Guests have nothing to select: the
                           backend serves them one pinned model and ignores any
                           model a client names, so they get a label rather than
@@ -2729,12 +2779,12 @@ export default function StandaloneChat() {
                           </span>
                         </div>
                       ) : (
-                      <div className="relative" ref={dropdownRef}>
-                        <button 
+                      <div className="relative min-w-0" ref={dropdownRef}>
+                        <button
                           onClick={() => setShowModelDropdown(!showModelDropdown)}
                           className={cn(
-                            "flex items-center gap-2 h-8 px-3 rounded-lg transition-colors text-[10px] font-bold  border",
-                            showModelDropdown 
+                            "flex items-center gap-1.5 sm:gap-2 h-8 px-2 sm:px-3 rounded-lg transition-colors text-[10px] font-bold border min-w-0 max-w-[38vw] sm:max-w-none",
+                            showModelDropdown
                               ? "bg-primary/10 border-primary/30 text-primary"
                               : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
                           )}
@@ -2766,7 +2816,7 @@ export default function StandaloneChat() {
                             {/* Backdrop */}
                             <div className="fixed inset-0 z-[9998]" onClick={() => setShowModelDropdown(false)} />
                             
-                            <div className="absolute bottom-[calc(100%+8px)] right-0 w-[300px] bg-card border border-border rounded-lg shadow-lg z-[9999] backdrop-blur-2xl overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
+                            <div className="absolute bottom-[calc(100%+8px)] right-0 w-[300px] max-w-[calc(100vw-2rem)] bg-card border border-border rounded-lg shadow-lg z-[9999] backdrop-blur-2xl overflow-hidden animate-in slide-in-from-bottom-3 fade-in duration-200">
                               
                               {/* Provider Grid */}
                               <div className="p-3 border-b border-border/30">
@@ -2882,7 +2932,7 @@ export default function StandaloneChat() {
                           is the failure the mailbox exists to prevent. */}
                       {queuedSteers > 0 && (
                         <span
-                          className="mr-1 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px]
+                          className="mr-1 shrink-0 max-w-[24vw] truncate rounded-full bg-primary/10 px-2 py-0.5 text-[11px]
                                      font-medium tabular-nums text-primary"
                           title="Delivered at the agent's next tool boundary"
                         >
@@ -2891,7 +2941,7 @@ export default function StandaloneChat() {
                       )}
                       {droppedSteers > 0 && (
                         <span
-                          className="mr-1 shrink-0 rounded-full bg-warning-subtle px-2 py-0.5 text-[11px]
+                          className="mr-1 shrink-0 max-w-[24vw] truncate rounded-full bg-warning-subtle px-2 py-0.5 text-[11px]
                                      font-medium tabular-nums text-amber-600 dark:text-amber-400"
                           title="The mailbox was full; the oldest messages were dropped"
                         >
@@ -2899,9 +2949,10 @@ export default function StandaloneChat() {
                         </span>
                       )}
 
-                      {/* Voice button */}
+                      {/* Voice button. Hidden on very narrow phones where it
+                          collides with the model picker and send button. */}
                       <button
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-colors"
+                        className="hidden min-[380px]:flex w-8 h-8 rounded-full items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
                         title="Voice input"
                       >
                         <Mic className="w-4 h-4" />
@@ -2934,5 +2985,6 @@ export default function StandaloneChat() {
         </footer>
       </div>
     </div>
+    </FilePreviewProvider>
   );
 }

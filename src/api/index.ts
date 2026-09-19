@@ -13,7 +13,6 @@ export {
   type HITLResponse,
   type HITLOption,
   type HITLDetail,
-  type ChatMessage,
 } from './orchestrator';
 export {
   default as documentsService,

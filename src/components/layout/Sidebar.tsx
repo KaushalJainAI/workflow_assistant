@@ -8,6 +8,7 @@ import {
   Menu,
   Plus,
   FileText,
+  Globe,
   MessageCircle,
   Plug,
   Wrench,
@@ -91,6 +92,8 @@ const Sidebar = () => {
         }
     }, [isMobile, collapsed]);
     const { user, isAuthenticated } = useAuth();
+    const customName = user?.instance_name?.trim();
+    const brand = customName && customName !== 'AIAAS Instance' ? customName : 'AIAAS';
     const isGuest = !isAuthenticated;
     const imagine = useImagineOptional();
     const imaginePending = imagine?.activeCount ?? 0;
@@ -214,6 +217,8 @@ const Sidebar = () => {
                 { icon: Plug, label: "Connections", path: "/connections" },
                 { icon: KeyRound, label: "Credentials", path: "/credentials" },
                 { icon: FileText, label: "Documents", path: "/documents" },
+                // Pages: snapshots published by link (`publish_page`), and withdrawing them.
+                { icon: Globe, label: "Pages", path: "/pages" },
             ],
         },
     ];
@@ -286,7 +291,10 @@ const Sidebar = () => {
                     <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shadow-sm shrink-0">
                         <GitGraph className="w-4 h-4 text-primary" />
                     </div>
-                    <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap">AIAAS</span>
+                    {/* Settings → "Instance name", which was saved and shown nowhere. The
+                        untouched default keeps the product name. */}
+                    <span className="font-bold text-lg tracking-tight text-foreground whitespace-nowrap truncate max-w-[10rem]"
+                      title={brand}>{brand}</span>
                 </div>
                 <button 
                     onClick={() => setCollapsed(!collapsed)}

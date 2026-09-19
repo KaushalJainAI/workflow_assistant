@@ -2,6 +2,7 @@ import apiClient from './client';
 import { streamSse, type SseEvent } from './sse';
 
 import type { CostSource } from './logs';
+import type { Payer } from '../lib/cost';
 
 export interface ChatSession {
   id: string;
@@ -43,6 +44,8 @@ export interface ChatSession {
    * see `lib/cost.ts`, and never render that as a number.
    */
   cost_source: CostSource | '';
+  /** Whose money the total is — see `lib/cost.ts::Payer`. Absent on an older payload. */
+  paid_by?: Payer;
 }
 
 /** A model-authored HTML snippet, already clamped server-side. */
@@ -156,6 +159,26 @@ export interface ChatMediaItem {
   [key: string]: unknown;
 }
 
+/**
+ * A file the turn wrote or edited — one entry per document, built by
+ * `chat/turn/agent.py::_on_file`. `document_id` is what the card links by;
+ * `path` is for display, and is what the model called it.
+ */
+export interface FileCardData {
+  document_id: number;
+  path: string;
+  name: string;
+  action: 'created' | 'updated' | 'appended' | 'edited';
+  chars?: number | null;
+  /** Before/after text of each edit, capped server-side. */
+  edits?: { old: string; new: string; replacements?: number }[];
+  /** Edits past the kept number, counted rather than stored. */
+  edits_omitted?: number;
+  /** Set for a rendered binary (`render_deck` & co.): its file type and size. */
+  type?: 'pptx' | 'xlsx' | 'docx' | 'pdf' | 'image';
+  bytes?: number | null;
+}
+
 export interface ChatMessageMetadata {
   sources?: ChatSource[];
   images?: ChatMediaItem[];
@@ -171,6 +194,7 @@ export interface ChatMessageMetadata {
   html_artifacts?: HtmlArtifact[];
   charts?: ChartSpec[];
   todos?: TodoItem[];
+  files?: FileCardData[];
   follow_ups?: string[];
   [key: string]: unknown;
 }
@@ -195,6 +219,7 @@ export interface ChatMessage {
   cached_write_tokens?: number;
   cost_usd?: string;
   cost_source?: CostSource | '';
+  paid_by?: Payer;
 }
 
 /** What `POST /chat/sessions/{id}/upload/` answers. */
@@ -281,7 +306,7 @@ export const chatService = {
    * Stream a message via SSE. Calls onEvent for each parsed event.
    * Event types: the `Event` enum in `Backend/chat/events.py` — status,
    * thinking_chunk, content_chunk, content_reset, agent_trace, sources_update,
-   * images_update, videos_update, html_artifact, chart, todos_update,
+   * images_update, videos_update, html_artifact, chart, todos_update, files_update,
    * attachments_blocked,
    * ask_permission, done, error.
    */

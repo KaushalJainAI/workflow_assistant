@@ -32,13 +32,14 @@ import agentsService from '../api/agents';
 import { cn } from '../lib/utils';
 import { usePersistedState } from '../hooks/usePersistedState';
 
-type Tab = 'review' | 'suites' | 'runs';
+type Tab = 'review' | 'suites' | 'runs' | 'quality';
 
 /** Why each policy exists, in the terms the backend documents them in. */
 const SUPERVISION_HELP: Record<SupervisionPolicy, string> = {
   none: 'Trust the graders. Nothing is queued for review.',
-  disagreement: 'Queue only the results the graders were least sure about — a split verdict, or a judge parked mid-range. The default, and the only policy whose review cost does not grow with the suite.',
-  sample: 'Queue a random percentage of results.',
+  failures: 'Queue every result the graders failed. A failing case is always worth a human minute.',
+  disagreement: 'Queue only the results where the judge and the exact checks disagree, or the judge was uncertain. The default, and the only policy whose review cost does not grow with the suite.',
+  sampled: 'Queue a random percentage of results.',
   all: 'Queue every result. Thorough, and the most expensive in your time.',
 };
 
@@ -105,6 +106,22 @@ export default function Evals() {
     queryKey: ['eval', 'queue'],
     queryFn: () => evalsService.reviewQueue(),
     staleTime: 15_000,
+  });
+
+  const qualityQuery = useQuery({
+    queryKey: ['eval', 'quality'],
+    queryFn: async () => {
+      const { logsService } = await import('../api');
+      return logsService.quality(30) as Promise<Record<string, unknown>>;
+    },
+    staleTime: 60_000,
+    enabled: tab === 'quality',
+  });
+
+  const judgeQuery = useQuery({
+    queryKey: ['eval', 'judge'],
+    queryFn: () => evalsService.judgeCalibration(),
+    staleTime: 5 * 60_000,
   });
 
   const agentsQuery = useQuery({
@@ -176,11 +193,14 @@ export default function Evals() {
       />
 
       <div className="px-4 py-6 md:px-8 space-y-6">
+        <JudgeCard data={judgeQuery.data as { calibrations?: Record<string, { judge_model: string; agreement: number; false_pass_rate: number; created_at: string }> } | null} />
+
         <div className="flex items-center gap-1 border-b border-border/60 overflow-x-auto scrollbar-none">
           {([
             ['review', 'Needs review', pendingTotal],
             ['suites', 'Suites', suites.length],
             ['runs', 'Runs', runs.length],
+            ['quality', 'Quality', 0],
           ] as const).map(([key, label, count]) => (
             <button
               key={key}
@@ -233,6 +253,10 @@ export default function Evals() {
             openRun={openRun}
             onToggle={(id) => setOpenRun((prev) => (prev === id ? null : id))}
           />
+        )}
+
+        {tab === 'quality' && (
+          <QualityTab data={qualityQuery.data as Record<string, unknown> | undefined} loading={qualityQuery.isLoading} />
         )}
       </div>
 
@@ -516,6 +540,57 @@ function RunList({ runs, loading, openRun, onToggle }: {
   );
 }
 
+function JudgeCard({ data }: { data?: { calibrations?: Record<string, { judge_model: string; agreement: number; false_pass_rate: number; created_at: string }> } | null }) {
+  const calib = data?.calibrations?.handwritten ?? data?.calibrations?.gold;
+  if (!calib) return null;
+  return (
+    <div className="rounded-lg border border-border/60 bg-card px-4 py-3 text-xs text-muted-foreground">
+      Judge <span className="font-mono">{calib.judge_model}</span>
+      {' · '}agreement {Math.round(calib.agreement * 100)}%
+      {' · '}false-pass {Math.round(calib.false_pass_rate * 100)}%
+      {' · '}{new Date(calib.created_at).toLocaleDateString()}
+    </div>
+  );
+}
+
+function QualityTab({ data, loading }: { data?: Record<string, unknown>; loading: boolean }) {
+  if (loading) return <Loading />;
+  if (!data) return <p className="text-sm text-muted-foreground">No quality data yet.</p>;
+  const cats = (data.by_failure_category ?? {}) as Record<string, number>;
+  const sigs = (data.signals_by_kind ?? {}) as Record<string, number>;
+  const recent = (data.recent_thumbs_down ?? []) as Array<{ type: string; id: string | number; agent: string; reason: string; comment: string }>;
+  return (
+    <div className="space-y-4 text-sm">
+      <div className="rounded-lg border border-border/60 bg-card p-4">
+        <h3 className="font-semibold mb-2">Thumbs</h3>
+        <p className="text-muted-foreground">Up {String(data.thumbs_up ?? 0)} · Down {String(data.thumbs_down ?? 0)}</p>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-card p-4">
+        <h3 className="font-semibold mb-2">Failures by category</h3>
+        {Object.keys(cats).length === 0
+          ? <p className="text-muted-foreground">None recorded.</p>
+          : <ul className="space-y-1">{Object.entries(cats).map(([k, v]) => <li key={k}>{k}: {v}</li>)}</ul>}
+      </div>
+      <div className="rounded-lg border border-border/60 bg-card p-4">
+        <h3 className="font-semibold mb-2">Signals</h3>
+        {Object.keys(sigs).length === 0
+          ? <p className="text-muted-foreground">None recorded.</p>
+          : <ul className="space-y-1">{Object.entries(sigs).map(([k, v]) => <li key={k}>{k}: {v}</li>)}</ul>}
+      </div>
+      {recent.length > 0 && (
+        <div className="rounded-lg border border-border/60 bg-card p-4">
+          <h3 className="font-semibold mb-2">Recent thumbs-down</h3>
+          <ul className="space-y-1 text-xs">
+            {recent.map((t, i) => (
+              <li key={i}>{t.type} {String(t.id)} · {t.agent} · {t.reason} · {t.comment}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RunResults({ runId, error }: { runId: string; error?: string }) {
   const detail = useQuery({
     queryKey: ['eval', 'run', runId],
@@ -574,6 +649,7 @@ function CreateSuiteModal({ agents, onClose, onCreated }: {
   const [description, setDescription] = useState('');
   const [subagent, setSubagent] = useState<number | ''>(agents[0]?.id ?? '');
   const [supervision, setSupervision] = useState<SupervisionPolicy>('disagreement');
+  const [samplePercent, setSamplePercent] = useState(20);
   const [threshold, setThreshold] = useState(0.8);
 
   const create = useMutation({
@@ -582,6 +658,7 @@ function CreateSuiteModal({ agents, onClose, onCreated }: {
       description: description.trim(),
       subagent: subagent === '' ? null : Number(subagent),
       supervision,
+      sample_percent: samplePercent,
       pass_threshold: threshold,
     }),
     onSuccess: () => { toast.success('Suite created'); onCreated(); },
@@ -648,6 +725,18 @@ function CreateSuiteModal({ agents, onClose, onCreated }: {
             </select>
             <span className="mt-1 block text-[11px] text-muted-foreground">{SUPERVISION_HELP[supervision]}</span>
           </label>
+
+          {supervision === 'sampled' && (
+            <label className="block">
+              <span className="text-xs font-medium">Sample percent</span>
+              <input
+                type="number" min={0} max={100}
+                value={samplePercent}
+                onChange={(e) => setSamplePercent(Number(e.target.value))}
+                className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+              />
+            </label>
+          )}
 
           <label className="block">
             <span className="text-xs font-medium">Passes at {Math.round(threshold * 100)}% of cases</span>

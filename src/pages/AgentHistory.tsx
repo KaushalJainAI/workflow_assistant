@@ -21,6 +21,7 @@ import { logsService } from '../api';
 import agentsService from '../api/agents';
 import PageHeader from '../components/layout/PageHeader';
 import RevisionEntry from '../components/agents/RevisionEntry';
+import { useRestoreRevision } from '../hooks/useRestoreRevision';
 
 /** One request's worth. Large enough that most agents never need a second
  *  page, small enough that the first paint is not the whole history. */
@@ -29,6 +30,7 @@ const PAGE_SIZE = 25;
 export default function AgentHistory() {
   const { id } = useParams<{ id: string }>();
   const agentId = Number(id);
+  const { restore, pending } = useRestoreRevision(agentId);
 
   const { data: agent } = useQuery({
     queryKey: ['agent', agentId],
@@ -107,8 +109,12 @@ export default function AgentHistory() {
                 place nothing is elided, so collapsing would send the reader
                 back to the builder they came from. */}
             <ol className="space-y-4">
-              {revisions.map((rev) => (
-                <RevisionEntry key={rev.id} revision={rev} collapseAfter={Infinity} />
+              {revisions.map((rev, i) => (
+                <RevisionEntry key={rev.id} revision={rev} collapseAfter={Infinity}
+                  // The newest is the current configuration; restoring it would
+                  // be a no-op. Newest first is the list's order.
+                  onRestore={i === 0 ? undefined : () => restore(rev.number)}
+                  restoring={pending === rev.number} />
               ))}
             </ol>
           </>

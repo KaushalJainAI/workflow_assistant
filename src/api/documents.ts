@@ -18,20 +18,6 @@ export interface KnowledgeBase {
   updated_at: string;
 }
 
-export const KB_BACKEND_LABELS: Record<KnowledgeBaseBackend, string> = {
-  vector: 'Semantic',
-  fulltext: 'Keyword',
-  raw: 'Raw',
-  hybrid: 'Hybrid',
-};
-
-export const KB_BACKEND_HELP: Record<KnowledgeBaseBackend, string> = {
-  vector: 'Meaning-based search — best for prose and natural-language questions.',
-  fulltext: 'Exact keyword & prefix matching — IDs, names, code identifiers.',
-  raw: 'No index. The agent lists and reads whole documents on demand.',
-  hybrid: 'Both semantic and keyword indexes; results are merged.',
-};
-
 export interface KnowledgeBaseDetail extends KnowledgeBase {
   documents: Document[];
 }
@@ -46,6 +32,8 @@ export interface Document {
   is_shared: boolean;
   shared_at: string | null;
   metadata?: Record<string, unknown>;
+  /** Extracted text. Detail responses only; lists leave it out. */
+  content?: string;
   created_at: string;
   updated_at: string;
   status: 'pending' | 'processing' | 'indexed' | 'stored' | 'failed' | 'uploading';

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { ThemeProvider } from './contexts/ThemeContext';
 import { useThemeContext } from './contexts/themeState';
 import { AuthProvider } from './contexts/AuthContext';
+import ThemeSync from './components/layout/ThemeSync';
 import { useAuth } from './contexts/authState';
 import Sidebar from './components/layout/Sidebar';
 import { useHITLReminders } from './hooks/useHITLReminders';
@@ -53,6 +54,8 @@ const Settings = lazyPage(() => import('./pages/Settings'));
 const Skills = lazyPage(() => import('./pages/Skills'));
 const Evals = lazyPage(() => import('./pages/Evals'));
 const PublicAgent = lazyPage(() => import('./pages/PublicAgent'));
+const PublishedPageView = lazyPage(() => import('./pages/PublishedPageView'));
+const Pages = lazyPage(() => import('./pages/Pages'));
 const Templates = lazyPage(() => import('./pages/Templates'));
 const Tools = lazyPage(() => import('./pages/Tools'));
 
@@ -143,6 +146,7 @@ const AppContent = () => {
               visitor with no account to a login screen is exactly what
               choosing "public" was meant to avoid. */}
           <Route path="/a/:slug" element={<PublicAgent />} />
+          <Route path="/p/:slug" element={<PublishedPageView />} />
           <Route path="/" element={<LandingRoute />} />
 
           {/* Credential OAuth popup. Protected because it completes the exchange
@@ -166,6 +170,7 @@ const AppContent = () => {
               <Route path="/workflow/:id" element={<Navigate to="/agents" replace />} />
               <Route path="/workflows/new" element={<Navigate to="/agents" replace />} />
               <Route path="/documents" element={<Documents />} />
+              <Route path="/pages" element={<Pages />} />
               {/* Connections merges the former "Data sources" (/connectors) and
                   "Tools" (/mcp-servers), which were two views of the same two
                   tables. Both paths redirect so existing links keep working. */}
@@ -228,6 +233,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ThemeSync />
         <AssistantProvider>
           <ImagineProvider>
             <AppContent />

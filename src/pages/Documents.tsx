@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
   FileText,
@@ -40,6 +41,7 @@ import Breadcrumbs from '../components/documents/Breadcrumbs';
 import FolderPickerModal from '../components/documents/FolderPickerModal';
 import FolderTile from '../components/documents/FolderTile';
 import { apiErrorMessage } from '../lib/apiError';
+import { resolvePath } from '../lib/vfsPath';
 
 type DocumentsTab = 'personal' | 'public' | 'extraction' | 'trash';
 
@@ -70,6 +72,49 @@ export default function Documents() {
   const [isDropTarget, setIsDropTarget] = useState(false);
   const { isAssistantOpen } = useAssistant();
   const queryClient = useQueryClient();
+
+  // `?path=/Chat/evals/a.py` is how a file named in a chat answer lands here
+  // (`lib/vfsPath.ts`). Go to its folder and open it; when the walk stops
+  // short, stay at the deepest folder it reached so the user is at least
+  // standing next to where the file was meant to be.
+  //
+  // `?doc=<id>` is the same thing for a file card, which already holds the id
+  // and so never needs the walk.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedPath = searchParams.get('path');
+  const linkedDoc = Number(searchParams.get('doc')) || null;
+  useEffect(() => {
+    if (!linkedPath && !linkedDoc) return;
+    let cancelled = false;
+    const label = linkedPath ?? 'That file';
+    const lookup = linkedDoc
+      ? documentsService.get(linkedDoc).then((doc) => ({ folderId: doc.folder_id ?? null, doc, found: true }))
+      : resolvePath(linkedPath as string);
+    lookup
+      .then(({ folderId: target, doc, found }) => {
+        if (cancelled) return;
+        setActiveTab('personal');
+        setFolderId(target);
+        if (doc) setPreviewDoc(doc);
+        else if (!found) toast.error(`${label} is not in your files. It may have been moved or deleted.`);
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(apiErrorMessage(err, `Could not open ${label.toLowerCase()}`));
+      })
+      .finally(() => {
+        // Drop the parameters so a reload or a folder change is not undone
+        // by the link that brought the user here.
+        if (!cancelled) setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('path');
+          next.delete('doc');
+          return next;
+        }, { replace: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedPath, linkedDoc, setActiveTab, setFolderId, setSearchParams]);
 
   // Folders live in their own query: they come back capped rather than
   // cursored (folder rows are tiny), so mixing them into the document

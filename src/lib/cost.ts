@@ -75,6 +75,67 @@ export function formatCostUsd(costUsd: string | number | null | undefined): stri
 }
 
 /**
+ * The word a bare figure needs beside it: `charged` or `est.`, never nothing.
+ *
+ * A chip reading `₹1.02` on its own was read as "this chat has cost me ₹1.02",
+ * which it is only when the provider billed it on the user's own key. The Runs
+ * page always said which kind of number it was; the chat header did not.
+ */
+export function costQualifier(source: MaybeCostSource): string {
+  if (source === 'billed') return 'charged';
+  if (source === 'estimated') return 'est.';
+  return '';
+}
+
+/**
+ * Whose money a figure is. Mirrors `llm.access.PAYERS` plus `mixed`, which a
+ * conversation reads once it has switched keys partway. `''` is "not known":
+ * an older row, or a lookup that failed.
+ */
+export type Payer = 'own_key' | 'platform' | 'free' | 'local' | 'mixed' | '';
+
+const PAYER_SENTENCE: Record<Exclude<Payer, ''>, string> = {
+  own_key: 'This runs on your own API key, so the provider bills it to your account.',
+  platform: "This runs on the platform's key: the platform pays the provider, and "
+    + 'you are charged credits for it instead (Settings → Billing).',
+  free: "A free model on the platform's key — nobody pays for it and no credits are used.",
+  local: 'This runs on your own machine, so nobody is billed for it.',
+  mixed: 'Part of this ran on your own key (billed by the provider) and part on '
+    + "the platform's key (charged in credits).",
+};
+
+/**
+ * What the conversation cost chip means, for its hover text.
+ *
+ * Two meters exist and the chip is only one of them. It is what the *model
+ * provider* charges for this conversation's calls. Who pays that depends on
+ * the key: on the user's own key it is on their provider bill, and on the
+ * platform key the platform pays it and the user is charged credits instead
+ * (`Backend/llm/credits.py`), which is a different unit shown in Settings.
+ */
+export function describeConversationCost(
+  costUsd: string | number | null | undefined,
+  source: MaybeCostSource,
+  tokens: number,
+  paidBy: Payer = '',
+): string {
+  const figure = describeCost(costUsd, source);
+  return [
+    `This conversation so far: ${figure} · ${tokens.toLocaleString()} tokens.`,
+    // Precisely what is counted, because each of these used to be missing.
+    'Counts every model call: the answers, the suggested follow-up questions, '
+      + 'and image questions to the vision model.',
+    // Said for this conversation when the server knows who paid; the general
+    // rule only when it does not.
+    paidBy
+      ? PAYER_SENTENCE[paidBy]
+      : 'This is the model provider\'s price. On your own API key it is billed to '
+        + 'that account; on the platform key you are charged credits instead '
+        + '(Settings → Billing).',
+  ].join('\n');
+}
+
+/**
  * The hover text behind a cost: where the number came from, and what it is made
  * of. Worth spelling out because the breakdown is the whole reason the figure
  * is trustworthy — output tokens cost several times input, and a cached read a

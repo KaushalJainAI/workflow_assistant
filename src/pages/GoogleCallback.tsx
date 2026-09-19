@@ -32,7 +32,7 @@ export default function GoogleCallback() {
       try {
         await googleLogin(code);
         toast.success('Successfully logged in with Google');
-        navigate('/');
+        navigate('/ai-chat', { replace: true });
       } catch (err) {
         console.error('Login error:', err);
         toast.error('Failed to log in with Google');

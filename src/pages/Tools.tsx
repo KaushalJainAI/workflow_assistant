@@ -83,19 +83,19 @@ const iconMap: Record<string, LucideIcon> = {
 
 const EFFECT_VIEW: Record<string, { label: string; blurb: string; tone: string }> = {
   read: {
-    label: 'Reads only',
+    label: 'Read-only',
     blurb: 'Looks at things. Nothing outside changes.',
-    tone: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+    tone: 'bg-success-subtle text-success border-border',
   },
   reversible: {
     label: 'Undoable',
-    blurb: 'Changes something you can put back — a deleted file goes to your recycle bin.',
-    tone: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+    blurb: 'Changes something you can put back.',
+    tone: 'bg-warning-subtle text-warning border-border',
   },
   irreversible: {
     label: 'Permanent',
     blurb: 'Cannot be taken back once it runs.',
-    tone: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
+    tone: 'bg-destructive-subtle text-destructive border-border',
   },
 };
 
@@ -110,10 +110,26 @@ type FilterKey = 'all' | 'read' | 'changes' | 'off';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'read', label: 'Reads only' },
+  { key: 'read', label: 'Read-only' },
   { key: 'changes', label: 'Makes changes' },
-  { key: 'off', label: 'Switched off' },
+  { key: 'off', label: 'Off' },
 ];
+
+/**
+ * Model-written descriptions are instructions ("Run this if the user asks…",
+ * "Use this instead of…"). One short sentence is all a list row gets — the
+ * full text lives in the detail drawer.
+ */
+function shortBlurb(description: string): string {
+  if (!description) return '';
+  const cut = description.split(
+    /(?:\. Use this|\. Run this| — use| -- use|\. More powerful|\. Try )/,
+  )[0];
+  const first = cut.split(/\. (?=[A-Z])/)[0] ?? cut;
+  const s = (first || cut).trim();
+  if (!s) return '';
+  return s.endsWith('.') ? s : `${s}.`;
+}
 
 function matchesFilter(tool: ToolEntry, filter: FilterKey): boolean {
   if (filter === 'read') return tool.effect === 'read';
@@ -136,11 +152,20 @@ function matchesQuery(tool: ToolEntry, q: string): boolean {
 // Small pieces
 // ---------------------------------------------------------------------------
 
-function Chip({ children, className }: { children: React.ReactNode; className?: string }) {
+function Chip({
+  children,
+  className,
+  title,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  title?: string;
+}) {
   return (
     <span
+      title={title}
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap',
+        'inline-flex items-center gap-1 px-1.5 py-px rounded text-[11px] font-medium border whitespace-nowrap',
         'bg-secondary text-muted-foreground border-border',
         className,
       )}
@@ -222,49 +247,46 @@ function ToolRow({
           onOpen();
         }
       }}
+      title={tool.description || tool.displayName}
       className={cn(
-        'group flex items-start gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors cursor-pointer',
+        'group flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors cursor-pointer',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
         off
-          ? 'border-dashed border-border/60 bg-muted/20'
-          : 'border-border/60 bg-background/40 hover:border-primary/40 hover:bg-accent/40',
+          ? 'border-dashed border-border bg-muted/20 opacity-70'
+          : 'border-border bg-card hover:bg-secondary hover:border-strong',
       )}
     >
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span
             className={cn(
-              'text-[13px] font-mono font-semibold',
-              off && 'text-muted-foreground line-through decoration-muted-foreground/40',
+              'text-[13px] font-semibold truncate',
+              off ? 'text-muted-foreground' : 'text-foreground',
             )}
           >
-            {tool.name}
+            {tool.displayName}
           </span>
-          <EffectBadge effect={tool.effect} />
+          {tool.locked && <Lock className="w-3 h-3 text-muted-foreground shrink-0" />}
+          <span className="shrink-0">
+            <EffectBadge effect={tool.effect} />
+          </span>
           {tool.settings.length > 0 && (
-            <Chip className="border-primary-line/60 text-primary bg-primary-subtle">
+            <Chip title={`${tool.settings.length} adjustable limit${tool.settings.length === 1 ? '' : 's'}`}>
               <SlidersHorizontal className="w-2.5 h-2.5" />
-              {tool.settings.length === 1 ? '1 setting' : `${tool.settings.length} settings`}
-            </Chip>
-          )}
-          {tool.requires && <Chip>{tool.requires}</Chip>}
-          {tool.locked && (
-            <Chip>
-              <Lock className="w-2.5 h-2.5" />
-              Always on
+              {tool.settings.length}
             </Chip>
           )}
         </div>
-        <p className="text-[12px] leading-snug text-muted-foreground mt-1 line-clamp-2">
-          {tool.description || tool.displayName}
+        <p className="text-[12px] text-muted-foreground mt-0.5 truncate">
+          {shortBlurb(tool.description) || tool.displayName}
         </p>
       </div>
-      <div className="pt-1 shrink-0">
+      <div className="shrink-0">
         <Switch
           isOn={tool.enabled}
           onToggle={onToggle}
           disabled={busy || tool.locked || tool.unserved}
-          label={tool.name}
+          label={tool.displayName}
         />
       </div>
     </div>
@@ -304,56 +326,56 @@ function CategorySection({
   return (
     <section
       className={cn(
-        'bg-card border rounded-lg overflow-hidden transition-colors',
-        onCount === 0 && tools.length > 0
-          ? 'border-dashed border-border/60'
-          : 'border-border/60',
+        'bg-card border border-border rounded-lg overflow-hidden transition-colors',
+        onCount === 0 && tools.length > 0 && 'border-dashed',
       )}
     >
-      <div className="flex items-center gap-3 px-4 py-3.5">
+      <div className="flex items-center gap-3 px-4 py-3">
         <button
           onClick={() => onOpenChange(!open)}
           disabled={tools.length === 0}
           className="flex items-center gap-3 flex-1 min-w-0 text-left disabled:cursor-default"
           aria-expanded={open}
         >
-          <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 border border-border flex items-center justify-center shrink-0">
             <Icon className="w-4 h-4 text-primary" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm font-bold text-foreground">{category.label}</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-[13px] font-semibold text-foreground truncate">
+                {category.label}
+              </h3>
               {tools.length > 0 && (
-                <span className="text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
                   {onCount === tools.length
-                    ? `${tools.length} tools`
-                    : `${onCount} of ${tools.length} on`}
-                </span>
-              )}
-              {typeof usageCount === 'number' && category.grantBacked && (
-                <span className="hidden sm:inline text-[11px] text-muted-foreground">
-                  · granted to {usageCount} {usageCount === 1 ? 'agent' : 'agents'}
+                    ? `${tools.length}`
+                    : `${onCount}/${tools.length}`}
+                  {typeof usageCount === 'number' && category.grantBacked
+                    ? ` · ${usageCount} ${usageCount === 1 ? 'agent' : 'agents'}`
+                    : ''}
                 </span>
               )}
               {category.unserved && (
-                <Chip className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800">
-                  Not available
+                <Chip className="bg-destructive-subtle text-destructive border-border">
+                  Unavailable
                 </Chip>
               )}
             </div>
-            {/* The catalogue has always sent this and the page used to drop it. */}
-            <p className="text-[12px] text-muted-foreground mt-0.5 truncate">
+            <p
+              className="text-[12px] text-muted-foreground truncate"
+              title={category.description}
+            >
               {category.description}
             </p>
           </div>
         </button>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {switchable.length > 1 && (
             <button
               onClick={() => onToggleCategory(!allOn)}
               disabled={busy}
-              className="hidden sm:inline text-[11px] font-semibold text-muted-foreground hover:text-primary transition-colors disabled:opacity-40"
+              className="hidden sm:inline text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
             >
               {allOn ? 'Turn all off' : 'Turn all on'}
             </button>
@@ -370,15 +392,15 @@ function CategorySection({
       </div>
 
       {category.note && (
-        <div className="px-4 pb-4">
-          <div className="flex gap-2 text-[12px] text-muted-foreground bg-muted/40 border border-border/60 rounded-lg px-3 py-2.5">
+        <div className="px-4 pb-3">
+          <div className="flex gap-2 text-[12px] text-muted-foreground bg-muted/40 border border-border rounded-lg px-3 py-2">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>
+            <span className="truncate" title={category.note}>
               {category.note}
               {category.key === 'mcp' && (
                 <>
                   {' '}
-                  <Link to="/connections" className="underline text-primary font-semibold">
+                  <Link to="/connections" className="underline text-primary font-medium">
                     Connections
                   </Link>
                   .
@@ -872,10 +894,9 @@ export default function Tools() {
         {granted.length > 0 && (
           <section className="space-y-3">
             <div>
-              <h2 className="text-base font-bold text-foreground">Granted per agent</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Switching one off here withdraws it everywhere. Which agents may use what is set in
-                each agent's own settings.
+              <h2 className="text-sm font-semibold text-foreground">Granted per agent</h2>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Off here means off everywhere. Per-agent access is set in each agent.
               </p>
             </div>
             {granted.map(({ category, tools }) => (
@@ -898,10 +919,9 @@ export default function Tools() {
         {alwaysOn.length > 0 && (
           <section className="space-y-3">
             <div>
-              <h2 className="text-base font-bold text-foreground">Always on</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                No grant needed. These read this conversation, the clock, or an attachment — never
-                anything outside.
+              <h2 className="text-sm font-semibold text-foreground">Always on</h2>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                No grant needed. Details open on click.
               </p>
             </div>
             {alwaysOn.map(({ category, tools }) => (

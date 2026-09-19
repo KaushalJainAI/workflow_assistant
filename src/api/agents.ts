@@ -19,6 +19,8 @@ export interface Agent extends AgentConfig {
   unattended: number;
   /** Credits spent across those runs. */
   spend: number;
+  /** `retired` when the configured model's catalogue row is inactive. */
+  model_status?: 'ok' | 'retired';
   created_at: string;
   updated_at: string;
 }
@@ -88,11 +90,32 @@ const agentsService = {
     return data;
   },
 
-  /** Approve a paused tool call. The backend also resumes the run. */
-  approve: async (id: number | string, threadId: string, callId: string) => {
-    const { data } = await apiClient.post(`/orchestrator/agents/${id}/approve/`, {
-      thread_id: threadId, call_id: callId,
-    });
+  /** Put the configuration back to revision `number`, recorded as a new revision. */
+  restoreRevision: async (id: number | string, number: number): Promise<Agent> => {
+    const { data } = await apiClient.post<Agent>(
+      `/orchestrator/agents/${id}/revisions/${number}/restore/`,
+    );
+    return data;
+  },
+
+  /** Stop one run. 409 carries why it cannot be stopped from here. */
+  cancelRun: async (executionId: string): Promise<{ execution_id: string; status: string }> => {
+    const { data } = await apiClient.post(`/orchestrator/runs/${executionId}/cancel/`);
+    return data;
+  },
+
+  /** Queue an instruction for the agent's running run, read at its next step. */
+  steer: async (id: number | string, message: string): Promise<{
+    steered: boolean; execution_id: string; queued: number; dropped: number;
+  }> => {
+    const { data } = await apiClient.post(`/orchestrator/agents/${id}/steer/`, { message });
+    return data;
+  },
+
+  /** Loosen or tighten approvals for the rest of the running run. */
+  setRunAutonomy: async (id: number | string, level: 'review' | 'ask' | 'auto' | 'full'):
+    Promise<{ autonomy: string; execution_id: string }> => {
+    const { data } = await apiClient.post(`/orchestrator/agents/${id}/autonomy/`, { level });
     return data;
   },
 
@@ -108,11 +131,21 @@ const agentsService = {
     message: string,
     config: Partial<AgentConfig>,
     history: { role: string; text: string }[] = [],
+    /** A saved agent's id, so the server keeps the exchange for next time. */
+    agentId: number | null = null,
   ): Promise<AgentProposal> => {
     const { data } = await apiClient.post<AgentProposal>(
       '/orchestrator/agents/configure/',
-      { message, config, history },
+      { message, config, history, ...(agentId != null ? { agent_id: agentId } : {}) },
     );
+    return data;
+  },
+
+  /** The builder conversation kept for a saved agent, oldest first. */
+  builderChat: async (id: number | string): Promise<{
+    messages: { role: 'user' | 'agent'; text: string; changes: AgentProposalChange[] }[];
+  }> => {
+    const { data } = await apiClient.get(`/orchestrator/agents/${id}/builder-chat/`);
     return data;
   },
 

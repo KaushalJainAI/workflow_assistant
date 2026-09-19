@@ -10,10 +10,9 @@
  * at each step, which configuration revision it ran under, and — for a
  * delegated run — who asked for it and why.
  */
-import { useState } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Activity,
   CheckCircle2,
@@ -28,6 +27,7 @@ import {
   GitBranch,
   Settings2,
   Coins,
+  Hand,
 } from 'lucide-react';
 import {
   logsService,
@@ -41,7 +41,13 @@ import PageHeader from '../components/layout/PageHeader';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
 import ChartArtifact from '../components/chat/ChartArtifact';
 import TodoPanel from '../components/chat/TodoPanel';
-import type { ChartSpec, TodoItem } from '../api/chat';
+import FileCards from '../components/files/FileCards';
+import FilePreviewProvider from '../components/files/FilePreviewProvider';
+import RunControls from '../components/runs/RunControls';
+import FeedbackControl from '../components/runs/FeedbackControl';
+import { useLiveRun } from '../hooks/useLiveRun';
+import evalsService from '../api/evals';
+import type { ChartSpec, FileCardData, TodoItem } from '../api/chat';
 
 const statusConfig = {
   completed: { icon: CheckCircle2, cls: 'text-success', bg: 'bg-success-subtle', label: 'Succeeded' },
@@ -49,9 +55,21 @@ const statusConfig = {
   running: { icon: Loader2, cls: 'text-agent', bg: 'bg-agent-subtle', label: 'Running', spin: true },
   pending: { icon: Clock, cls: 'text-muted-foreground', bg: 'bg-secondary', label: 'Queued' },
   cancelled: { icon: CircleSlash, cls: 'text-muted-foreground', bg: 'bg-secondary', label: 'Cancelled' },
+  // A run held for approval. It fell through to `pending` and read "Queued",
+  // which says "wait" to the one person the run is waiting on.
+  paused: { icon: Hand, cls: 'text-warning', bg: 'bg-warning-subtle', label: 'Needs you' },
 } as const;
 
-const FILTERS = ['all', 'completed', 'failed', 'running'] as const;
+/** Statuses whose detail can still change, so an open run keeps refreshing. */
+const LIVE_STATUSES = new Set(['running', 'pending', 'paused']);
+
+// `paused` is the one that needs someone: a run waiting on an approval.
+const FILTERS = ['all', 'running', 'paused', 'completed', 'failed'] as const;
+
+const FILTER_LABELS: Record<(typeof FILTERS)[number], string> = {
+  all: 'All runs', running: 'Running', paused: 'Needs you',
+  completed: 'Completed', failed: 'Failed',
+};
 
 /** What started a run. `trigger_type` says how it arrived; this says who asked.
  *  A delegated worker and a direct API call both arrive as `api`, and telling
@@ -62,6 +80,7 @@ const CALLER_LABELS: Record<string, string> = {
   chat: 'Chat',
   orchestrator: 'By another agent',
   trigger: 'Trigger',
+  eval: 'Evaluation',
 };
 
 function ms(v: number | null) {
@@ -266,6 +285,34 @@ function RunCostSummary({ detail }: { detail: import('../api').ExecutionDetail }
 
 /** Everything inside one run: how it was configured, who asked for it, and the
  *  loop it actually ran. */
+function RunActions({ detail }: { detail: import('../api').ExecutionDetail }) {
+  const saveAsCase = async () => {
+    try {
+      const c = await evalsService.caseFromRun({ execution_id: detail.execution_id });
+      window.location.href = `/evals?case=${c.id}`;
+    } catch {
+      // toast is overkill for a best-effort bridge; the console carries it.
+      console.warn('Could not save run as eval case');
+    }
+  };
+  return (
+    <div className="flex items-center gap-3">
+      <FeedbackControl
+        target="execution"
+        id={detail.execution_id}
+        initial={(detail as { feedback?: { rating: number; reason: string; comment: string } | null }).feedback ?? null}
+      />
+      <button
+        onClick={saveAsCase}
+        className="text-[12px] px-2 py-1 rounded border border-border hover:bg-secondary"
+        title="Save this run as an eval case for the same agent"
+      >
+        Save as eval case
+      </button>
+    </div>
+  );
+}
+
 function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
   // One scale across the whole run, so a bar means the same thing in every
   // turn. Scaling per turn would make a 20ms call in a fast turn look as
@@ -282,6 +329,8 @@ function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
         <OrchestratorBanner detail={{ delegated_by: detail.delegated_by }} />
       )}
 
+      <RunActions detail={detail} />
+
       <RunCostSummary detail={detail} />
 
       {/* The plan the run worked to, and anything it drew. Both live on
@@ -293,6 +342,10 @@ function RunDetail({ detail }: { detail: import('../api').ExecutionDetail }) {
         (detail.output_data.todos as TodoItem[]).length > 0 && (
           <TodoPanel todos={detail.output_data.todos as TodoItem[]} />
         )}
+
+      {Array.isArray(detail.output_data?.files) && (
+        <FileCards files={detail.output_data.files as FileCardData[]} />
+      )}
 
       {Array.isArray(detail.output_data?.charts) &&
         (detail.output_data.charts as ChartSpec[]).map((chart, i) => (
@@ -347,11 +400,32 @@ export default function Runs() {
   const [filter, setFilter] = usePersistedState<(typeof FILTERS)[number]>('runs.filter', 'all', {
     validate: (v): v is (typeof FILTERS)[number] => FILTERS.includes(v as never),
   });
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [showEval, setShowEval] = usePersistedState<boolean>('runs.showEval', false);
+  // The open run lives in the URL (`?run=<id>`), so a run can be linked to.
+  // "Open that run" on a delegated run and the builder's Run button both link
+  // here, and the id used to be dropped on arrival: the page opened with
+  // nothing expanded and the user had to find the run by eye.
+  const [params, setParams] = useSearchParams();
+  const openId = params.get('run');
+  const setOpenId = (id: string | null) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) next.set('run', id);
+      else next.delete('run');
+      return next;
+    }, { replace: true });
+  };
 
+  // One agent's runs, from `?agent=<id>` — the builder links here with it.
+  const agentFilter = Number(params.get('agent')) || null;
   const { data, isLoading } = useQuery({
-    queryKey: ['runs', filter],
-    queryFn: () => logsService.listExecutions(filter === 'all' ? { limit: 50 } : { status: filter, limit: 50 }),
+    queryKey: ['runs', filter, agentFilter, showEval],
+    queryFn: () => logsService.listExecutions({
+      limit: 50,
+      ...(filter === 'all' ? {} : { status: filter }),
+      ...(agentFilter ? { workflow_id: agentFilter } : {}),
+      ...(showEval ? { caller: 'eval' } : {}),
+    }),
     // Only poll while something can still change. A finished list is finished:
     // new runs arrive from a user action or a schedule, and window focus
     // revalidates on return, so an idle tab does not need a timer at all.
@@ -366,9 +440,23 @@ export default function Runs() {
     queryKey: ['run', openId],
     enabled: !!openId,
     queryFn: () => logsService.getExecution(openId!),
+    // A run opened from the Run button is seconds old; without this its
+    // detail was a snapshot of the first step and never moved.
+    // With the socket up, frames drive refreshes (`useLiveRun`) and this is
+    // only a slow safety net; without it, this is how the run stays current.
+    refetchInterval: (q) =>
+      LIVE_STATUSES.has(q.state.data?.status ?? '') ? (liveSocket ? 30_000 : 5_000) : false,
   });
+  const { isConnected: liveSocket } = useLiveRun(
+    openId, LIVE_STATUSES.has(detail?.status ?? ''),
+  );
+  // A linked run the current filter hides (or that is older than the list's
+  // 50) still has to be shown, or following a link opens nothing.
+  const linkedRunHidden = !!openId && !isLoading
+    && !runs.some((r) => r.execution_id === openId);
 
   return (
+    <FilePreviewProvider>
     <div className="h-full flex flex-col">
       <PageHeader
         icon={Activity}
@@ -384,7 +472,7 @@ export default function Runs() {
           </Link>
         }
       >
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
           {FILTERS.map((f) => (
             <button
               key={f}
@@ -396,13 +484,71 @@ export default function Runs() {
                   : 'bg-card border-border hover:bg-secondary'
               )}
             >
-              {f === 'all' ? 'All runs' : f}
+              {FILTER_LABELS[f]}
             </button>
           ))}
+          <label className="ml-2 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showEval}
+              onChange={(e) => setShowEval(e.target.checked)}
+              className="accent-current"
+            />
+            Show evaluation runs
+          </label>
+          {agentFilter && (
+            <button
+              onClick={() => setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete('agent');
+                return next;
+              }, { replace: true })}
+              title="Show every agent's runs"
+              className="px-3 py-1.5 text-sm rounded border border-primary text-primary bg-primary/10"
+            >
+              {runs[0]?.workflow_name ?? 'One agent'} ×
+            </button>
+          )}
         </div>
       </PageHeader>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        {linkedRunHidden && (
+          <div className="mb-4 border border-primary/40 rounded bg-card">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+              <span className="font-medium text-sm flex-1 truncate">
+                {detail?.workflow_name ?? 'Linked run'}
+              </span>
+              {detail && <StatusPill status={detail.status} />}
+              <button onClick={() => setOpenId(null)}
+                className="text-[12px] text-muted-foreground hover:text-foreground">
+                Close
+              </button>
+            </div>
+            <div className="px-4 py-4 bg-bg-1">
+              {detailLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              ) : detail ? (
+                <>
+                  {detail.error_message && (
+                    <div className="mb-3 px-3 py-2 rounded bg-destructive-subtle border border-red-200 text-[13px] text-destructive">
+                      {detail.error_message}
+                    </div>
+                  )}
+                  <>
+                  {LIVE_STATUSES.has(detail.status) && (
+                    <RunControls executionId={detail.execution_id}
+                      agentId={detail.workflow_id ?? null} status={detail.status} />
+                  )}
+                  <RunDetail detail={detail} />
+                </>
+                </>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">That run could not be found.</p>
+              )}
+            </div>
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -425,7 +571,7 @@ export default function Runs() {
                     className="w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-secondary transition-colors"
                   >
                     <ChevronRight className={cn('w-4 h-4 text-muted-foreground shrink-0 transition-transform', open && 'rotate-90')} />
-                    <span className="font-medium text-sm flex-1 truncate">{run.workflow_name}</span>
+                    <span className="font-medium text-sm flex-1 truncate">{run.workflow_name ?? 'Deleted agent'}</span>
                     {run.is_delegated && (
                       <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-label="Started by another agent" />
                     )}
@@ -456,7 +602,13 @@ export default function Runs() {
                       {detailLoading ? (
                         <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                       ) : detail ? (
-                        <RunDetail detail={detail} />
+                        <>
+                  {LIVE_STATUSES.has(detail.status) && (
+                    <RunControls executionId={detail.execution_id}
+                      agentId={detail.workflow_id ?? null} status={detail.status} />
+                  )}
+                  <RunDetail detail={detail} />
+                </>
                       ) : (
                         <p className="text-[13px] text-muted-foreground">No details recorded for this run.</p>
                       )}
@@ -469,5 +621,6 @@ export default function Runs() {
         )}
       </div>
     </div>
+    </FilePreviewProvider>
   );
 }

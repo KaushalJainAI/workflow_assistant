@@ -8,8 +8,8 @@
  * when the page was only issuing a GET.
  *
  * Deliberately built from the same geometry as a settled turn (question
- * heading, "Answer" label, body lines, 3rem between turns) so the transcript
- * replaces it in place instead of pushing it aside.
+ * heading, "Answer" label, body lines, the same 24/32px turn rhythm) so the
+ * transcript replaces it in place instead of pushing it aside.
  */
 
 import { BrainCircuit } from 'lucide-react';
@@ -22,7 +22,7 @@ const TURNS: number[][] = [
 
 export default function TranscriptSkeleton() {
   return (
-    <div className="space-y-12 animate-pulse" aria-hidden="true">
+    <div className="space-y-6 md:space-y-8 animate-pulse" aria-hidden="true">
       {TURNS.map((lines, turn) => (
         <div key={turn} className="space-y-3">
           {/* The question, which renders as a heading rather than a bubble. */}

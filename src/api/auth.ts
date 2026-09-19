@@ -276,6 +276,21 @@ export const authService = {
     return response.data;
   },
 
+  /** Send a code to `newEmail`. The address changes only when it comes back. */
+  async requestEmailChange(newEmail: string, password: string): Promise<{ detail: string }> {
+    const response = await apiClient.post('/auth/email/change/request/', {
+      new_email: newEmail, password,
+    });
+    return response.data;
+  },
+
+  async confirmEmailChange(otpCode: string): Promise<{ detail: string; email: string }> {
+    const response = await apiClient.post('/auth/email/change/confirm/', {
+      otp_code: otpCode,
+    });
+    return response.data;
+  },
+
   async requestPasswordChangeOTP(oldPassword: string): Promise<{ detail: string }> {
     const response = await apiClient.post('/auth/change-password/request-otp/', {
       old_password: oldPassword,

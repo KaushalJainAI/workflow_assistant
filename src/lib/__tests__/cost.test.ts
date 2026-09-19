@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
-import { describeCost, formatCost, formatCostUsd, UNPRICED_LABEL } from '../cost';
+import {
+  costQualifier, describeConversationCost, describeCost, formatCost, formatCostUsd,
+  UNPRICED_LABEL,
+} from '../cost';
 
 describe('formatCost', () => {
   it('never renders an unpriced run as a number', () => {
@@ -72,5 +75,44 @@ describe('describeCost', () => {
     });
     expect(text).toContain('200 in ');
     expect(text).not.toContain('cached');
+  });
+});
+
+describe('costQualifier', () => {
+  // A bare `₹1.02` in the chat header read as "you were charged ₹1.02"
+  // whatever the figure actually was.
+  it('never leaves a priced figure bare', () => {
+    expect(costQualifier('billed')).toBe('charged');
+    expect(costQualifier('estimated')).toBe('est.');
+  });
+
+  it('adds nothing where there is no figure to qualify', () => {
+    expect(costQualifier('unpriced')).toBe('');
+    expect(costQualifier('')).toBe('');
+    expect(costQualifier(undefined)).toBe('');
+  });
+});
+
+describe('describeConversationCost', () => {
+  it('says whose money it is, not only how much', () => {
+    const text = describeConversationCost('0.0116', 'billed', 42_000);
+    expect(text).toContain('Charged by the provider');
+    expect(text).toContain('42,000 tokens');
+    expect(text).toContain('credits');
+  });
+});
+
+describe('describeConversationCost with a known payer', () => {
+  it('names the payer instead of explaining both cases', () => {
+    const own = describeConversationCost('0.01', 'billed', 10, 'own_key');
+    expect(own).toContain('your own API key');
+    expect(own).not.toContain('credits');
+
+    const platform = describeConversationCost('0.01', 'estimated', 10, 'platform');
+    expect(platform).toContain('charged credits');
+  });
+
+  it('a free model says no credits are used', () => {
+    expect(describeConversationCost('0', 'billed', 10, 'free')).toContain('no credits');
   });
 });

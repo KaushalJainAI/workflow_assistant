@@ -58,25 +58,6 @@ export function Modal({ onClose, children, size = 'md', label }: ModalProps) {
   );
 }
 
-export function ModalHeader({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex items-center justify-between px-5 py-4 border-b border-border',
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
 export function ModalBody({
   children,
   className,

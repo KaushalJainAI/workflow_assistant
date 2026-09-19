@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { authService } from '../api/auth';
 import { tokenManager, setUnauthorizedCallback } from '../api/client';
+import { abortAllChatRuns } from '../lib/chatRuns';
 
 import { AuthContext } from './authState';
 
@@ -38,6 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Set up 401 handling
     setUnauthorizedCallback(() => {
+      // A chat stream outlives the page that started it (`lib/chatRuns.ts`),
+      // so signing out has to stop it here or it keeps writing into the next
+      // user's session.
+      abortAllChatRuns();
       queryClient.setQueryData(['authProfile'], null);
       tokenManager.clearTokens();
     });
@@ -80,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const logout = useCallback(async () => {
+    abortAllChatRuns();
     try {
       await authService.logout();
     } finally {

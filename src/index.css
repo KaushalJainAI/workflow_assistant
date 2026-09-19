@@ -515,3 +515,57 @@ html {
     scroll-behavior: auto !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Syntax colours for `components/files/CodeView.tsx`.
+   highlight.js only emits `.hljs-*` class names; these give them colour
+   from one set of tokens per theme, so dark mode is the same rules with
+   different values rather than a second imported theme file. Light values
+   hold 4.5:1 on #ffffff/#f5f5f5, dark ones on #1f1f1f/#292929.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --code-keyword: #8a2bb0;
+  --code-string: #0a6b2b;
+  --code-number: #a0460a;
+  --code-comment: #6b6b6b;
+  --code-title: #0f5fa8;
+  --code-type: #7a5a00;
+  --code-attr: #b3261e;
+  --code-meta: #5c5c5c;
+  --code-added: #0a6b2b;
+  --code-added-bg: #e6f4ea;
+  --code-removed: #b3261e;
+  --code-removed-bg: #fde8e7;
+}
+.dark {
+  --code-keyword: #d49bf2;
+  --code-string: #8fd694;
+  --code-number: #f2b27a;
+  --code-comment: #979797;
+  --code-title: #7ab8f5;
+  --code-type: #e8c86a;
+  --code-attr: #f28b82;
+  --code-meta: #a8a8a8;
+  --code-added: #8fd694;
+  --code-added-bg: #16301c;
+  --code-removed: #f28b82;
+  --code-removed-bg: #3a1a18;
+}
+
+.hljs { color: hsl(var(--foreground)); background: transparent; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-literal,
+.hljs-doctag, .hljs-section { color: var(--code-keyword); }
+.hljs-string, .hljs-regexp, .hljs-template-tag,
+.hljs-selector-attr, .hljs-selector-pseudo { color: var(--code-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet { color: var(--code-number); }
+.hljs-comment, .hljs-quote { color: var(--code-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-name,
+.hljs-selector-id, .hljs-selector-class { color: var(--code-title); }
+.hljs-type, .hljs-title.class_, .hljs-class .hljs-title { color: var(--code-type); }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable,
+.hljs-property, .hljs-params { color: var(--code-attr); }
+.hljs-meta, .hljs-meta .hljs-keyword, .hljs-link { color: var(--code-meta); }
+.hljs-addition { color: var(--code-added); background: var(--code-added-bg); }
+.hljs-deletion { color: var(--code-removed); background: var(--code-removed-bg); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }

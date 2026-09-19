@@ -29,10 +29,16 @@ function summariseValue(value: unknown): string {
   return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 }
 
-export default function RevisionEntry({ revision, collapseAfter = 6 }: {
+export default function RevisionEntry({
+  revision, collapseAfter = 6, onRestore, restoring = false,
+}: {
   revision: AgentRevision;
   /** How many diff rows show before the disclosure. `Infinity` opens them all. */
   collapseAfter?: number;
+  /** Put this version back. Omitted for the current version, where it would
+   *  be a no-op dressed as an action. */
+  onRestore?: () => void;
+  restoring?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const fields = Object.entries(revision.diff);
@@ -49,6 +55,13 @@ export default function RevisionEntry({ revision, collapseAfter = 6 }: {
         <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
           {revision.run_count} {revision.run_count === 1 ? 'run' : 'runs'}
         </span>
+        {onRestore && (
+          <button type="button" onClick={onRestore} disabled={restoring}
+            title="Put the agent back to this version. Saved as a new version; nothing is erased."
+            className="text-[11px] text-primary hover:underline shrink-0 disabled:opacity-50">
+            {restoring ? 'Restoring…' : 'Restore'}
+          </button>
+        )}
       </div>
       <div className="text-[11px] text-muted-foreground">
         {revision.changed_by ?? 'system'} · {new Date(revision.created_at).toLocaleString()}

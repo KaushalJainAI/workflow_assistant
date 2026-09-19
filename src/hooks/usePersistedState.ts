@@ -18,7 +18,7 @@
  * persisted UI state is never important enough to break a page over.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type PersistedStorage = 'local' | 'session';
 
@@ -92,20 +92,4 @@ export function usePersistedState<T>(
   }, [key, storage, value]);
 
   return [value, setValue];
-}
-
-/** Forgets a persisted value — for "reset filters"-style actions. */
-export function clearPersistedState(key: string, storage: PersistedStorage = 'local') {
-  const store = backingStore(storage);
-  if (!store) return;
-  try {
-    store.removeItem(PREFIX + key);
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Convenience wrapper for the common `useCallback`-free reset. */
-export function usePersistedReset(key: string, storage: PersistedStorage = 'local') {
-  return useCallback(() => clearPersistedState(key, storage), [key, storage]);
 }

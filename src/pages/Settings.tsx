@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Settings as SettingsIcon,
   User,
@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import InsightsDashboard from '../components/billing/InsightsDashboard';
+import SpendSummary from '../components/billing/SpendSummary';
+import ChangeEmail from '../components/settings/ChangeEmail';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/authState';
 import { authService } from '../api/auth';
@@ -32,6 +34,31 @@ import {
   DEFAULT_EFFORT, EFFORT_LABELS, effortLevelsFor, nearestEffort,
 } from '../hooks/useEffortSelection';
 import { DEFAULT_PROVIDER, DEFAULT_MODEL } from '../hooks/useChatModelSelection';
+import { allZones, localZone } from '../lib/cron';
+import { toast } from 'sonner';
+
+/** Languages the backend accepts (`core/preferences.py::LANGUAGES`), by code.
+ *  The page used to store names ("English") while the column defaulted to a
+ *  code ("en"), and the model path read neither. */
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'de', label: 'German' },
+  { value: 'fr', label: 'French' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'it', label: 'Italian' },
+  { value: 'ja', label: 'Japanese' },
+];
+
+/** A stored value in either spelling, as the code the picker uses. */
+function languageCode(stored: string | undefined): string {
+  const text = (stored ?? '').trim().toLowerCase();
+  const hit = LANGUAGE_OPTIONS.find(
+    (o) => o.value === text || o.label.toLowerCase() === text,
+  );
+  return hit?.value ?? 'en';
+}
 
 type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
 
@@ -54,7 +81,6 @@ interface SettingsForm {
   llm_model: string;
   llm_effort: string;
   default_temperature: number;
-  default_max_tokens: number;
 }
 
 export default function Settings() {
@@ -83,7 +109,6 @@ export default function Settings() {
     llm_model: DEFAULT_MODEL,
     llm_effort: DEFAULT_EFFORT,
     default_temperature: 0.7,
-    default_max_tokens: 2048,
   });
 
   // The model list is read from the catalogue rather than written out here.
@@ -106,28 +131,32 @@ export default function Settings() {
   // Load the account into the form whenever the account object changes.
   // During render, not in an effect, so the form never paints blank first.
   const [seenUser, setSeenUser] = useState<typeof user | undefined>(undefined);
-  if (user !== seenUser) {
-    setSeenUser(user);
-    if (user) {
-      setFormData({
-        instance_name: user.instance_name || 'AIAAS Instance',
-        timezone: user.timezone || 'UTC',
-        language: user.language || 'English',
-        display_name: user.display_name || '',
-        bio: user.bio || '',
-        first_name: user.name?.split(' ')[0] || '',
-        last_name: user.name?.split(' ').slice(1).join(' ') || '',
-        email: user.email || '',
-        llm_provider: user.llm_provider || DEFAULT_PROVIDER,
-        llm_model: user.llm_model || DEFAULT_MODEL,
+  const formFromUser = (u: NonNullable<typeof user>): SettingsForm => ({
+        instance_name: u.instance_name || 'AIAAS Instance',
+        timezone: u.timezone || 'UTC',
+        language: languageCode(u.language),
+        display_name: u.display_name || '',
+        bio: u.bio || '',
+        first_name: u.name?.split(' ')[0] || '',
+        last_name: u.name?.split(' ').slice(1).join(' ') || '',
+        email: u.email || '',
+        llm_provider: u.llm_provider || DEFAULT_PROVIDER,
+        llm_model: u.llm_model || DEFAULT_MODEL,
         // `??` not `||`: '' is a real choice here — the model's own default —
         // and `||` would silently promote it back to `medium` on every load.
-        llm_effort: user.llm_effort ?? DEFAULT_EFFORT,
-        default_temperature: user.default_temperature || 0.7,
-        default_max_tokens: user.default_max_tokens || 2048,
-      });
-    }
+        llm_effort: u.llm_effort ?? DEFAULT_EFFORT,
+        // `??` for the same reason: 0 is a real temperature.
+        default_temperature: u.default_temperature ?? 0.7,
+  });
+  if (user !== seenUser) {
+    setSeenUser(user);
+    if (user) setFormData(formFromUser(user));
   }
+  // Settings still holds the untouched default while the browser knows where
+  // the user is. Offered, never applied: the zone moves the chat clock and new
+  // schedules, so it changes only when someone chooses it.
+  const browserZone = localZone();
+  const suggestZone = formData.timezone === 'UTC' && !!browserZone && browserZone !== 'UTC';
 
   const loadApiKey = async () => {
     try {
@@ -171,10 +200,14 @@ export default function Settings() {
 
       await authService.updateProfile(patchData);
       await refreshUser();
-      alert('Settings saved successfully');
+      toast.success('Settings saved');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings');
+      const data = (error as { response?: { data?: Record<string, unknown> } }).response?.data;
+      const first = data && Object.entries(data)[0];
+      toast.error(first
+        ? `${first[0]}: ${String(Array.isArray(first[1]) ? first[1][0] : first[1])}`
+        : 'Could not save settings');
     } finally {
       setIsSaving(false);
     }
@@ -227,7 +260,7 @@ export default function Settings() {
       await refreshUser();
     } catch (error) {
       console.error('Failed to upload avatar:', error);
-      alert('Failed to upload avatar');
+      toast.error('Could not upload that image');
     }
   };
 
@@ -358,37 +391,64 @@ export default function Settings() {
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
                     <p className="font-medium">Timezone</p>
-                    <p className="text-sm text-muted-foreground">Set your default timezone</p>
+                    <p className="text-sm text-muted-foreground">
+                      The assistant's clock, and the default for new schedules
+                    </p>
                   </div>
-                  <Select
-                    value={formData.timezone}
-                    onChange={(val) => handleSelectChange('timezone', val)}
-                    options={[
-                      { value: 'UTC', label: 'UTC' },
-                      { value: 'America/New_York', label: 'America/New_York' },
-                      { value: 'Europe/London', label: 'Europe/London' },
-                      { value: 'Asia/Tokyo', label: 'Asia/Tokyo' },
-                      { value: 'Asia/Kolkata', label: 'Asia/Kolkata' },
-                    ]}
-                    className="w-[200px]"
-                  />
+                  <div className="flex flex-col items-end gap-1">
+                    {/* Every zone the browser knows. It was five, so most of
+                        the world could not pick their own. */}
+                    <Select
+                      value={formData.timezone}
+                      onChange={(val) => handleSelectChange('timezone', val)}
+                      showSearch
+                      options={allZones().map((z) => ({ value: z, label: z }))}
+                      className="w-[240px]"
+                    />
+                    {suggestZone && (
+                      <button type="button"
+                        onClick={() => handleSelectChange('timezone', browserZone)}
+                        className="text-[12px] text-primary hover:underline">
+                        Use {browserZone} (this device)
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                   <div>
                     <p className="font-medium">Language</p>
-                    <p className="text-sm text-muted-foreground">Choose your preferred language</p>
+                    <p className="text-sm text-muted-foreground">
+                      What the assistant and your agents reply in
+                    </p>
                   </div>
                   <Select
                     value={formData.language}
                     onChange={(val) => handleSelectChange('language', val)}
-                    options={[
-                      { value: 'English', label: 'English' },
-                      { value: 'Spanish', label: 'Spanish' },
-                      { value: 'German', label: 'German' },
-                      { value: 'French', label: 'French' },
-                    ]}
+                    options={LANGUAGE_OPTIONS}
                     className="w-[200px]"
                   />
+                </div>
+                {/* Stored since the profile existed and read by nothing. It is
+                    now what a new agent starts at in the builder. */}
+                <div className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <p className="font-medium">Default temperature for new agents</p>
+                    <p className="text-sm text-muted-foreground">
+                      Low is exact and repeatable; high is more varied. Each agent can override it.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 w-[200px]">
+                    <input type="range" min={0} max={2} step={0.1}
+                      value={formData.default_temperature}
+                      onChange={(e) => setFormData((prev) => ({
+                        ...prev, default_temperature: Number(e.target.value),
+                      }))}
+                      aria-label="Default temperature for new agents"
+                      className="flex-1 accent-primary" />
+                    <span className="w-8 text-right text-sm tabular-nums">
+                      {formData.default_temperature.toFixed(1)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -455,16 +515,21 @@ export default function Settings() {
                     />
                   </div>
                 </div>
+                {/* Stored on the profile and never editable. The assistant and
+                    agents now address the user by it. */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Email address</label>
-                  <input 
-                    type="email" 
-                    name="email"
-                    value={formData.email}
+                  <label className="block text-sm font-medium mb-2">What should the assistant call you?</label>
+                  <input
+                    type="text"
+                    name="display_name"
+                    value={formData.display_name}
                     onChange={handleInputChange}
+                    maxLength={80}
+                    placeholder={formData.first_name || 'Your name'}
                     className="w-full px-3 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors duration-200"
                   />
                 </div>
+                <ChangeEmail current={user?.email ?? ''} onChanged={refreshUser} />
                 <div>
                   <label className="block text-sm font-medium mb-2">Bio</label>
                   <textarea 
@@ -473,8 +538,11 @@ export default function Settings() {
                     onChange={handleInputChange}
                     rows={3}
                     className="w-full px-3 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors duration-200 resize-none"
-                    placeholder="Tell us a bit about yourself..."
+                    placeholder="e.g. Backend engineer in Bengaluru. I prefer code first, then the explanation."
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The assistant and your agents read this, so say what helps them help you.
+                  </p>
                 </div>
               </div>
 
@@ -588,11 +656,15 @@ export default function Settings() {
                     Keep this key secret. It allows full access to your account.
                   </p>
                 </div>
+                {/* This showed `/api/webhook/`, a route that does not exist: the
+                    account-wide receiver went with the workflow product. Each
+                    agent's webhook has its own secret URL, made on Schedules. */}
                 <div className="p-4 bg-muted/50 rounded-lg">
-                  <p className="font-medium mb-2">Webhook URL</p>
-                  <code className="block p-2 bg-background border border-input rounded-lg text-sm font-mono break-all">
-                    {window.location.origin}/api/webhook/
-                  </code>
+                  <p className="font-medium mb-1">Webhooks</p>
+                  <p className="text-sm text-muted-foreground">
+                    Each agent gets its own webhook URL with a secret in it. Create one
+                    on the <Link to="/schedules" className="text-primary hover:underline">Schedules</Link> page.
+                  </p>
                 </div>
               </div>
             </div>
@@ -654,6 +726,7 @@ export default function Settings() {
                   Free models and calls made with your own provider keys never use credits.
                 </p>
               </div>
+              <SpendSummary />
             </div>
           </div>
         );
@@ -714,8 +787,11 @@ export default function Settings() {
           
           {['general', 'account', 'appearance'].includes(activeTab) && (
             <div className="mt-8 pt-6 border-t border-border flex justify-end gap-2">
-              <button className="px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors">
-                Cancel
+              {/* Was a Cancel button with no handler. */}
+              <button
+                onClick={() => { if (user) setFormData(formFromUser(user)); }}
+                className="px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors">
+                Discard changes
               </button>
               <button 
                 onClick={handleSave}

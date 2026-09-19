@@ -116,6 +116,11 @@ const OUTCOME_COPY: Record<FireOutcome, { label: string; hint: string; tone: str
     hint: 'Its start date is in the future. Nothing is wrong; it is simply not live.',
     tone: 'text-muted-foreground',
   },
+  paused: {
+    label: 'Skipped — agent paused',
+    hint: 'The agent is paused, so this slot was skipped. Set the agent back to active to resume; the schedule itself is untouched.',
+    tone: 'text-muted-foreground',
+  },
   expired: {
     label: 'Ended',
     hint: 'Past its end date, so it switched itself off rather than staying armed for a run that will never come.',
