@@ -27,6 +27,14 @@ describe('kindOf', () => {
     // An uploaded Word file: read as text it was zip noise.
     expect(kindOf(doc('memo.docx', 'docx'))).toBe('office');
   });
+
+  it('shows a format we cannot parse as media, never as text', () => {
+    const doc = (filename: string, file_type: string) => ({ filename, file_type });
+    expect(kindOf(doc('data.parquet', 'other'))).toBe('media');
+    expect(kindOf(doc('song.mp3', 'audio'))).toBe('media');
+    // Code and config still read as code: they are sniffed as text on upload.
+    expect(kindOf(doc('deploy.py', 'txt'))).toBe('code');
+  });
 });
 
 describe('spans', () => {

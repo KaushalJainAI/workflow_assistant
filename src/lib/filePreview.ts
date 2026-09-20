@@ -20,7 +20,10 @@ type Previewable = Pick<Document, 'filename' | 'file_type'>;
 /** How to show a document, from its extension first and then its type. */
 export function kindOf(doc: Previewable): PreviewKind {
   const type = (doc.file_type || '').toLowerCase();
-  if (type === 'image' || type === 'video' || type === 'pdf') return 'media';
+  // `audio` and `other` (a format we keep but cannot parse yet) join them:
+  // the media view is an icon and a download, and rendering unknown bytes as
+  // text is what put zip noise on the screen before.
+  if (['image', 'video', 'pdf', 'audio', 'other'].includes(type)) return 'media';
   // Before the extension checks below, because a .docx read as text is zip noise.
   if (OFFICE_TYPES.has(type) || OFFICE_TYPES.has((doc.filename.split('.').pop() ?? '').toLowerCase())) return 'office';
 
