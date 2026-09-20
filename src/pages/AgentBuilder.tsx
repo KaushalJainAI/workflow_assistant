@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner';
 import nodeService from '../api/nodeService';
 import skillsService from '../api/skills';
+import toolsService from '../api/tools';
 import { mcpService } from '../api/mcp';
 import agentsService, { type Agent } from '../api/agents';
 import { useRestoreRevision } from '../hooks/useRestoreRevision';
@@ -408,6 +409,28 @@ export default function AgentBuilder() {
     () => allAgents.filter((a) => String(a.id) !== String(id)),
     [allAgents, id],
   );
+
+  /* The tool catalogue, so the visibility picker lists what this agent's
+     grants actually unlock rather than a copy of the runtime's table that
+     would drift the first time a tool is added. */
+  const { data: catalogue } = useQuery({
+    queryKey: ['agent-builder', 'tool-catalogue'],
+    queryFn: () => toolsService.catalogue(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const grants = cfg.tools;
+  const grantedTools = useMemo(() => {
+    const categories = (catalogue?.categories ?? []).filter(
+      (c) => c.grantBacked && grants[c.key as keyof typeof grants],
+    );
+    return categories.flatMap((c) =>
+      c.tools.filter((t) => !t.alwaysAvailable && !t.unserved).map((t) => ({
+        id: t.name,
+        label: t.displayName,
+        hint: `${c.label} · ${t.description.split('. ')[0]}`,
+      })),
+    );
+  }, [catalogue, grants]);
 
   const { data: skills = [] } = useQuery({
     queryKey: ['agent-builder', 'skills'],
@@ -1186,6 +1209,23 @@ export default function AgentBuilder() {
                   </div>
                 )}
               </Knob>
+              {grantedTools.length > 0 && (
+                <Knob path="toolScope" touched={touched} label="Which tools"
+                      hint={cfg.toolScope.length ? `${cfg.toolScope.length} of ${grantedTools.length}` : 'all of them'}>
+                  <MultiSelect
+                    options={grantedTools}
+                    value={cfg.toolScope}
+                    onChange={(v) => set('toolScope', v)}
+                    placeholder="Every tool the switches above unlock"
+                    searchPlaceholder="Search tools…"
+                    emptyText="Turn a tool group on first."
+                  />
+                  <p className="mt-1.5 px-2 text-[11px] text-muted-foreground">
+                    Leave empty for everything the switches above unlock. Naming a few keeps
+                    the agent&rsquo;s toolbox small, which is what keeps it on task.
+                  </p>
+                </Knob>
+              )}
               {cfg.tools.browser && (
                 <Knob path="browserDomains" touched={touched} label="Sites it may act on"
                       hint={cfg.browserDomains.length ? `${cfg.browserDomains.length} site${cfg.browserDomains.length === 1 ? '' : 's'}` : 'read only'}>

@@ -125,6 +125,9 @@ export interface AgentConfig {
   /** Sites `browser_act` may click and type on (hostnames; subdomains
    *  included). Empty: it may browse but never act. */
   browserDomains: string[];
+  /** Exactly which built-in tools this agent may use. Empty: every tool its
+   *  grants unlock — which is what every agent saved before this means. */
+  toolScope: string[];
   /** Skill ids, not titles — a title is not a stable reference. */
   skills: number[];
   useEnvironment: boolean;   // time / place
@@ -244,6 +247,7 @@ export const DEFAULT_AGENT: AgentConfig = {
   skills: [],
   delegatesTo: [],
   browserDomains: [],
+  toolScope: [],
   useEnvironment: false,
 
   outputContract: '',
