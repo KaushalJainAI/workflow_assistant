@@ -7,6 +7,7 @@ import ThemeSync from './components/layout/ThemeSync';
 import { useAuth } from './contexts/authState';
 import Sidebar from './components/layout/Sidebar';
 import { useHITLReminders } from './hooks/useHITLReminders';
+import { useWebPush } from './hooks/useWebPush';
 import { ImagineProvider } from './contexts/ImagineContext';
 import { ImagineGlobalTracker } from './components/imagine/ImagineGlobalTracker';
 
@@ -83,6 +84,10 @@ const Layout = () => {
   // notifications for escalation/hourly/digest nudges and keeps the ['hitl']
   // cache (Sidebar badge, Inbox, Overview) fresh.
   useHITLReminders(isAuthenticated);
+  // Registers the Web Push service worker so subscribed browsers get OS
+  // notifications with every tab closed. Subscription itself is opt-in in
+  // Settings (ReminderPreferences) — this only registers the worker.
+  useWebPush(isAuthenticated);
 
   return (
     <div className="flex h-viewport w-full bg-background text-foreground overflow-hidden">

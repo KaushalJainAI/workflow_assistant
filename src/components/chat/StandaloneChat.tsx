@@ -81,6 +81,17 @@ import FeedbackControl from '../runs/FeedbackControl';
 import { SendButton } from '../ui/SendButton';
 import { apiErrorMessage } from '../../lib/apiError';
 import { nextChatMode, toChatMode } from '../../lib/chatMode';
+import CommandPalette from './CommandPalette';
+import CommandCard from './CommandCard';
+import { useCommands } from '../../hooks/useCommands';
+import commandsService from '../../api/commands';
+import {
+  buildCommandPayload,
+  findCommand,
+  splitCommandLine,
+  type CommandChip as CommandChipData,
+  type CommandDef,
+} from '../../lib/commands';
 
 /** Rough size hint for a reasoning trace, so the toggle says what it will cost to open. */
 function formatWordCount(text: string): string {
@@ -151,6 +162,20 @@ export default function StandaloneChat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   /** Session ids whose turn is still streaming, including backgrounded ones. */
   const runningKeys = useRunningChatKeys();
+
+  // --- Slash commands (P10, §18) ---
+  // The palette opens on a leading `/`; chips carry resolved ids so the
+  // request never re-resolves a name already chosen. Client-kind commands
+  // run in the browser, action-kind through `/commands/run/`, turn-kind as
+  // a normal streamed turn with `command` attached.
+  const { commands, refetch: refetchCommands } = useCommands({ enabled: !isGuest });
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [pickedCommand, setPickedCommand] = useState<CommandDef | null>(null);
+  const [commandChips, setCommandChips] = useState<CommandChipData[]>([]);
+  const [commandArgText, setCommandArgText] = useState('');
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  void refetchCommands;
 
   const queryClient = useQueryClient();
   const { data: conversations = [], refetch: loadHistory } = useQuery({
@@ -972,6 +997,119 @@ export default function StandaloneChat() {
     }
   };
 
+  /**
+   * Client-kind commands run in the browser: settings, panels, navigation.
+   * No model call. Each is one branch here rather than a second registry,
+   * because the behaviour is UI affordances the server cannot perform — and
+   * the *listing* still comes from the server, so `/help` stays complete.
+   */
+  const runClientCommand = async (command: CommandDef, rest: string) => {
+    const arg = rest.trim();
+    switch (command.name) {
+      case 'new':
+      case 'clear':
+        startNewConversation();
+        setInput('');
+        break;
+      case 'mode': {
+        const level = arg.toLowerCase();
+        if (level === 'ask' || level === 'auto' || level === 'plan') {
+          await setMode(level);
+        } else {
+          // Bare `/mode`: cycle like Shift+Tab rather than refusing.
+          cycleMode();
+        }
+        setInput('');
+        break;
+      }
+      case 'model':
+        setShowModelDropdown(true);
+        textareaRef.current?.focus();
+        break;
+      case 'effort':
+        setShowModelDropdown(true);
+        textareaRef.current?.focus();
+        break;
+      case 'file':
+        // `/file <path>` attaches by path: the chip, not an upload.
+        if (arg) {
+          toast.info(`Attaching ${arg} — send a message to use it.`);
+        }
+        setInput('');
+        break;
+      case 'code': {
+        const label = commandChips[0]?.label ?? arg;
+        window.location.href = label ? `/code?project=${encodeURIComponent(label)}` : '/code';
+        break;
+      }
+      case 'approvals':
+        window.location.href = '/overview';
+        break;
+      case 'connect': {
+        const label = commandChips[0]?.label ?? arg;
+        window.location.href = label ? `/connections?open=${encodeURIComponent(label)}` : '/connections';
+        break;
+      }
+      case 'help':
+        toast.info('Every command is listed in the panel below.', { duration: 4000 });
+        setInput('/help ');
+        break;
+      default:
+        // Unknown client command: the server listing is the authority, so a
+        // branch missing here is a client behind the server — fall through to
+        // a normal send rather than dropping the text.
+        await handleSend(arg ? `/${command.name} ${arg}` : `/${command.name}`);
+        return;
+    }
+    setPickedCommand(null);
+    setCommandChips([]);
+    setCommandArgText('');
+    setPaletteOpen(false);
+  };
+
+  /**
+   * Confirm-sheet decisions: mission start, schedule arm, memory forget,
+   * publish. Pressing the primary button is the approval — the typed command
+   * covered nothing after the sheet.
+   */
+  const runCommandConfirm = async (
+    name: string,
+    baseArgs: Record<string, unknown>,
+    confirm: Record<string, unknown>,
+  ) => {
+    setConfirmBusy(true);
+    try {
+      if (confirm.__forget) {
+        await commandsService.confirm('memory_forget', {}, { memory_id: confirm.memory_id });
+        toast.success('Forgotten.');
+        return;
+      }
+      if (confirm.__preview) {
+        const preview = await commandsService.run(
+          'schedule',
+          { ...baseArgs, cron: confirm.cron },
+          {},
+          {},
+        );
+        const card = (preview.card ?? {}) as { preview?: { description?: string; error?: string } };
+        toast.info(card.preview?.description ?? card.preview?.error ?? 'Schedule previewed.');
+        return;
+      }
+      const result = await commandsService.confirm(name, baseArgs, confirm);
+      if (name === 'goal' && result.mission_id) {
+        toast.success(`Mission #${String(result.mission_id)} started.`);
+      } else if (name === 'schedule') {
+        toast.success('Schedule armed.');
+      } else {
+        toast.success('Done.');
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not confirm.'));
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
+
   const handleSend = async (overrideInput?: string) => {
     const textToSend = overrideInput ?? input;
     if (!textToSend.trim()) return;
@@ -981,6 +1119,22 @@ export default function StandaloneChat() {
     }
 
     const intentToSend = activeIntent;
+
+    // A command typed out in full and sent without the palette is parsed by
+    // the backend. Client-kind commands never reach the turn: they run here.
+    const parsed = !isGuest ? splitCommandLine(textToSend) : null;
+    const typedCommand = parsed ? findCommand(parsed.name, commands) : null;
+    if (parsed && !typedCommand) {
+      // Unknown `/word`: a 400-quality message under the input, text left in
+      // place — never sent to the model as plain text.
+      setCommandError(`No command called '/${parsed.name}'. Try /help.`);
+      return;
+    }
+    if (typedCommand && typedCommand.kind === 'client') {
+      setCommandError(null);
+      await runClientCommand(typedCommand, parsed!.rest);
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now(),
@@ -1080,6 +1234,15 @@ export default function StandaloneChat() {
         const reference = activeReference ? { message_id: activeReference.messageId, snippet: activeReference.textSnippet } : undefined;
         const sessionId = currentSessionId;
 
+        // A picked or typed turn/action command rides as structured input —
+        // the backend resolves it (chips carry ids, so a chosen name is never
+        // re-parsed). Client commands were handled above and never reach here.
+        const commandPayload = pickedCommand
+          ? buildCommandPayload(pickedCommand, commandChips, commandArgText || textToSend)
+          : typedCommand
+            ? { name: typedCommand.name, args: {}, text: parsed!.rest }
+            : undefined;
+
         // Started, not awaited: the run owns the stream from here. Frames reach
         // this component through the subscription effect, which is also what
         // re-attaches after a page switch.
@@ -1097,10 +1260,18 @@ export default function StandaloneChat() {
               llmModel,
               undefined,
               undefined,
-              effortToSend
+              effortToSend,
+              commandPayload ? { command: commandPayload } : undefined
             ),
           meta,
         );
+        // A sent command is consumed: the transcript chip comes from the
+        // server's `metadata.command`, not from composer state.
+        setPickedCommand(null);
+        setCommandChips([]);
+        setCommandArgText('');
+        setPaletteOpen(false);
+        setCommandError(null);
       }
     } catch (err) {
       // Only session creation can throw here; stream failures surface as a
@@ -1619,6 +1790,15 @@ export default function StandaloneChat() {
 
                     <div className="w-full min-w-0 space-y-3">
 
+                      {/* A resolved command: the chip, not expanded text. */}
+                      {(message.metadata as { command?: { name?: string; args?: Record<string, unknown> } })?.command?.name && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex min-h-[28px] items-center rounded-md bg-primary/10 px-2 py-1 font-mono text-[12px] font-bold text-primary">
+                            /{String((message.metadata as { command?: { name?: string } }).command!.name)}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Query as heading / answer as body. break-words so a
                           long URL or token wraps instead of pushing the column
                           past the viewport on a phone. */}
@@ -2035,6 +2215,34 @@ export default function StandaloneChat() {
                           <ChartArtifact key={`${message.id}-chart-${i}`} chart={chart} />
                         ))}
 
+                      {/* Command cards: mission, status, cost, memory,
+                          findings, confirm sheets. Stored on the message so
+                          a reopened conversation replays them. */}
+                      {(message.metadata as { command_card?: { type?: string } & Record<string, unknown> })?.command_card?.type && (
+                        <CommandCard
+                          card={(message.metadata as { command_card: { type: string } & Record<string, unknown> }).command_card}
+                          busy={confirmBusy}
+                          onConfirm={(confirm) => {
+                            const cmd = (message.metadata as { command?: { name?: string; args?: Record<string, unknown> } }).command;
+                            if (cmd?.name) void runCommandConfirm(cmd.name, cmd.args ?? {}, confirm);
+                          }}
+                          onNavigate={(path) => { window.location.href = path; }}
+                        />
+                      )}
+
+                      {/* The delegated run's card, persisted on the message. */}
+                      {(message.metadata as { agent_run?: { agent_name?: string; execution_id?: string; status?: string } })?.agent_run?.execution_id && (
+                        <CommandCard
+                          card={{
+                            type: 'agent_run',
+                            agent_name: (message.metadata as { agent_run?: { agent_name?: string } }).agent_run?.agent_name ?? 'Agent',
+                            execution_id: (message.metadata as { agent_run?: { execution_id?: string } }).agent_run?.execution_id ?? '',
+                            status: (message.metadata as { agent_run?: { status?: string } }).agent_run?.status ?? 'running',
+                          }}
+                          onNavigate={(path) => { window.location.href = path; }}
+                        />
+                      )}
+
                       
                       {/* Both roles now start at the same left edge, so the
                           actions do too. The old `justify-end` belonged to the
@@ -2248,6 +2456,30 @@ export default function StandaloneChat() {
                         {live.charts.map((chart, i) => (
                           <ChartArtifact key={`live-chart-${i}`} chart={chart} />
                         ))}
+
+                        {/* The delegated run's card + command cards, live. */}
+                        {live.agentRun?.execution_id && (
+                          <CommandCard
+                            card={{
+                              type: 'agent_run',
+                              agent_name: live.agentRun.agent_name,
+                              execution_id: live.agentRun.execution_id,
+                              status: live.agentRun.status,
+                            }}
+                            onNavigate={(path) => { window.location.href = path; }}
+                          />
+                        )}
+                        {live.commandCard?.type && (
+                          <CommandCard
+                            card={live.commandCard}
+                            busy={confirmBusy}
+                            onConfirm={(confirm) => {
+                              const cmd = pickedCommand;
+                              if (cmd) void runCommandConfirm(cmd.name, {}, confirm);
+                            }}
+                            onNavigate={(path) => { window.location.href = path; }}
+                          />
+                        )}
 
                         {/* Live Activity Timeline */}
                         {live.activity.length > 0 && (
@@ -2733,6 +2965,27 @@ export default function StandaloneChat() {
                     standard focus ring says "focused" in the same language as
                     every other input in the app. */}
                 <div className="relative flex flex-col bg-card border border-border rounded-lg shadow-sm transition-colors duration-150 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring">
+                  {/* The `/` palette: fuzzy match, ↑/↓, Enter/Tab, Esc. */}
+                  {!isGuest && (
+                    <CommandPalette
+                      open={paletteOpen && !isLoading}
+                      commands={commands}
+                      query={(splitCommandLine(input)?.name ?? '').replace(/^\//, '') || (input.replace(/^\s+/, '').startsWith('/') ? input.replace(/^\s+\//, '').replace(/^\//, '').split(/\s/)[0] ?? '' : '')}
+                      onPick={(command) => {
+                        setPickedCommand(command);
+                        setCommandChips([]);
+                        setCommandArgText('');
+                        // Leave the task text in the box after the name; the
+                        // payload carries the structured command, the text
+                        // carries what the user typed to say.
+                        const rest = splitCommandLine(input)?.rest ?? '';
+                        setInput(rest ? `/${command.name} ${rest}` : `/${command.name} `);
+                        setPaletteOpen(false);
+                        textareaRef.current?.focus();
+                      }}
+                      onClose={() => setPaletteOpen(false)}
+                    />
+                  )}
                   {/* Mode picker — Ask · Auto · Plan. Auto is amber on purpose:
                       a mode that acts without asking must not look like the
                       default. Hidden for guests, who run one pinned mode. */}
@@ -2767,14 +3020,76 @@ export default function StandaloneChat() {
                   )}
                   {/* Textarea row */}
                   <div className="p-4 pb-0">
+                    {/* Picked command + chips: the structured input, shown as
+                        chips carrying ids — never re-resolved names. */}
+                    {pickedCommand && (
+                      <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
+                        <span className="inline-flex min-h-[28px] items-center rounded-md bg-primary/10 px-2 py-1 font-mono text-[12px] font-bold text-primary">
+                          /{pickedCommand.name}
+                        </span>
+                        {commandChips.map((chip) => (
+                          <span
+                            key={`${chip.arg}:${chip.id}`}
+                            className="inline-flex min-h-[28px] items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-[12px] font-medium text-foreground"
+                          >
+                            {chip.label}
+                            <button
+                              onClick={() => setCommandChips((prev) => prev.filter((c) => c !== chip))}
+                              aria-label={`Remove ${chip.label}`}
+                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <button
+                          onClick={() => {
+                            setPickedCommand(null);
+                            setCommandChips([]);
+                            setCommandArgText('');
+                            setPaletteOpen(false);
+                          }}
+                          aria-label="Clear command"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    {/* A typed command that failed to parse: 400 under the
+                        input, text left in place — never a model turn. */}
+                    {commandError && (
+                      <div className="mb-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
+                        <p className="flex-1 text-[12px] text-destructive">{commandError}</p>
+                        <button
+                          onClick={() => setCommandError(null)}
+                          aria-label="Dismiss"
+                          className="shrink-0 rounded p-0.5 text-destructive/60 hover:bg-destructive/10"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                     <textarea
                       id="chat-input-textarea"
                       name="chat-input"
                       ref={textareaRef}
                       value={input}
-                      onChange={(e) => setInput(e.target.value)}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setInput(next);
+                        // `/` at the start opens the palette; anywhere else
+                        // is plain text (a path mid-sentence never triggers).
+                        if (!isGuest && !isLoading) {
+                          const atStart = next.replace(/^\s+/, '').startsWith('/');
+                          setPaletteOpen(atStart && !pickedCommand);
+                          if (atStart) setCommandError(null);
+                        }
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
+                          // With the palette open, Enter picks the command.
+                          if (paletteOpen) return;
                           e.preventDefault();
                           handleSend();
                         }
@@ -2782,6 +3097,10 @@ export default function StandaloneChat() {
                         if (e.key === 'Tab' && e.shiftKey && !isGuest) {
                           e.preventDefault();
                           cycleMode();
+                        }
+                        if (e.key === 'Escape' && paletteOpen) {
+                          e.preventDefault();
+                          setPaletteOpen(false);
                         }
                       }}
                       onPaste={(e) => {

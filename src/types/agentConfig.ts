@@ -27,6 +27,11 @@ export type OutputContract = '' | 'research' | 'extraction';
  */
 export type ConnectorMode = 'all' | 'read' | 'selected';
 
+/** Per-tool rule. Unset (absent key) means inherit: grants, `toolScope`
+ *  and the autonomy level decide, which is what every agent saved before
+ *  this means. */
+export type ToolPermissionMode = 'allow' | 'ask' | 'deny';
+
 /** A bare id is the legacy shape and means `all`. */
 export type ConnectorChoice =
   | number
@@ -96,6 +101,18 @@ export interface AgentConfig {
     /** The user's own configured MCP servers. Off by default: these reach
      *  real systems under the user's credentials. */
     mcp: boolean;
+    /** Transcribe recordings; speak text into audio files. Needs file access. */
+    voice: boolean;
+    /** Send documents out for e-signature. Pauses before anything goes out. */
+    esign: boolean;
+    /** Read, draft and send on Slack, WhatsApp, Teams and SMS. */
+    talk: boolean;
+    /** Query SQL databases; write only where allowed. */
+    data: boolean;
+    /** Call HTTP APIs through one generic caller. */
+    api: boolean;
+    /** Run commands and long jobs on the workspace machine. */
+    compute: boolean;
     /** May it hand work to the user's other agents. Scoped by `delegatesTo`:
      *  an agent that can delegate to one with wider tools has those tools by
      *  proxy, so the grant alone was never the whole answer. */
@@ -125,9 +142,31 @@ export interface AgentConfig {
   /** Sites `browser_act` may click and type on (hostnames; subdomains
    *  included). Empty: it may browse but never act. */
   browserDomains: string[];
+  /** Vault logins `browser_act` may fill. Empty: none. */
+  browserLogins: string[];
+  /** Who unattended runs may message. Unattended sends outside it are refused. */
+  recipients: string[];
+  /** Database rows this agent's runs may touch. Empty means none. */
+  dataConnections: number[];
+  /** HTTP APIs this agent's runs may reach. Empty means none. */
+  apiConnections: Array<number | { id: number; mode: 'read' | 'all' }>;
+  /** Extra hosts databases may reach. */
+  dbHosts: string[];
+  /** Extra hosts APIs may reach. */
+  apiHosts: string[];
+  /** Extra hosts the workspace may reach. */
+  workspaceEgress: string[];
+  /** Code projects this agent's runs may touch. Empty means none. */
+  codeProjects: number[];
   /** Exactly which built-in tools this agent may use. Empty: every tool its
    *  grants unlock — which is what every agent saved before this means. */
   toolScope: string[];
+  /** Per-tool allow/ask/deny, keyed by built-in tool name. Empty: the grants,
+   *  `toolScope` and the autonomy level decide alone. `allow` runs without
+   *  asking, `ask` pauses even where autonomy would not, `deny` withholds
+   *  the tool entirely — and none of them can reach past a grant that is
+   *  off. Connector tools are governed by `connectors`, not here. */
+  toolPermissions: Record<string, ToolPermissionMode>;
   /** Skill ids, not titles — a title is not a stable reference. */
   skills: number[];
   useEnvironment: boolean;   // time / place
@@ -239,6 +278,12 @@ export const DEFAULT_AGENT: AgentConfig = {
     browser: false,
     rag: true,
     mcp: false,
+    voice: false,
+    esign: false,
+    talk: false,
+    data: false,
+    api: false,
+    compute: false,
     subAgents: false,
   },
 
@@ -247,7 +292,16 @@ export const DEFAULT_AGENT: AgentConfig = {
   skills: [],
   delegatesTo: [],
   browserDomains: [],
+  browserLogins: [],
+  recipients: [],
+  dataConnections: [],
+  apiConnections: [],
+  dbHosts: [],
+  apiHosts: [],
+  workspaceEgress: [],
+  codeProjects: [],
   toolScope: [],
+  toolPermissions: {},
   useEnvironment: false,
 
   outputContract: '',

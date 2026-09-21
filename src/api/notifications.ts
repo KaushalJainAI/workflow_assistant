@@ -43,6 +43,24 @@ export interface HITLReminderPayload {
   action_url?: string;
 }
 
+/** One browser subscribed for closed-browser push (Web Push). */
+export interface PushSubscriptionRow {
+  id: number;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string;
+  created_at: string;
+}
+
+/** What PushManager.subscribe() yields, flattened for the API. */
+export interface PushSubscriptionPayload {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string;
+}
+
 export const notificationsService = {
   async getNotifications(): Promise<Notification[]> {
     const response = await apiClient.get('/notifications/');
@@ -68,5 +86,25 @@ export const notificationsService = {
   async updatePreferences(patch: Partial<NotificationPreferences>): Promise<NotificationPreferences> {
     const response = await apiClient.patch<NotificationPreferences>('/notifications/preferences/', patch);
     return response.data;
+  },
+
+  /** VAPID public key + whether the server can push with tabs closed. */
+  async getVapidKey(): Promise<{ public_key: string; enabled: boolean }> {
+    const response = await apiClient.get('/notifications/push/vapid-key/');
+    return response.data;
+  },
+
+  async listPushSubscriptions(): Promise<PushSubscriptionRow[]> {
+    const response = await apiClient.get('/notifications/push/');
+    return asArray<PushSubscriptionRow>(response.data);
+  },
+
+  async subscribePush(sub: PushSubscriptionPayload): Promise<PushSubscriptionRow> {
+    const response = await apiClient.post('/notifications/push/subscribe/', sub);
+    return response.data;
+  },
+
+  async unsubscribePush(endpoint: string): Promise<void> {
+    await apiClient.post('/notifications/push/unsubscribe/', { endpoint });
   },
 };

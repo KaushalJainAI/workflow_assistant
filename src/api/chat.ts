@@ -352,6 +352,10 @@ export const chatService = {
       /** Decline a paused call and let the turn carry on without it. */
       rejectToolCall?: string;
       rejectReason?: string;
+      /** A slash command: `{ name, args, text }`. Chips carry ids. */
+      command?: { name: string; args?: Record<string, unknown>; text?: string };
+      /** Regenerate this answer with the same command attached. */
+      regenerateOf?: number;
     },
   ): Promise<void> {
     const body: Record<string, unknown> = { content };
@@ -369,6 +373,11 @@ export const chatService = {
       body.reject_tool_call = extras.rejectToolCall;
       if (extras.rejectReason) body.reject_reason = extras.rejectReason;
     }
+    // A slash command the palette resolved. The backend re-resolves it —
+    // chips carry ids so a chosen name is never re-parsed — and a failure
+    // is a 400 under the input, never a model turn.
+    if (extras?.command) body.command = extras.command;
+    if (extras?.regenerateOf != null) body.regenerate_of = extras.regenerateOf;
 
     return streamSse({
       path: `/chat/sessions/${sessionId}/message/stream/`,

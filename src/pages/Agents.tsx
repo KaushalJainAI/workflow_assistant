@@ -45,6 +45,11 @@ const TOOL_NAMES: Record<string, string> = {
   browser: 'Browser',
   rag: 'Knowledge base',
   mcp: 'Connectors',
+  voice: 'Voice',
+  esign: 'E-sign',
+  talk: 'Messaging',
+  data: 'Databases',
+  api: 'APIs',
   subAgents: 'Other agents',
 };
 

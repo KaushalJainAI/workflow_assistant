@@ -18,6 +18,7 @@ import {
   deviceNotificationState,
   requestDeviceNotificationPermission,
 } from '../../hooks/useHITLReminders';
+import { useWebPush } from '../../hooks/useWebPush';
 import { cn } from '../../lib/utils';
 
 /** 'HH:MM:SS' from the API ↔ 'HH:MM' for <input type="time">. */
@@ -82,6 +83,7 @@ function Row({
 export default function ReminderPreferences() {
   const queryClient = useQueryClient();
   const [permission, setPermission] = useState(deviceNotificationState());
+  const webPush = useWebPush(true);
 
   const { data: prefs, isLoading } = useQuery({
     queryKey: ['notification-preferences'],
@@ -126,6 +128,26 @@ export default function ReminderPreferences() {
 
   const deviceOn = prefs.device_notifications_enabled && permission === 'granted';
 
+  const toggleBackground = async (next: boolean) => {
+    if (next) {
+      // Must happen inside the click — browsers ignore ungated prompts, and
+      // the push subscription needs the grant before it exists.
+      const ok = await webPush.enable();
+      setPermission(deviceNotificationState());
+      if (!ok) {
+        if (!webPush.supported) {
+          toast.error('This browser has no background-notification support, or the page is not on HTTPS.');
+        } else if (!webPush.serverEnabled) {
+          toast.error('Background push is not set up on the server yet (VAPID keys missing).');
+        } else {
+          toast.error('Your browser is blocking notifications for this site. Allow them in site settings, then try again.');
+        }
+      }
+    } else {
+      await webPush.disable();
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -158,6 +180,24 @@ export default function ReminderPreferences() {
           checked={deviceOn}
           disabled={permission === 'unsupported' || save.isPending}
           onChange={enableDevice}
+        />
+      </Row>
+
+      <Row
+        icon={<Bell className="w-4 h-4 text-sky-500" />}
+        title="Background notifications"
+        description={
+          !webPush.supported
+            ? 'Needs HTTPS (or localhost) plus a browser with push support.'
+            : !webPush.serverEnabled
+              ? 'The server has no push keys yet — ask whoever runs it to set VAPID keys.'
+              : 'OS notification even with every tab closed. Same nudges as above, delivered by the browser push service.'
+        }
+      >
+        <Toggle
+          checked={webPush.subscribed}
+          disabled={!webPush.supported || !webPush.serverEnabled || webPush.busy}
+          onChange={toggleBackground}
         />
       </Row>
 

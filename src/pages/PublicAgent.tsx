@@ -54,6 +54,11 @@ const GRANT_COPY: Record<string, string> = {
   browser: 'Use a web browser on allowed sites',
   rag: 'Search a knowledge base',
   mcp: 'Use your connections',
+  voice: 'Transcribe audio and speak text',
+  esign: 'Send documents for e-signature',
+  talk: 'Message on Slack, WhatsApp, Teams and SMS',
+  data: 'Query databases',
+  api: 'Call HTTP APIs',
   subAgents: 'Delegate to your other agents',
 };
 

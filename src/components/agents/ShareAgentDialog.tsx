@@ -35,7 +35,6 @@ const GRANT_COPY: Record<string, string> = {
   webSearch: 'Search the web',
   scrape: 'Open and read web pages',
   codeExecution: 'Run Python in a sandbox',
-  shell: 'Run shell commands',
   fileOps: 'Read and write files',
   office: 'Create PowerPoint, Excel and Word files',
   media: 'Generate images on your OpenRouter account',
@@ -43,6 +42,13 @@ const GRANT_COPY: Record<string, string> = {
   browser: 'Use a web browser on allowed sites',
   rag: 'Search a knowledge base',
   mcp: 'Use connections',
+  voice: 'Transcribe audio and speak text',
+  esign: 'Send documents for e-signature',
+  talk: 'Message on Slack, WhatsApp, Teams and SMS',
+  data: 'Query databases',
+  api: 'Call HTTP APIs',
+  compute: 'Run commands on a workspace',
+  shell: 'Edit code in projects',
   subAgents: 'Delegate to other agents',
 };
 

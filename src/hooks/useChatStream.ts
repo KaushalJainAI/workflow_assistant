@@ -88,6 +88,20 @@ export interface PendingToolCall {
   detail?: ToolCallDetail | null;
 }
 
+/** A delegated agent run started by `/agent`, while it is going. */
+export interface LiveAgentRun {
+  agent_id: number;
+  agent_name: string;
+  execution_id: string;
+  status: string;
+}
+
+/** A command card: mission, status, cost, memory, findings, confirm sheet. */
+export interface LiveCommandCard {
+  type: string;
+  [key: string]: unknown;
+}
+
 /** One tool call as a person reads it. Built server-side, never in a renderer. */
 export interface ToolCallDetail {
   title: string;
@@ -117,6 +131,10 @@ export interface ChatStreamState {
   files: FileCardData[];
   blockedAttachments: { message: string; items: BlockedAttachment[] } | null;
   pendingToolCall: PendingToolCall | null;
+  /** `/agent` delegation while it runs: the run card. Replaced wholesale. */
+  agentRun: LiveAgentRun | null;
+  /** The latest command card (mission, status, cost, findings, confirm). */
+  commandCard: LiveCommandCard | null;
 }
 
 const EMPTY: ChatStreamState = {
@@ -134,6 +152,8 @@ const EMPTY: ChatStreamState = {
   files: [],
   blockedAttachments: null,
   pendingToolCall: null,
+  agentRun: null,
+  commandCard: null,
 };
 
 type Action =
@@ -235,6 +255,23 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
           detail: (event.detail as ToolCallDetail | undefined) ?? null,
         },
       };
+    case 'agent_run': {
+      const run = (event.agent_run ?? event) as Record<string, unknown>;
+      return {
+        ...state,
+        agentRun: {
+          agent_id: Number(run['agent_id'] ?? 0) || 0,
+          agent_name: str(run['agent_name']),
+          execution_id: str(run['execution_id']),
+          status: str(run['status']) || 'running',
+        },
+      };
+    }
+    case 'command_card':
+      return {
+        ...state,
+        commandCard: (event.card ?? event) as LiveCommandCard,
+      };
     case 'done':
       // The turn is over, so everything transient goes. Two survive: a
       // blocked-attachment notice describes the turn that just finished, and an
@@ -243,6 +280,11 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
         ...EMPTY,
         blockedAttachments: state.blockedAttachments,
         pendingToolCall: state.pendingToolCall,
+        // The run card and the command card describe the turn that just
+        // finished, like the blocked-attachment notice — a reload reads them
+        // from the persisted message, but the live view keeps them too.
+        agentRun: state.agentRun,
+        commandCard: state.commandCard,
       };
     case 'error':
       return { ...state, status: null };

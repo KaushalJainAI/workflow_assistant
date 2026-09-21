@@ -39,6 +39,7 @@ import {
   STATUS_COPY, CONTRACT_COPY, CONNECTOR_MODE_COPY,
   type AgentConfig, type Autonomy, type FileAccess, type AgentStatus,
   type OutputContract, type ConnectorChoice, type ConnectorMode,
+  type ToolPermissionMode,
 } from '../types/agentConfig';
 import RevisionEntry from '../components/agents/RevisionEntry';
 import RunAgentDialog from '../components/agents/RunAgentDialog';
@@ -46,6 +47,10 @@ import ConnectorToolPicker from '../components/agents/ConnectorToolPicker';
 import AgentScorecard from '../components/agents/AgentScorecard';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { propose, applyChanges, type Change } from '../lib/agentProposals';
+import {
+  TOOL_PERMISSION_COPY, countToolPermissions, pruneToolPermissions,
+  toggleToolPermission,
+} from '../lib/toolPermissions';
 import { SendButton } from '../components/ui/SendButton';
 import { Switch } from '../components/ui/Switch';
 import ScheduleEditor from '../components/schedules/ScheduleEditor';
@@ -314,8 +319,9 @@ function Toggle({ on, onChange, label, hint }: {
   );
 }
 
-/** Grants the runtime does not serve (`runtime.UNSERVED_GRANTS`). */
-const UNSERVED_TOOLS = new Set<string>(['shell']);
+/** Grants the runtime does not serve (`runtime.UNSERVED_GRANTS`). Empty since
+ *  P6 served `shell` — kept so the next unserved grant has a named place. */
+const UNSERVED_TOOLS = new Set<string>([]);
 
 /** Why another agent cannot run this one, or null if it can. */
 function delegationBlocker(a: { status?: string; allowUnattended?: boolean }): string | null {
@@ -638,6 +644,11 @@ export default function AgentBuilder() {
     setCfg((c) => ({ ...c, [k]: v }));
   const setTool = (k: keyof AgentConfig['tools'], v: boolean) =>
     setCfg((c) => ({ ...c, tools: { ...c.tools, [k]: v } }));
+  /* One tool's allow/ask/deny. Picking the active mode clears it back to
+     inherit (unset) — see `toggleToolPermission` — so an untouched tool
+     keeps meaning "grants, toolScope and autonomy decide". */
+  const setToolPermission = (tool: string, mode: ToolPermissionMode) =>
+    setCfg((c) => ({ ...c, toolPermissions: toggleToolPermission(c.toolPermissions, tool, mode) }));
 
   /* The chat pane is a *model* configuring the agent, with the local rule table
      as its fallback.
@@ -706,8 +717,17 @@ export default function AgentBuilder() {
       return;
     }
     // Persist the pair actually shown in the pickers, not the empty string
-    // that was there before the catalogue loaded.
-    save.mutate({ ...cfg, provider: displayProvider, model: effectiveModel });
+    // that was there before the catalogue loaded. Per-tool rules for tools
+    // the switches no longer unlock are pruned for the same reason: the
+    // backend would ignore them (grant off wins), and storing dead rules is
+    // a screen that overpromises.
+    save.mutate({
+      ...cfg,
+      provider: displayProvider,
+      model: effectiveModel,
+      toolPermissions: pruneToolPermissions(
+        cfg.toolPermissions, grantedTools.map((t) => t.id)),
+    });
   };
 
   // What actually happened, once there is something to report. Before the first
@@ -1122,7 +1142,6 @@ export default function AgentBuilder() {
               </p>
               {([
                 ['codeExecution', 'Run Python', 'Sandboxed interpreter for calculation and parsing.'],
-                ['shell', 'Run shell commands', 'Powerful — leave off unless it needs it.'],
                 ['webSearch', 'Web search', 'Look things up it was not given.'],
                 ['scrape', 'Read web pages', 'Fetch and extract from a URL.'],
                 ['fileOps', 'Read and write files', 'Your own files, within the access level set above.'],
@@ -1132,6 +1151,13 @@ export default function AgentBuilder() {
                 ['browser', 'Use a browser', 'Read JavaScript pages; click and type only on the sites listed below.'],
                 ['rag', 'Knowledge base search', 'Retrieve from your indexed documents.'],
                 ['mcp', 'MCP servers (Plugins)', 'The tools from your connected plugins (MCP servers), using your connectors.'],
+                ['voice', 'Transcribe and speak', 'Transcripts from recordings; audio files from text. Needs file access.'],
+                ['esign', 'E-signatures', 'Send documents out for signature. Pauses before anything goes out.'],
+                ['talk', 'Messaging', 'Read, draft and send on Slack, WhatsApp, Teams and SMS.'],
+                ['data', 'Databases', 'Query SQL databases; write only where allowed.'],
+                ['api', 'API calls', 'Call HTTP APIs through one generic caller.'],
+                ['compute', 'Compute', 'Run commands and long jobs on your workspace machine.'],
+                ['shell', 'Code in projects', 'Read, test, commit, open a PR — in its projects below.'],
                 ['subAgents', 'Delegate to other agents', 'Hand whole tasks to agents you have built. Narrow which ones below.'],
               ] as const).map(([k, label, hint]) => (
                 <Knob key={k} path={`tools.${k}`} touched={touched} label="">
@@ -1226,6 +1252,48 @@ export default function AgentBuilder() {
                   <p className="mt-1.5 px-2 text-[11px] text-muted-foreground">
                     Leave empty for everything the switches above unlock. Naming a few keeps
                     the agent&rsquo;s toolbox small, which is what keeps it on task.
+                  </p>
+                </Knob>
+              )}
+              {grantedTools.length > 0 && (
+                <Knob path="toolPermissions" touched={touched} label="Per-tool rules"
+                      hint={(() => {
+                        const n = countToolPermissions(
+                          cfg.toolPermissions, grantedTools.map((t) => t.id));
+                        return n ? `${n} custom` : 'grant + autonomy decides';
+                      })()}>
+                  <div className="space-y-1">
+                    {grantedTools.map((t) => {
+                      const mode = (cfg.toolPermissions ?? {})[t.id];
+                      return (
+                        <div key={t.id}
+                          className="flex flex-wrap items-center gap-2 px-2 py-1.5 rounded border border-border bg-card">
+                          <span className="mr-auto min-w-0">
+                            <span className="block text-[12px] font-medium truncate">{t.label}</span>
+                            <span className="block text-[11px] text-muted-foreground truncate">{t.hint}</span>
+                          </span>
+                          {(['allow', 'ask', 'deny'] as ToolPermissionMode[]).map((m) => (
+                            <button key={m} type="button"
+                              onClick={() => setToolPermission(t.id, m)}
+                              title={mode === m
+                                ? `Back to inherit — ${TOOL_PERMISSION_COPY[m].hint} (click again to clear)`
+                                : TOOL_PERMISSION_COPY[m].hint}
+                              className={`h-6 px-2 rounded border text-[11px] transition-colors ${
+                                mode === m
+                                  ? 'border-primary text-primary bg-primary/10'
+                                  : 'border-input text-muted-foreground hover:text-foreground'
+                              }`}>
+                              {TOOL_PERMISSION_COPY[m].label}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1.5 px-2 text-[11px] text-muted-foreground">
+                    Untouched tools follow the switches and the Safety level below.
+                    Allow skips asking, Ask pauses even where it would not, Deny
+                    removes the tool. Click an active rule again to clear it.
                   </p>
                 </Knob>
               )}

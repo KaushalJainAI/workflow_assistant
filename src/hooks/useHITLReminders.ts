@@ -13,8 +13,9 @@
  *
  * Scope worth being honest about: the browser Notifications API only fires
  * while a tab is open, backgrounded or not. Delivery to a fully closed browser
- * needs Web Push (service worker + VAPID), which this does not implement — the
- * daily email digest is the closed-browser channel.
+ * goes through Web Push (service worker `public/sw.js` + VAPID, subscribed in
+ * Settings via useWebPush) — the daily email digest remains a second
+ * closed-browser channel.
  */
 
 import { useCallback, useEffect, useRef } from 'react';
