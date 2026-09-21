@@ -154,7 +154,7 @@ export default function Imagine() {
         <Palette size={18} className="text-primary shrink-0" />
         <h1 className="text-lg font-semibold truncate">Imagine</h1>
         {viewMode === 'agent' && agent.conversations.length > 0 && (
-          <span className="hidden sm:inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
             {agent.conversations.length} chats
           </span>
         )}

@@ -112,7 +112,7 @@ export default function Evals() {
     queryKey: ['eval', 'quality'],
     queryFn: async () => {
       const { logsService } = await import('../api');
-      return logsService.quality(30) as Promise<Record<string, unknown>>;
+      return logsService.quality(30) as Promise<unknown> as Promise<Record<string, unknown>>;
     },
     staleTime: 60_000,
     enabled: tab === 'quality',

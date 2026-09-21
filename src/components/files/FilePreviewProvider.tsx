@@ -106,7 +106,7 @@ function FileDrawer({ target, onClose }: { target: FileTarget; onClose: () => vo
               className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
             >
               <FolderOpen className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Open in Documents</span>
+              <span>Open in Documents</span>
             </Link>
             <button
               type="button"

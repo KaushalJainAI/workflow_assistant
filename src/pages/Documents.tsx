@@ -746,6 +746,12 @@ export default function Documents() {
                     )}
                   </div>
                   <p className="text-xs font-medium text-muted-foreground truncate">{doc.filename}</p>
+                  {/* The size/chunks/date columns beside this only render from
+                      md up, so phones get the same facts as a second line here
+                      rather than not at all. */}
+                  <p className="text-[11px] text-muted-foreground/80 truncate md:hidden">
+                    {formatSize(doc.file_size)} · {doc.chunk_count} chunks · {formatDate(doc.created_at)}
+                  </p>
                 </div>
                 
                 {status ? (

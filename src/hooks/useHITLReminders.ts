@@ -1,9 +1,15 @@
 /**
- * Turns backend HITL nudges into OS-level notifications.
+ * Turns backend nudges into something the user actually sees.
  *
  * Mounted once in the authenticated Layout. The backend decides *whether* to
  * nudge (escalation ladder, hourly, digest — see notifications/reminders.py);
  * this hook only decides how it surfaces on the device.
+ *
+ * Two surfaces, not one: an in-app toast always fires (sonner is mounted in
+ * App), and an OS-level Notification fires on top when the browser grant is
+ * held. The old version only did the second and returned silently without the
+ * grant — which is why "notifications don't work" out of the box: nobody had
+ * visited Settings to enable them yet.
  *
  * Scope worth being honest about: the browser Notifications API only fires
  * while a tab is open, backgrounded or not. Delivery to a fully closed browser
@@ -13,13 +19,17 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useSocket } from '../lib/websocket';
 import { usePublishHitlSocketLive } from './useHitlPending';
 import type { HITLReminderPayload } from '../api/notifications';
 
-type ReminderMessage = {
+type SocketMessage = {
   type: string;
-  data?: HITLReminderPayload;
+  // `reminder` carries HITLReminderPayload; `new_request` carries the HITL
+  // row ({request_id, title, message}); `notification` carries the generic
+  // Notification row ({title, body|message, action_url}). Read defensively.
+  data?: Record<string, unknown> & Partial<HITLReminderPayload>;
 };
 
 /** Browser support + current grant, without prompting. */
@@ -43,57 +53,85 @@ export async function requestDeviceNotificationPermission(): Promise<Notificatio
   }
 }
 
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
 export function useHITLReminders(enabled: boolean = true) {
   const queryClient = useQueryClient();
   // Collapses repeat nudges for one request onto a single OS notification
   // instead of stacking three toasts over a day.
   const shownRef = useRef<Map<string, Notification>>(new Map());
 
-  const raise = useCallback((payload: HITLReminderPayload) => {
+  const raiseOs = useCallback((title: string, body: string, actionUrl: string, tagKey: string, stage?: number) => {
     if (deviceNotificationState() !== 'granted') return;
-
-    // Keyed by request so a later rung supersedes the earlier one, but tagged
-    // per stage so it still alerts: `renotify` is service-worker-only, and
-    // reusing a tag on the page-level API replaces the notification silently.
-    const key = payload.request_id ? `hitl-${payload.request_id}` : `hitl-${payload.kind}`;
     try {
-      const notification = new Notification(payload.title, {
-        body: payload.body,
-        tag: `${key}-${payload.stage ?? 0}`,
-        requireInteraction: payload.kind !== 'hitl_digest',
-        data: payload,
+      const notification = new Notification(title, {
+        body,
+        tag: `${tagKey}-${stage ?? 0}`,
+        requireInteraction: true,
       });
 
       notification.onclick = () => {
         window.focus();
-        window.location.assign(payload.action_url || '/inbox');
+        window.location.assign(actionUrl);
         notification.close();
       };
 
-      shownRef.current.get(key)?.close();
-      shownRef.current.set(key, notification);
+      shownRef.current.get(tagKey)?.close();
+      shownRef.current.set(tagKey, notification);
     } catch {
       // Some browsers throw on constructing Notification outside a service
-      // worker (notably Android Chrome). Nothing to recover — the in-app row
-      // and the Inbox badge still carry the request.
+      // worker (notably Android Chrome). The toast below already fired.
     }
   }, []);
 
+  const surface = useCallback(
+    (title: string, body: string, actionUrl: string, tagKey: string, stage?: number) => {
+      if (!title && !body) return;
+      toast.info(title || 'Notification', {
+        description: body || undefined,
+        action: actionUrl
+          ? { label: 'Open', onClick: () => window.location.assign(actionUrl) }
+          : undefined,
+        duration: 8000,
+      });
+      raiseOs(title, body, actionUrl, tagKey, stage);
+    },
+    [raiseOs],
+  );
+
   const handleMessage = useCallback(
-    (message: ReminderMessage) => {
-      if (message.type === 'reminder' && message.data) {
-        raise(message.data);
-      }
-      // Any HITL traffic means the pending set may have moved. Shared key with
-      // the Sidebar badge, Inbox and Overview.
-      if (message.type === 'reminder' || message.type === 'new_request') {
+    (message: SocketMessage) => {
+      const d = message.data ?? {};
+      if (message.type === 'reminder') {
+        const title = asText(d.title);
+        const body = asText(d.body ?? d.message);
+        const actionUrl = asText(d.action_url) || '/overview';
+        const tagKey = asText(d.request_id) ? `hitl-${asText(d.request_id)}` : `hitl-${asText(d.kind) || 'reminder'}`;
+        surface(title, body, actionUrl, tagKey, typeof d.stage === 'number' ? d.stage : undefined);
+        queryClient.invalidateQueries({ queryKey: ['hitl'] });
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      } else if (message.type === 'new_request') {
+        const title = asText(d.title) || 'Agent needs you';
+        const body = asText(d.message ?? d.body);
+        surface(title, body, '/overview', `hitl-${asText(d.request_id) || 'new'}`);
+        queryClient.invalidateQueries({ queryKey: ['hitl'] });
+      } else if (message.type === 'notification') {
+        const title = asText(d.title) || 'Notification';
+        const body = asText(d.body ?? d.message);
+        const actionUrl = asText(d.action_url) || '/settings';
+        surface(title, body, actionUrl, `notif-${asText(d.id) || title}`);
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        // A generic notification can also be an HITL-adjacent row (chat
+        // approval), so keep the badge honest too.
         queryClient.invalidateQueries({ queryKey: ['hitl'] });
       }
     },
-    [raise, queryClient],
+    [surface, queryClient],
   );
 
-  const { isConnected } = useSocket<ReminderMessage>({
+  const { isConnected } = useSocket<SocketMessage>({
     path: '/hitl/',
     enabled,
     onMessage: handleMessage,

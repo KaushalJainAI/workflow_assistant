@@ -948,9 +948,18 @@ export default function Connections() {
   const curated = useMemo(() => servers.filter((s) => s.is_system), [servers]);
   const custom = useMemo(() => servers.filter((s) => !s.is_system), [servers]);
 
+  /* The `utilities` category ("Built in") never renders: those rows are
+      retired duplicates of real tools — every one reads Unavailable with a
+      paragraph explaining it is switched off. Showing them asks the user to
+      read four apologies for something they never needed to set up. */
+  const visibleCurated = useMemo(
+    () => curated.filter((s) => s.category !== 'utilities'),
+    [curated],
+  );
+
   const byCategory = useMemo(() => {
     const map = new Map<MCPServerCategory, MCPServer[]>();
-    curated.forEach((s) => {
+    visibleCurated.forEach((s) => {
       const key: MCPServerCategory = CATEGORY_ORDER.includes(s.category)
         ? s.category
         : 'custom';
@@ -959,7 +968,7 @@ export default function Connections() {
       else map.set(key, [s]);
     });
     return map;
-  }, [curated]);
+  }, [visibleCurated]);
 
   const connectedCount = useMemo(
     () => curated.filter((s) => statusOf(s) === 'connected').length,
@@ -1054,7 +1063,7 @@ export default function Connections() {
           );
         })}
 
-        {curated.length === 0 && !serversQuery.error && (
+        {visibleCurated.length === 0 && !serversQuery.error && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Plug className="w-12 h-12 text-muted-foreground/30 mb-4" />
             <p className="text-lg font-semibold text-foreground">No connections available</p>

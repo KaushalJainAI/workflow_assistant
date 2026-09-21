@@ -451,7 +451,10 @@ export default function AgentBuilder() {
     queryKey: ['agent-builder', 'connections'],
     queryFn: async () =>
       (await mcpService.list()).servers
-        .filter((srv) => srv.effective_enabled)
+        // Built-ins (`utilities`) are not offered: they are retired rows the
+        // Connections page no longer shows, and scoping an agent to one would
+        // narrow it onto tools that resolve to nothing.
+        .filter((srv) => srv.effective_enabled && srv.category !== 'utilities')
         .map((srv) => ({ id: srv.id, label: srv.label, iconSlug: srv.icon_slug }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     staleTime: 5 * 60 * 1000,

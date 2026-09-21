@@ -25,6 +25,13 @@ export interface ChatSession {
    * deleted, so switching it back on restores the full conversation.
    */
   memory_enabled: boolean;
+  /**
+   * How much this conversation asks before acting: 'ask' (approve side
+   * effects), 'auto' (the reviewer may allow clear matches) or 'plan'
+   * (mutating tools withheld). Absent on payloads from before the mode
+   * picker, which behave as 'ask'.
+   */
+  autonomy?: string;
   created_at: string;
   updated_at: string;
   messages: ChatMessage[];
@@ -419,6 +426,18 @@ export const chatService = {
   async steer(sessionId: string, message: string): Promise<SteerResult> {
     const response = await apiClient.post<SteerResult>(
       `/chat/sessions/${sessionId}/message/steer/`, { message },
+    );
+    return response.data;
+  },
+
+  /**
+   * Switch how much the running turn asks, mid-run. Rides the same mailbox
+   * as a steer and stands for the rest of the run: 'ask' | 'auto' | 'review'.
+   * 'plan' is refused (the toolbox is already built) — pick it before sending.
+   */
+  async setAutonomy(sessionId: string, level: string): Promise<{ autonomy: string }> {
+    const response = await apiClient.post<{ autonomy: string }>(
+      `/chat/sessions/${sessionId}/message/steer/`, { autonomy: level },
     );
     return response.data;
   },

@@ -375,7 +375,7 @@ function CategorySection({
             <button
               onClick={() => onToggleCategory(!allOn)}
               disabled={busy}
-              className="hidden sm:inline text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+              className="inline text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
             >
               {allOn ? 'Turn all off' : 'Turn all on'}
             </button>

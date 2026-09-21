@@ -53,6 +53,7 @@ const Schedules = lazyPage(() => import('./pages/Schedules'));
 const Settings = lazyPage(() => import('./pages/Settings'));
 const Skills = lazyPage(() => import('./pages/Skills'));
 const Evals = lazyPage(() => import('./pages/Evals'));
+const Insights = lazyPage(() => import('./pages/Insights'));
 const PublicAgent = lazyPage(() => import('./pages/PublicAgent'));
 const PublishedPageView = lazyPage(() => import('./pages/PublishedPageView'));
 const Pages = lazyPage(() => import('./pages/Pages'));
@@ -180,7 +181,10 @@ const AppContent = () => {
               <Route path="/credentials" element={<Credentials />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/billing" element={<Navigate to="/settings" replace />} />
-              <Route path="/insights" element={<Navigate to="/settings" replace />} />
+              {/* Promoted out of Settings: Insights answers "is any of this
+                  working?" and deserves a destination. /settings still embeds
+                  the same dashboard so old links keep working. */}
+              <Route path="/insights" element={<Insights />} />
               <Route path="/overview" element={<Overview />} />
               {/* The live monitor is superseded by Overview (broad posture),
                   Inbox (what needs you) and Runs (what happened). Overview now

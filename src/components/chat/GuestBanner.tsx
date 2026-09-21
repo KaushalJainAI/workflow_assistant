@@ -70,16 +70,17 @@ export default function GuestBanner({ model }: { model?: string | null }) {
           <span className="font-semibold text-foreground">Guest mode</span>
           {/* Say what is actually answering, read from state rather than
               hardcoded — the two had already drifted apart once. */}
-          <span className="hidden sm:inline text-muted-foreground">
+          <span className="text-muted-foreground">
             running on <span className="text-foreground">{prettyModel(model)}</span>
           </span>
         </div>
 
         <button
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto shrink-0 hidden sm:flex items-center gap-1 px-2 py-1 rounded text-[13px] text-primary hover:bg-primary/10 transition-colors"
+          aria-label="What an account adds"
+          className="ml-auto shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[13px] text-primary hover:bg-primary/10 transition-colors"
         >
-          What an account adds
+          <span className="hidden sm:inline">What an account adds</span>
           <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', open && 'rotate-180')} />
         </button>
 
@@ -113,7 +114,7 @@ export default function GuestBanner({ model }: { model?: string | null }) {
               </div>
             ))}
           </div>
-          <div className="max-w-4xl mx-auto flex items-center gap-2 mt-4 pt-3 border-t border-border">
+          <div className="max-w-4xl mx-auto flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-border">
             <button
               onClick={() => navigate('/signup')}
               className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-[13px] font-semibold hover:bg-primary/90"
@@ -126,7 +127,7 @@ export default function GuestBanner({ model }: { model?: string | null }) {
             >
               I already have one
             </button>
-            <span className="ml-auto text-[12px] text-muted-foreground hidden sm:block">
+            <span className="ml-auto text-[12px] text-muted-foreground">
               Free — no card needed
             </span>
           </div>

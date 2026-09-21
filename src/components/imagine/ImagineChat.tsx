@@ -202,7 +202,7 @@ export function ImagineChat({ capabilities, onRefreshCatalog, isRefreshingCatalo
               className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"
             >
               <WifiOff size={11} />
-              <span className="hidden sm:inline">Reconnecting</span>
+              <span>Reconnecting</span>
             </span>
           )}
           <SendButton onClick={() => submit()} busy={isSending} disabled={!draft.trim()} />

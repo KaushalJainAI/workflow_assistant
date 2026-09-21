@@ -195,6 +195,78 @@ export interface CursorPage<T> {
   has_more: boolean;
 }
 
+export interface QualitySummary {
+  days: number;
+  by_failure_category: Record<string, number>;
+  thumbs_up: number;
+  thumbs_down: number;
+  thumbs_down_by_reason: Record<string, number>;
+  signals_by_kind: Record<string, number>;
+  recent_thumbs_down: {
+    type: string;
+    id: string | number;
+    agent: string;
+    reason: string;
+    comment: string;
+  }[];
+}
+
+export interface OverviewToolRow {
+  tool: string;
+  calls: number;
+  success_rate: number;
+  failed: number;
+  /** Latest failed run in the window — absent when nothing failed. */
+  execution_id?: string;
+  /** Truncated error excerpt from that run. */
+  error?: string;
+}
+
+export interface OverviewAgentRow {
+  workflow_id: number | null;
+  workflow_name: string;
+  runs: number;
+  success_rate: number;
+  failed: number;
+  tokens: number;
+  cost_usd: string;
+  cost_source: CostSource;
+  /** Latest failed run in the window — absent when nothing failed. */
+  example_execution_id?: string;
+  example_error?: string;
+}
+
+/** Mirrors `logs.queries.insights_overview` — the Insights page reads this. */
+export interface InsightsOverview {
+  days: number;
+  runs: ExecutionStatistics;
+  spend: CostBreakdown;
+  quality: QualitySummary;
+  tools: OverviewToolRow[];
+  delegation: {
+    delegated_runs: number;
+    top_workers: { workflow_id: number | null; workflow_name: string; runs: number }[];
+    top_orchestrators: { workflow_id: number | null; workflow_name: string; delegated_runs: number }[];
+  };
+  agents: {
+    distinct: number;
+    most_active: OverviewAgentRow[];
+    most_expensive: OverviewAgentRow[];
+    needs_attention: OverviewAgentRow[];
+    pending_hitl: number;
+    /** Median ms from HITL open to answer in the window; null when none answered. */
+    median_approve_ms?: number | null;
+  };
+  /** Previous window of the same length — present only with `?compare=1`. */
+  previous?: {
+    days: number;
+    total_executions: number;
+    success_rate: number;
+    chat_messages: number;
+    cost_usd: string;
+  };
+}
+
 // Insights types
 
 /**
@@ -297,6 +369,11 @@ export interface CostBreakdown {
     turns: number;
   }[];
   by_tool: { tool: string; count: number }[];
+  /** Non-token spend (`CostEntry`): images, browser minutes, … Rupees, as stored. */
+  by_kind?: { kind: string; amount_inr: number; entries: number; estimated: number }[];
+  /** Agent runs by cost provenance — runs carry no payer column, so this is
+   *  the honest split (chat already carries `paid_by`). */
+  agents_by_cost_source?: { billed: number; estimated: number; unpriced: number };
   daily_usage: { date: string | null; cost_usd: string; tokens: number }[];
 }
 
@@ -342,6 +419,7 @@ async listExecutions(params?: {
     workflow_id?: number;
     status?: string;
     caller?: RunCaller;
+    failure_category?: string;
     limit?: number;
     cursor?: string | null;
   }): Promise<CursorPage<ExecutionLog>> {
@@ -373,9 +451,22 @@ async listExecutions(params?: {
     return data;
   },
 
-  async quality(days = 30): Promise<unknown> {
-    const { data } = await apiClient.get('/logs/insights/quality/', { params: { days } });
+  async quality(days = 30): Promise<QualitySummary> {
+    const { data } = await apiClient.get<QualitySummary>('/logs/insights/quality/', { params: { days } });
     return data;
+  },
+
+  /**
+   * One call for the Insights page: runs, spend, tools, delegation, quality.
+   * Prefer this over firing stats/costs/quality separately — the server joins
+   * them and adds the tool-success, delegation and leaderboard answers none of
+   * those endpoints give alone.
+   */
+  async getOverview(days: number = 30, compare = false): Promise<InsightsOverview> {
+    const response = await apiClient.get<InsightsOverview>('/logs/insights/overview/', {
+      params: { days, ...(compare ? { compare: true } : {}) },
+    });
+    return response.data;
   },
 
   // ========== Configuration history ==========

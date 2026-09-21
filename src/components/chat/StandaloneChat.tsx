@@ -80,6 +80,7 @@ import GuestBanner from './GuestBanner';
 import FeedbackControl from '../runs/FeedbackControl';
 import { SendButton } from '../ui/SendButton';
 import { apiErrorMessage } from '../../lib/apiError';
+import { nextChatMode, toChatMode } from '../../lib/chatMode';
 
 /** Rough size hint for a reasoning trace, so the toggle says what it will cost to open. */
 function formatWordCount(text: string): string {
@@ -643,6 +644,47 @@ export default function StandaloneChat() {
       return next;
     });
     textareaRef.current?.focus();
+  };
+
+  /**
+   * How much this conversation asks before acting: Ask (approve side
+   * effects) · Auto (the reviewer may allow clear matches) · Plan (look,
+   * don't touch). Stored on the session, so it survives reloads; switching
+   * mid-turn rides the steer mailbox and stands for the rest of the run.
+   * Auto looks visibly different so nobody is in it without knowing.
+   */
+  type ChatMode = 'ask' | 'auto' | 'plan';
+  const [autonomy, setAutonomy] = useState<ChatMode>('ask');
+
+  useEffect(() => {
+    setAutonomy(toChatMode(currentSession?.autonomy));
+  }, [currentSession?.autonomy, conversationId]);
+
+  const setMode = async (next: ChatMode) => {
+    setAutonomy(next);
+    if (conversationId) {
+      try {
+        const updated = await chatService.updateSession(conversationId, { autonomy: next });
+        setCurrentSession(prev => (prev ? { ...prev, ...updated } : updated));
+      } catch (err) {
+        console.error('Failed to update chat mode', err);
+      }
+      if (isLoading) {
+        // A turn is going: the session value applies next turn, so also
+        // switch this one mid-run. Plan cannot switch mid-run (the toolbox
+        // is already built) — the session value still applies next turn.
+        try {
+          if (next !== 'plan') await chatService.setAutonomy(conversationId, next);
+        } catch (err) {
+          console.error('Failed to switch mode mid-run', err);
+        }
+      }
+    }
+    textareaRef.current?.focus();
+  };
+
+  const cycleMode = () => {
+    void setMode(nextChatMode(autonomy));
   };
 
   /**
@@ -1299,22 +1341,24 @@ export default function StandaloneChat() {
                  to show: a chip reading "—" on every new chat would be noise. */}
              {currentSession && currentSession.cost_source
                && currentSession.cost_source !== 'unpriced' && (
-               <div
-                 className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums"
-                 title={describeConversationCost(
-                   currentSession.total_cost_usd, currentSession.cost_source,
-                   currentSession.total_tokens_used ?? 0,
-                   currentSession.paid_by ?? '',
-                 )}
-               >
-                 <Coins className="w-3.5 h-3.5" />
-                 {formatCost(currentSession.total_cost_usd, currentSession.cost_source)}
-                 {/* Never a bare figure: whether it was charged or estimated
-                     is half of what the number means. */}
-                 <span className="font-normal opacity-80">
-                   {costQualifier(currentSession.cost_source)}
-                 </span>
-               </div>
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums shrink-0"
+                  title={describeConversationCost(
+                    currentSession.total_cost_usd, currentSession.cost_source,
+                    currentSession.total_tokens_used ?? 0,
+                    currentSession.paid_by ?? '',
+                  )}
+                >
+                  <Coins className="w-3.5 h-3.5" />
+                  {formatCost(currentSession.total_cost_usd, currentSession.cost_source)}
+                  {/* Never a bare figure: whether it was charged or estimated
+                      is half of what the number means. The qualifier hides on
+                      phones where the header is crowded; the icon + figure —
+                      the part that moves — always shows. */}
+                  <span className="hidden sm:inline font-normal opacity-80">
+                    {costQualifier(currentSession.cost_source)}
+                  </span>
+                </div>
              )}
              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                 <Shield className="w-3.5 h-3.5" />
@@ -2689,7 +2733,38 @@ export default function StandaloneChat() {
                     standard focus ring says "focused" in the same language as
                     every other input in the app. */}
                 <div className="relative flex flex-col bg-card border border-border rounded-lg shadow-sm transition-colors duration-150 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring">
-                  
+                  {/* Mode picker — Ask · Auto · Plan. Auto is amber on purpose:
+                      a mode that acts without asking must not look like the
+                      default. Hidden for guests, who run one pinned mode. */}
+                  {!isGuest && (
+                    <div className="flex items-center gap-1 px-4 pt-2.5" role="group" aria-label="Chat mode">
+                      {([
+                        { key: 'ask' as const, label: 'Ask', hint: 'Approve side effects (Shift+Tab to cycle)' },
+                        { key: 'auto' as const, label: 'Auto', hint: 'Clear matches run; the rest still ask' },
+                        { key: 'plan' as const, label: 'Plan', hint: 'Look, don’t touch — no mutating tools' },
+                      ]).map(m => (
+                        <button
+                          key={m.key}
+                          onClick={() => void setMode(m.key)}
+                          title={m.hint}
+                          className={cn(
+                            "flex items-center gap-1 h-6 px-2.5 rounded-md text-[10px] font-bold border",
+                            "transition-colors duration-200 ease-out active:scale-95",
+                            autonomy === m.key
+                              ? m.key === 'auto'
+                                ? 'bg-amber-500/15 border-amber-500/50 text-amber-600 dark:text-amber-400'
+                                : m.key === 'plan'
+                                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-500'
+                                  : 'bg-primary/10 border-primary/30 text-primary'
+                              : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40",
+                          )}
+                        >
+                          {m.key === 'ask' && <Shield className="w-3 h-3" />}
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {/* Textarea row */}
                   <div className="p-4 pb-0">
                     <textarea
@@ -2702,6 +2777,11 @@ export default function StandaloneChat() {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           handleSend();
+                        }
+                        // Shift+Tab cycles Ask → Auto → Plan without leaving the keyboard.
+                        if (e.key === 'Tab' && e.shiftKey && !isGuest) {
+                          e.preventDefault();
+                          cycleMode();
                         }
                       }}
                       onPaste={(e) => {
@@ -2751,7 +2831,10 @@ export default function StandaloneChat() {
                             )}
                           >
                             {tool.icon}
-                            <span className="hidden sm:inline">
+                            {/* Labels stay on phones too: two pills fit, and
+                                an icon alone says nothing about what tapping
+                                it changes. The row scrolls if a third returns. */}
+                            <span className="inline">
                                {tool.label}
                             </span>
                           </button>
@@ -2774,7 +2857,7 @@ export default function StandaloneChat() {
                           title="Guest mode runs on NVIDIA NIM — log in to choose a model"
                         >
                           <Zap size={14} className="text-muted-foreground/50 shrink-0" />
-                          <span className="hidden sm:inline max-w-[140px] truncate">
+                          <span className="inline max-w-[22vw] sm:max-w-[140px] truncate">
                             {prettyModel(llmModel)}
                           </span>
                         </div>
@@ -2796,7 +2879,7 @@ export default function StandaloneChat() {
                               <Bot size={14} className="shrink-0" />
                             )}
                           </span>
-                          <span className="hidden sm:inline max-w-[120px] truncate">
+                          <span className="inline max-w-[22vw] sm:max-w-[120px] truncate">
                             {dynamicProviders.find(p => p.slug === llmProvider)?.models.find(m => m.value === llmModel)?.name || 'Select model'}
                           </span>
                           {/* Only when it is doing something. A badge reading
@@ -2804,7 +2887,7 @@ export default function StandaloneChat() {
                               shown for a model with no effort control would be
                               a claim about a setting that is not applied. */}
                           {effortSupported && llmEffort && (
-                            <span className="hidden sm:inline px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary">
+                            <span className="inline px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary shrink-0">
                               {EFFORT_LABELS[llmEffort] ?? llmEffort}
                             </span>
                           )}

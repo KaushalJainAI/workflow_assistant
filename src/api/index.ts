@@ -39,7 +39,7 @@ export {
   type CredentialType,
   type CreateCredentialData,
 } from './credentials';
-export { 
+export {
   default as logsService,
   type ExecutionLog,
   type ExecutionDetail,
@@ -55,7 +55,17 @@ export {
   type CostBreakdown,
   type CostSource,
   type CostFields,
+  type QualitySummary,
+  type InsightsOverview,
+  type OverviewToolRow,
+  type OverviewAgentRow,
 } from './logs';
+export {
+  notificationsService,
+  type Notification,
+  type NotificationPreferences,
+  type HITLReminderPayload,
+} from './notifications';
 export { default as nodeService, type NodeSchema, type NodeField, type NodeHandle } from './nodeService';
 export { chatService, type ChatSession, type ChatMessage as StandaloneChatMessage } from './chat';
 export { 

@@ -656,7 +656,7 @@ export default function Overview() {
                   <p className="text-sm font-medium">You're clear — nothing is waiting on you</p>
                   <p className="text-[12px] text-muted-foreground">When an agent reaches a step it isn't allowed to take on its own, it stops and asks here.</p>
                 </div>
-                <Link to="/runs" className="ml-auto text-[12px] text-primary hover:underline hidden sm:block">See runs →</Link>
+                <Link to="/runs" className="ml-auto shrink-0 text-[12px] text-primary hover:underline">See runs →</Link>
               </section>
             )}
 

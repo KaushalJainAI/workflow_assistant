@@ -165,7 +165,7 @@ export function DocumentGridCard({ doc, onOpen, onDownload, onShare, onDelete, d
             {ext || typeLabel}
           </span>
           {!isPending && !isFailed && (
-            <span className="hidden sm:inline-flex rounded-md bg-card px-2 py-1 text-[11px] text-muted-foreground border border-border">
+            <span className="inline-flex rounded-md bg-card px-2 py-1 text-[11px] text-muted-foreground border border-border">
               {formatSize(doc.file_size)}
             </span>
           )}
@@ -213,7 +213,7 @@ export function DocumentGridCard({ doc, onOpen, onDownload, onShare, onDelete, d
 
         <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
           <span className="truncate">{doc.filename}</span>
-          <span className="hidden sm:inline">· {doc.chunk_count} chunks</span>
+          <span>· {doc.chunk_count} chunks</span>
           {doc.is_shared && <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Shared</span>}
         </div>
 

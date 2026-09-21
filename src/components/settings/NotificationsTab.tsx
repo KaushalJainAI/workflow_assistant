@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CheckCircle, Clock, ShieldAlert, AlertTriangle, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { notificationsService, type Notification } from '../../api/notifications';
@@ -22,44 +22,49 @@ import { formatDistanceToNow } from 'date-fns';
  */
 const ACTION_PATHS: Record<string, string> = {
   '/inbox': 'Open the Inbox',
+  '/overview': 'Open Overview',
   '/chat': 'Open the conversation',
+  '/ai-chat': 'Open the conversation',
   '/runs': 'See the run',
   '/documents': 'Open documents',
+  '/settings': 'Open settings',
 };
 
 function actionLink(notification: Notification): { to: string; label: string } | null {
   const url = notification.data?.action_url;
   if (typeof url !== 'string') return null;
-  const label = ACTION_PATHS[url];
-  return label ? { to: url, label } : null;
+  // Exact allow-list matches, plus a same-origin path prefix for deep links
+  // like /agents/12 or /runs?cursor=… that writers legitimately produce.
+  if (ACTION_PATHS[url]) return { to: url, label: ACTION_PATHS[url] };
+  if (url.startsWith('/') && !url.startsWith('//')) {
+    const base = `/${url.slice(1).split('/')[0]}`;
+    if (['/agents', '/runs', '/overview', '/documents', '/templates'].includes(base)) {
+      return { to: url, label: 'Open' };
+    }
+  }
+  return null;
 }
 
 export default function NotificationsTab() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  // Shared key with the socket hook (useHITLReminders invalidates this on
+  // every reminder / generic notification), so the list refreshes live when
+  // the socket is up and polls every 30s when it is not.
+  const { data: notifications = [], isLoading } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: notificationsService.getNotifications,
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
+  });
 
-  const loadNotifications = async () => {
-    try {
-      const data = await notificationsService.getNotifications();
-      setNotifications(data);
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- a server read; its state lands after the await
-    void loadNotifications();
-  }, []);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['notifications'] });
 
   const handleMarkAsRead = async (id: number) => {
     try {
       await notificationsService.markAsRead(id);
-      setNotifications(notifications.map(n => 
-        n.id === id ? { ...n, is_read: true } : n
-      ));
+      queryClient.setQueryData<Notification[]>(['notifications'], (prev) =>
+        (prev ?? []).map((n) => (n.id === id ? { ...n, is_read: true } : n)),
+      );
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
     }
@@ -68,7 +73,9 @@ export default function NotificationsTab() {
   const handleMarkAllAsRead = async () => {
     try {
       await notificationsService.markAllAsRead();
-      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      queryClient.setQueryData<Notification[]>(['notifications'], (prev) =>
+        (prev ?? []).map((n) => ({ ...n, is_read: true })),
+      );
     } catch (error) {
       console.error('Failed to mark all as read:', error);
     }
@@ -78,17 +85,20 @@ export default function NotificationsTab() {
     switch (type) {
       case 'workflow_failed': return <AlertTriangle className="w-5 h-5 text-red-500" />;
       case 'hitl_request': return <ShieldAlert className="w-5 h-5 text-amber-500" />;
+      case 'hitl_reminder': return <ShieldAlert className="w-5 h-5 text-amber-500" />;
+      case 'hitl_digest': return <Bell className="w-5 h-5 text-violet-500" />;
+      case 'agent_update': return <Bell className="w-5 h-5 text-violet-500" />;
       case 'image_ready': return <CheckCircle className="w-5 h-5 text-emerald-500" />;
       case 'new_message': return <Bell className="w-5 h-5 text-blue-500" />;
       default: return <Info className="w-5 h-5 text-blue-500" />;
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -99,33 +109,43 @@ export default function NotificationsTab() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-lg font-medium">Recent notifications</h3>
-          <p className="text-sm text-muted-foreground mt-1">Everything the platform has alerted you about.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Everything the platform has alerted you about. New rows arrive live while this page is open.
+          </p>
         </div>
-        {unreadCount > 0 && (
-          <button 
-            onClick={handleMarkAllAsRead}
-            className="text-sm text-primary hover:underline font-medium"
-          >
-            Mark all as read
+        <div className="flex items-center gap-3">
+          <button onClick={refresh} className="text-sm text-muted-foreground hover:text-foreground font-medium">
+            Refresh
           </button>
-        )}
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllAsRead}
+              className="text-sm text-primary hover:underline font-medium"
+            >
+              Mark all as read
+            </button>
+          )}
+        </div>
       </div>
 
       {notifications.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-border/60 rounded-lg bg-card/30">
           <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-50" />
           <p className="text-muted-foreground font-medium">No notifications yet</p>
-          <p className="text-xs text-muted-foreground/70 mt-1">Nothing new</p>
+          <p className="text-xs text-muted-foreground/70 mt-1 max-w-sm mx-auto">
+            Run an agent that needs approval, or let one notify you while it works unattended —
+            approvals, updates and the daily digest land here.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => (
-            <div 
-              key={notification.id} 
+            <div
+              key={notification.id}
               className={cn(
                 "p-4 rounded-lg border transition-all flex gap-4 items-start",
-                notification.is_read 
-                  ? "bg-card/30 border-border/40 opacity-70" 
+                notification.is_read
+                  ? "bg-card/30 border-border/40 opacity-70"
                   : "bg-card/80 border-primary/20 shadow-sm"
               )}
             >

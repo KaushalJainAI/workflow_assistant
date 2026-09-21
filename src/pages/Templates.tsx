@@ -537,11 +537,9 @@ export default function Templates() {
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <p className="text-[13px] text-muted-foreground max-w-2xl mb-4 leading-relaxed">
-          Installing creates an ordinary agent in your account — you approve
-          what it may reach, point it at your own connections and documents,
-          and change anything afterwards in the builder. Nothing of the
-          author's comes with it: no credentials, no documents, no runs. You can
-          publish your own from the Agents page.
+          Installing adds a copy to your account — your connections, your
+          documents, editable in the builder. Nothing of the author's travels
+          with it.
         </p>
 
         {(filter === 'all' || filter === 'curated') && (

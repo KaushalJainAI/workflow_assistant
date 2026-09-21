@@ -20,6 +20,7 @@ import {
   Bot,
   LayoutGrid,
   Clapperboard,
+  BarChart3,
   // LineChart,  // MVP: unused while Evals is hidden
   // SlidersHorizontal,  // MVP: unused while Tuning is hidden
 } from "lucide-react";
@@ -29,7 +30,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useHitlPending } from "../../hooks/useHitlPending";
 import { useAuth } from "../../contexts/authState";
 import { useImagineOptional } from "../../contexts/imagineState";
-import { logsService } from "../../api";
+import { logsService, notificationsService } from "../../api";
 import { toast } from "sonner";
 
 
@@ -117,6 +118,15 @@ const Sidebar = () => {
             return page.results.length;
         },
     });
+    // Unread notification rows. Shared key with NotificationsTab and the
+    // socket hook, so a push refreshes this without waiting for the poll.
+    const { data: notifications = [] } = useQuery({
+        queryKey: ['notifications'],
+        enabled: isAuthenticated,
+        refetchInterval: 30_000,
+        queryFn: notificationsService.getNotifications,
+    });
+    const unreadCount = notifications.filter((n) => !n.is_read).length;
 
     // Intercepts clicks on auth-only nav items for guests: show a "log in" toast
     // and route them to /login instead of letting them hit a protected page that
@@ -169,6 +179,7 @@ const Sidebar = () => {
                 // pending badge moves from Inbox to Overview; Inbox route redirects.
                 { icon: Radar, label: "Overview", path: "/overview", pending: true },
                 { icon: Activity, label: "Runs", path: "/runs", agent: true },
+                { icon: BarChart3, label: "Insights", path: "/insights" },
             ],
         },
         {
@@ -465,8 +476,13 @@ const Sidebar = () => {
                     )}
                     title={collapsed ? "Settings" : undefined}
                 >
-                    <div className="w-8 h-8 flex-shrink-0 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-semibold text-sm">
+                    <div className="relative w-8 h-8 flex-shrink-0 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-semibold text-sm">
                         {getInitials()}
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center border border-background">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                        )}
                     </div>
                     <div className={cn(
                         "flex-1 min-w-0 transition-all duration-300",
@@ -475,6 +491,11 @@ const Sidebar = () => {
                         <p className="text-sm font-bold text-foreground/90 truncate">{user?.name || 'User'}</p>
                         <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
                     </div>
+                    {!collapsed && unreadCount > 0 && (
+                        <span className="ml-auto text-[11px] font-semibold px-1.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
+                            {unreadCount} new
+                        </span>
+                    )}
                 </Link>
             </div>}
         </div>

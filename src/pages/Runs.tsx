@@ -416,14 +416,23 @@ export default function Runs() {
     }, { replace: true });
   };
 
-  // One agent's runs, from `?agent=<id>` — the builder links here with it.
+  // One agent's runs, from `?agent=<id>` — the builder and Insights link here
+  // with it. `?status=` / `?failure_category=` arrive the same way from the
+  // Insights "What to fix" card, so a linked failure list opens filtered
+  // rather than as "All runs" the user must re-filter by eye.
   const agentFilter = Number(params.get('agent')) || null;
+  const urlStatus = params.get('status');
+  const urlFailure = params.get('failure_category');
+  const effectiveFilter = (FILTERS as readonly string[]).includes(urlStatus ?? '')
+    ? (urlStatus as (typeof FILTERS)[number])
+    : filter;
   const { data, isLoading } = useQuery({
-    queryKey: ['runs', filter, agentFilter, showEval],
+    queryKey: ['runs', effectiveFilter, agentFilter, urlFailure, showEval],
     queryFn: () => logsService.listExecutions({
       limit: 50,
-      ...(filter === 'all' ? {} : { status: filter }),
+      ...(effectiveFilter === 'all' ? {} : { status: effectiveFilter }),
       ...(agentFilter ? { workflow_id: agentFilter } : {}),
+      ...(urlFailure ? { failure_category: urlFailure } : {}),
       ...(showEval ? { caller: 'eval' } : {}),
     }),
     // Only poll while something can still change. A finished list is finished:
@@ -507,6 +516,35 @@ export default function Runs() {
               className="px-3 py-1.5 text-sm rounded border border-primary text-primary bg-primary/10"
             >
               {runs[0]?.workflow_name ?? 'One agent'} ×
+            </button>
+          )}
+          {urlFailure && (
+            <button
+              onClick={() => setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete('failure_category');
+                return next;
+              }, { replace: true })}
+              title="Clear failure filter"
+              className="px-3 py-1.5 text-sm rounded border border-primary text-primary bg-primary/10"
+            >
+              {urlFailure.replace('_', ' ')} ×
+            </button>
+          )}
+          {urlStatus && (FILTERS as readonly string[]).includes(urlStatus) && urlStatus !== filter && (
+            <button
+              onClick={() => {
+                setFilter(urlStatus as (typeof FILTERS)[number]);
+                setParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.delete('status');
+                  return next;
+                }, { replace: true });
+              }}
+              title="Apply linked status as filter"
+              className="px-3 py-1.5 text-sm rounded border border-primary text-primary bg-primary/10"
+            >
+              {urlStatus} ×
             </button>
           )}
         </div>
