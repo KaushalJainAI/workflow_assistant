@@ -484,6 +484,7 @@ export default function Templates() {
   const navigate = useNavigate();
   const [installing, setInstalling] = useState<AgentTemplate | null>(null);
   const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
   const queryClient = useQueryClient();
 
   const packInstall = useMutation({
@@ -552,9 +553,23 @@ export default function Templates() {
     staleTime: 60 * 1000,
   });
 
+  const q = query.trim().toLowerCase();
+  const visibleTemplates = q
+    ? templates.filter((t) => {
+        const hay = `${t.name} ${t.tagline} ${t.description} ${t.slug} ${(t.tags ?? []).join(' ')}`.toLowerCase();
+        return hay.includes(q);
+      })
+    : templates;
+  const visiblePacks = q
+    ? PACKS.filter((p) => `${p.slug} ${p.title} ${p.blurb}`.toLowerCase().includes(q))
+    : PACKS;
+  const showPacks = (filter === 'all' || filter === 'curated') && visiblePacks.length > 0;
+
   const subtitle = isLoading
     ? 'Loading…'
-    : `${templates.length} ${templates.length === 1 ? 'entry' : 'entries'} · install and edit`;
+    : q
+      ? `${visibleTemplates.length} of ${templates.length} · "${query.trim()}"`
+      : `${templates.length} ${templates.length === 1 ? 'entry' : 'entries'} · install and edit`;
 
   return (
     <div className="h-full flex flex-col">
@@ -567,9 +582,36 @@ export default function Templates() {
           with it.
         </p>
 
-        {(filter === 'all' || filter === 'curated') && (
+        <div className="flex items-center gap-2 mb-4 max-w-xl">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search templates and packs…"
+              className="w-full pl-8 pr-8 py-2 bg-background border border-border rounded text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-secondary text-muted-foreground"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {q && (
+            <span className="text-[12px] text-muted-foreground whitespace-nowrap">
+              {visibleTemplates.length + visiblePacks.length} {visibleTemplates.length + visiblePacks.length === 1 ? 'result' : 'results'}
+            </span>
+          )}
+        </div>
+
+        {showPacks && (
           <div className="mb-5 grid max-w-4xl gap-3 md:grid-cols-2">
-            {PACKS.map((pack) => (
+            {visiblePacks.map((pack) => (
               <div key={pack.slug} className="rounded border border-agent-line bg-agent-subtle p-4 flex items-start gap-3">
                 <span className="w-9 h-9 rounded bg-card border border-agent-line text-agent flex items-center justify-center shrink-0">
                   <pack.icon className="w-4 h-4" />
@@ -623,17 +665,19 @@ export default function Templates() {
           <p className="text-[13px] text-destructive py-12">
             Could not load this list. Reload the page to try again.
           </p>
-        ) : templates.length === 0 ? (
+        ) : visibleTemplates.length === 0 ? (
           <p className="text-[13px] text-muted-foreground py-12 max-w-md leading-relaxed">
-            {filter === 'mine'
-              ? 'You have not published anything yet. Open an agent on the Agents page and choose Share to list it here.'
-              : filter === 'community'
-                ? 'Nobody has published an agent yet. Yours would be the first.'
-                : 'Nothing to show.'}
+            {q
+              ? `No results for "${query.trim()}". Try a different name, tag or pack.`
+              : filter === 'mine'
+                ? 'You have not published anything yet. Open an agent on the Agents page and choose Share to list it here.'
+                : filter === 'community'
+                  ? 'Nobody has published an agent yet. Yours would be the first.'
+                  : 'Nothing to show.'}
           </p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {templates.map((t) => (
+            {visibleTemplates.map((t) => (
               <TemplateCard key={t.slug} template={t} onInstall={() => setInstalling(t)} />
             ))}
           </div>
