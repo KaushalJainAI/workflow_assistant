@@ -325,8 +325,8 @@ export default function Agents() {
                 </Link>
 
                 {/* One surface now: the builder. The canvas that used to sit
-                    beside it was retired 2026-08-24 — a run is read on /runs
-                    and in the Inbox, not projected onto a graph. */}
+                    beside it was retired 2026-08-24 — a run is read on the
+                    Activity page (/runs), not projected onto a graph. */}
                 <div className="flex border-t border-border">
                   <Link
                     to={`/agents/${a.id}`}

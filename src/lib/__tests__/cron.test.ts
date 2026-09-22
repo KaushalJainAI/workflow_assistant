@@ -60,6 +60,15 @@ group('fromCron', () => {
     expect(fromCron('*/15 * * * *')).toMatchObject({ kind: 'minutes', interval: 15 });
   });
 
+  it('round-trips the weekdays preset with its time intact', () => {
+    // The "Weekdays" chip compiles to `m h * * 1-5`, and an existing
+    // weekday schedule must open back on that chip — not as raw cron.
+    expect(fromCron('30 7 * * 1-5')).toMatchObject({
+      kind: 'weekdays', hour: 7, minute: 30,
+    });
+    expect(toCron(fromCron('30 7 * * 1-5'))).toBe('30 7 * * 1-5');
+  });
+
   it('folds 7 onto 0 for Sunday, as cron itself does', () => {
     // Otherwise the day row shows two Sundays, or one that will not tick.
     expect(fromCron('0 9 * * 7').weekdays).toEqual([0]);

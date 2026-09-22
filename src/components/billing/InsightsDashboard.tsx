@@ -71,8 +71,8 @@ function callouts(data: InsightsOverview) {
       body: median != null
         ? `Blocked runs cannot finish until you answer. Median answer time lately: ${formatDuration(median)}.`
         : 'Blocked runs cannot finish until you answer. The oldest one is usually the one to clear first.',
-      to: '/overview',
-      cta: 'Open Overview',
+      to: '/runs',
+      cta: 'Answer them',
     });
   }
   const weak = data.agents.needs_attention[0];

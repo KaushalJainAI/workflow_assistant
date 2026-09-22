@@ -47,14 +47,12 @@ const Credentials = lazyPage(() => import('./pages/Credentials'));
 const Documents = lazyPage(() => import('./pages/Documents'));
 const Imagine = lazyPage(() => import('./pages/Imagine'));
 const OAuthCallback = lazyPage(() => import('./pages/OAuthCallback'));
-const Overview = lazyPage(() => import('./pages/Overview'));
 const Profile = lazyPage(() => import('./pages/Profile'));
 const Runs = lazyPage(() => import('./pages/Runs'));
 const Schedules = lazyPage(() => import('./pages/Schedules'));
 const Settings = lazyPage(() => import('./pages/Settings'));
 const Skills = lazyPage(() => import('./pages/Skills'));
 const Evals = lazyPage(() => import('./pages/Evals'));
-const Insights = lazyPage(() => import('./pages/Insights'));
 const PublicAgent = lazyPage(() => import('./pages/PublicAgent'));
 const PublishedPageView = lazyPage(() => import('./pages/PublishedPageView'));
 const Pages = lazyPage(() => import('./pages/Pages'));
@@ -82,7 +80,7 @@ const Layout = () => {
 
   // One per-user HITL socket for the whole authenticated shell: raises OS
   // notifications for escalation/hourly/digest nudges and keeps the ['hitl']
-  // cache (Sidebar badge, Inbox, Overview) fresh.
+  // cache (Sidebar badge, Activity) fresh.
   useHITLReminders(isAuthenticated);
   // Registers the Web Push service worker so subscribed browsers get OS
   // notifications with every tab closed. Subscription itself is opt-in in
@@ -186,22 +184,24 @@ const AppContent = () => {
               <Route path="/credentials" element={<Credentials />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/billing" element={<Navigate to="/settings" replace />} />
-              {/* Promoted out of Settings: Insights answers "is any of this
-                  working?" and deserves a destination. /settings still embeds
-                  the same dashboard so old links keep working. */}
-              <Route path="/insights" element={<Insights />} />
-              <Route path="/overview" element={<Overview />} />
-              {/* The live monitor is superseded by Overview (broad posture),
-                  Inbox (what needs you) and Runs (what happened). Overview now
-                  absorbs Inbox functionally; /inbox is kept as redirect. */}
-              <Route path="/orchestrator" element={<Navigate to="/overview" replace />} />
+              {/* Insights lives only in Settings now: one way in, not two.
+                  The old top-level path lands on its tab so saved links keep
+                  working. */}
+              <Route path="/insights" element={<Navigate to="/settings?tab=insights" replace />} />
+              {/* Activity (/runs) is the single surface: approvals first, then
+                  runs. /overview, /inbox and /orchestrator redirect here so
+                  deep links and saved notification links keep working. */}
+              <Route path="/overview" element={<Navigate to="/runs" replace />} />
+              {/* The live monitor is superseded by Activity (approvals first,
+                  then runs). /inbox is kept as redirect. */}
+              <Route path="/orchestrator" element={<Navigate to="/runs" replace />} />
               <Route path="/skills" element={<Skills />} />
               <Route path="/evals" element={<Evals />} />
               <Route path="/imagine" element={<Imagine />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/tools" element={<Tools />} />
-              {/* Work — Overview absorbs Inbox: keep /inbox as redirect so deep links stay valid */}
-              <Route path="/inbox" element={<Navigate to="/overview" replace />} />
+              {/* Work — Activity absorbs Inbox: keep /inbox as redirect so deep links stay valid */}
+              <Route path="/inbox" element={<Navigate to="/runs" replace />} />
               <Route path="/runs" element={<Runs />} />
               <Route path="/schedules" element={<Schedules />} />
               {/* Build */}
@@ -221,7 +221,7 @@ const AppContent = () => {
                   only the newest few and links here. */}
               <Route path="/agents/:id/history" element={<AgentHistory />} />
               {/* The agent canvas was retired 2026-08-24: a run is read on
-                  /runs and in the Inbox, not projected onto a graph. */}
+                  /runs, not projected onto a graph. */}
               <Route path="/agents/:id/canvas" element={<Navigate to="/agents" replace />} />
               {/* Extraction lives inside Documents now (schema admin) and Inbox
                   (the review queue); /extract routes were removed 2026-08-18. */}

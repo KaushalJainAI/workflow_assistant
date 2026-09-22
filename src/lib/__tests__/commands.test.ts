@@ -5,6 +5,7 @@ import {
   findCommand,
   isCommandLine,
   parseDurationSeconds,
+  prefillCommandInput,
   rankCommands,
   splitCommandLine,
   type CommandDef,
@@ -90,6 +91,27 @@ group('chips', () => {
       '/agent Reporter',
     );
     expect(chipLabel('goal', {})).toBe('/goal');
+  });
+});
+
+group('prefillCommandInput', () => {
+  it('starts a bare command when the box is empty or just a slash', () => {
+    expect(prefillCommandInput('', 'agent')).toBe('/agent ');
+    expect(prefillCommandInput('   ', 'goal')).toBe('/goal ');
+    expect(prefillCommandInput('/', 'help')).toBe('/help ');
+  });
+
+  it('replaces a partial filter but keeps the typed task', () => {
+    expect(prefillCommandInput('/ag', 'agent')).toBe('/agent ');
+    expect(prefillCommandInput('/agent summarise inbox', 'goal')).toBe(
+      '/goal summarise inbox',
+    );
+  });
+
+  it('keeps prose typed before the palette was opened via the button', () => {
+    expect(prefillCommandInput('summarise this', 'agent')).toBe(
+      '/agent summarise this',
+    );
   });
 });
 

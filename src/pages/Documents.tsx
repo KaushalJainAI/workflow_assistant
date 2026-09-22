@@ -823,16 +823,20 @@ export default function Documents() {
           </div>
         )}
 
-        {!isLoading && !error && filteredDocuments.length === 0 && (
+        {!isLoading && !error && filteredDocuments.length === 0 && filteredFolders.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center max-w-sm mx-auto">
             <div className="p-6 bg-muted rounded-full mb-6">
               <FileText className="w-12 h-12 text-muted-foreground/40" />
             </div>
-            <h3 className="text-xl font-bold text-foreground mb-2">No documents found</h3>
+            <h3 className="text-xl font-bold text-foreground mb-2">
+              {searchQuery ? 'No matches found' : 'No documents found'}
+            </h3>
             <p className="text-muted-foreground text-sm mb-8">
-              {activeTab === 'personal' 
-                ? "You haven't uploaded any documents yet. Start by uploading files to build your knowledge base."
-                : "The public library is currently empty."}
+              {searchQuery
+                ? `Nothing matches “${searchQuery}” in this location.`
+                : activeTab === 'personal'
+                  ? "You haven't uploaded any documents yet. Start by uploading files to build your knowledge base."
+                  : "The public library is currently empty."}
             </p>
             {activeTab === 'personal' && (
               <Button 

@@ -35,7 +35,7 @@ import { cn } from '../lib/utils';
 import MultiSelect from '../components/ui/MultiSelect';
 import Select from '../components/ui/Select';
 import {
-  DEFAULT_AGENT, TRIGGER_COPY, AUTONOMY_COPY, FILE_ACCESS_COPY,
+  DEFAULT_AGENT, AUTONOMY_COPY, FILE_ACCESS_COPY,
   STATUS_COPY, CONTRACT_COPY, CONNECTOR_MODE_COPY,
   type AgentConfig, type Autonomy, type FileAccess, type AgentStatus,
   type OutputContract, type ConnectorChoice, type ConnectorMode,
@@ -53,7 +53,9 @@ import {
 } from '../lib/toolPermissions';
 import { SendButton } from '../components/ui/SendButton';
 import { Switch } from '../components/ui/Switch';
-import ScheduleEditor from '../components/schedules/ScheduleEditor';
+import TriggerModal from '../components/schedules/TriggerModal';
+import triggersService, { type Trigger } from '../api/triggers';
+import { statusTone } from '../lib/triggerStatus';
 import { EFFORT_LABELS } from '../hooks/useEffortSelection';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../hooks/useChatModelSelection';
 import { useAuth } from '../contexts/authState';
@@ -111,6 +113,84 @@ function Section({ icon: Icon, title, hint, notEnforced, children }: {
  */
 const INLINE_REVISIONS = 3;
 
+/**
+ * This agent's schedules, managed here through the same modal as the
+ * Schedules page — one editor, not two. The builder used to carry its own
+ * cron field, but one field cannot own a list: every save reconciled (and
+ * could delete) rows the Schedules page owns, so adding a second schedule
+ * anywhere but here silently broke.
+ */
+function AgentSchedules({ agentId, allowUnattended, hasPrompt }: {
+  agentId: number;
+  allowUnattended: boolean;
+  hasPrompt: boolean;
+}) {
+  const [modal, setModal] = useState<{ trigger: Trigger | null } | null>(null);
+  const { data: triggers = [], isLoading } = useQuery({
+    queryKey: ['triggers', agentId],
+    queryFn: () => triggersService.list(agentId),
+  });
+  const schedules = triggers.filter((t) => t.mode === 'schedule');
+
+  return (
+    <div>
+      {isLoading ? (
+        <p className="px-2 text-[12px] text-muted-foreground">Loading schedules…</p>
+      ) : schedules.length === 0 ? (
+        <p className="px-2 text-[12px] text-muted-foreground">
+          No schedules yet. One modal, no trip to another page — including
+          granting “may run unattended”.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {schedules.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setModal({ trigger: s })}
+              className="flex w-full items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-left hover:bg-secondary"
+            >
+              <span className={cn(
+                'h-2 w-2 shrink-0 rounded-full',
+                s.status === 'ok'
+                  ? 'bg-success'
+                  : statusTone(s.status) === 'warn' ? 'bg-warning' : 'bg-destructive',
+              )} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium">
+                  {s.description || 'Schedule'}
+                </span>
+                {s.name && (
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {s.name}
+                  </span>
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setModal({ trigger: null })}
+        className="mt-2 flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-[13px] hover:bg-secondary"
+      >
+        <Clock className="w-3.5 h-3.5" />
+        Add schedule
+      </button>
+      {modal && (
+        <TriggerModal
+          trigger={modal.trigger}
+          mode="schedule"
+          agentId={agentId}
+          agentAllowsUnattended={allowUnattended}
+          agentHasPrompt={hasPrompt}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </div>
+  );
+}
 function RevisionHistory({ agentId, onRestored }: {
   agentId: number;
   /** The board shows the saved config; after a restore it must show the new one. */
@@ -398,11 +478,18 @@ export default function AgentBuilder() {
   });
 
   // Real model catalogue — the picker should show what is actually callable.
-  const { data: providers = [] } = useQuery({
+  // The full response is kept (not just `.providers`) for `meta.fallback`,
+  // which the retired-model banner names.
+  const { data: catalogueResponse } = useQuery({
     queryKey: ['agent-builder', 'models'],
-    queryFn: async () => (await nodeService.getAIModels()).providers,
+    queryFn: () => nodeService.getAIModels(),
     staleTime: 5 * 60 * 1000,
   });
+  const providers = useMemo(
+    () => catalogueResponse?.providers ?? [],
+    [catalogueResponse],
+  );
+  const fallbackModel = catalogueResponse?.meta?.fallback?.model;
   /* The delegation candidates: the user's other agents. Fetched rather than
      derived from anything on this page — an id only exists on the server, and
      the picker has to show what `search_agents` will actually see. */
@@ -511,10 +598,6 @@ export default function AgentBuilder() {
       })));
     }
   }
-  // Whether the schedule editor is open on an agent that has no schedule
-  // yet. Not derived from `cfg.schedule`: the editor has to be visible
-  // *before* there is a cron to show, or there is nothing to type into.
-  const [scheduling, setScheduling] = useState(false);
   const [running, setRunning] = useState(false);
   if (existing && loadedId !== existing.id) {
     setLoadedId(existing.id);
@@ -586,12 +669,12 @@ export default function AgentBuilder() {
     mutationFn: () => {
       const source = { ...DEFAULT_AGENT, ...(existing ?? cfg) } as Record<string, unknown>;
       for (const key of ['id', 'runs', 'unattended', 'spend', 'created_at',
-        'updated_at', 'extraSchedules', 'trigger']) delete source[key];
+        'updated_at', 'extraSchedules', 'trigger', 'schedule',
+        'scheduleTimezone']) delete source[key];
       return agentsService.create({
         ...(source as unknown as AgentConfig),
         name: `${cfg.name} (copy)`,
         status: 'draft',
-        schedule: '',
       });
     },
     onSuccess: (agent) => {
@@ -720,14 +803,22 @@ export default function AgentBuilder() {
     // that was there before the catalogue loaded. Per-tool rules for tools
     // the switches no longer unlock are pruned for the same reason: the
     // backend would ignore them (grant off wins), and storing dead rules is
-    // a screen that overpromises.
+    // a screen that overpromises. `schedule` / `scheduleTimezone` are not
+    // sent at all — schedules live on Trigger rows the Schedules page owns,
+    // and the serializer reconciles only keys it receives, so omitting them
+    // leaves every schedule alone. The cast keeps `AgentConfig` (which still
+    // declares the fields for templates and the chat authoring tool) while
+    // the wire omits them.
+    const { schedule: _schedule, scheduleTimezone: _tz, ...rest } = cfg;
+    void _schedule;
+    void _tz;
     save.mutate({
-      ...cfg,
+      ...rest,
       provider: displayProvider,
       model: effectiveModel,
       toolPermissions: pruneToolPermissions(
         cfg.toolPermissions, grantedTools.map((t) => t.id)),
-    });
+    } as AgentConfig);
   };
 
   // What actually happened, once there is something to report. Before the first
@@ -985,7 +1076,8 @@ export default function AgentBuilder() {
               </div>
               {existing?.model_status === 'retired' && existing.model === effectiveModel && (
                 <p role="alert" className="text-[12px] text-destructive">
-                  This model has been retired, so runs will fail when they start.
+                  This model has been retired, so runs use the platform fallback
+                  {fallbackModel ? ` (${fallbackModel})` : ''} until you pick another.
                   Pick another model and save.
                 </p>
               )}
@@ -1355,88 +1447,26 @@ export default function AgentBuilder() {
             </Section>
 
             <Section icon={Clock} title="When it runs">
-              {/* Stated, not chosen. This was a three-way radio whose value
-                  nothing in the runtime ever read, and whose only rule — a
-                  maintenance agent needs a schedule — meant the schedule below
-                  was already the answer. Two places to say one thing is one
-                  place to contradict yourself. */}
-              <p className="px-2 -mt-1 mb-1 text-[12px] text-muted-foreground">
-                {cfg.schedule
-                  ? TRIGGER_COPY.maintenance.hint
-                  : TRIGGER_COPY.goal.hint}
-              </p>
-              {/* Offered for any invocation mode, not just `maintenance`: the
-                  backend has always created a Trigger for a non-blank cron
-                  whatever the mode said, so hiding the control behind one
-                  choice only hid schedules that already existed. */}
-              <Knob path="schedule" touched={touched} label="Schedule">
-                {cfg.schedule || scheduling ? (
-                  <>
-                    <ScheduleEditor
-                      value={{
-                        cron: cfg.schedule,
-                        timezone: cfg.scheduleTimezone,
-                        name: '', goal: '', overlap: 'skip',
-                        startsAt: null, endsAt: null,
-                      }}
-                      onChange={(next) => {
-                        set('schedule', next.cron);
-                        set('scheduleTimezone', next.timezone);
-                      }}
-                      agentAllowsUnattended={cfg.allowUnattended}
-                      // This field writes back only cron and timezone, so the
-                      // name, window, goal and overlap controls are withheld
-                      // rather than rendered and silently discarded on save.
-                      // The Schedules page is where those are set.
-                      showAdvanced={false}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { set('schedule', ''); setScheduling(false); }}
-                      className="mt-2 text-[12px] text-muted-foreground hover:text-destructive"
-                    >
-                      Remove this schedule
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setScheduling(true)}
-                    className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-[13px] hover:bg-secondary"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    Run this on a schedule
-                  </button>
-                )}
-                {(cfg.extraSchedules ?? 0) > 0 && (
-                  <p className="mt-2 text-[12px] text-muted-foreground">
-                    This agent has {cfg.extraSchedules} other schedule
-                    {cfg.extraSchedules === 1 ? '' : 's'}, set up on{' '}
-                    <Link to="/schedules" className="underline">Triggers</Link>.
-                    They are not affected by this field.
-                  </p>
-                )}
-              </Knob>
+              {/* Schedules live on rows the Schedules page owns, listed here
+                  through the same modal — not a second editor writing back a
+                  single cron field, which is what used to delete rows added
+                  anywhere else on every save. */}
+              {isNew || agentId == null ? (
+                <p className="px-2 text-[12px] text-muted-foreground">
+                  Save the agent first to add a schedule.
+                </p>
+              ) : (
+                <AgentSchedules
+                  agentId={agentId}
+                  allowUnattended={cfg.allowUnattended}
+                  hasPrompt={Boolean((cfg.brief || '').trim())}
+                />
+              )}
               <Knob path="allowUnattended" touched={touched} label="">
                 <Toggle on={cfg.allowUnattended} onChange={(v) => set('allowUnattended', v)}
                   label="Can run automatically"
                   hint="Needed for schedules and when another agent calls it." />
               </Knob>
-              {cfg.schedule && !cfg.allowUnattended && (
-                <p className="flex items-start gap-1.5 text-[12px] text-destructive">
-                  <Clock className="w-3.5 h-3.5 mt-px shrink-0" />
-                  Schedules won't run without this enabled — the runtime
-                  checks it again, and the sweep disables the trigger after five
-                  refusals. Save is blocked until one of the two changes.
-                </p>
-              )}
-              {cfg.schedule && cfg.allowUnattended && (
-                <p className="text-[12px] text-muted-foreground">
-                  Once saved, this schedule appears on{' '}
-                  <Link to="/schedules" className="underline">Schedules</Link>,
-                  where you can test it once before relying on it.
-                </p>
-              )}
             </Section>
 
             <Section icon={ShieldCheck} title="Safety">

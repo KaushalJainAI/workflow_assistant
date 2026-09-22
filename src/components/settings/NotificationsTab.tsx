@@ -21,11 +21,11 @@ import { formatDistanceToNow } from 'date-fns';
  * starts echoing something a user supplied.
  */
 const ACTION_PATHS: Record<string, string> = {
-  '/inbox': 'Open the Inbox',
-  '/overview': 'Open Overview',
+  '/inbox': 'Answer requests',
+  '/overview': 'Open Activity',
   '/chat': 'Open the conversation',
   '/ai-chat': 'Open the conversation',
-  '/runs': 'See the run',
+  '/runs': 'Open Activity',
   '/documents': 'Open documents',
   '/settings': 'Open settings',
 };

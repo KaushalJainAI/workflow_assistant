@@ -112,10 +112,26 @@ const agentsService = {
     return data;
   },
 
+  /** Steer one coding-task worker, by execution — the lane's own run, not the
+   *  agent's latest, which is the wrong worker when one implementer has two. */
+  steerRun: async (executionId: string, message: string): Promise<{
+    steered: boolean; execution_id: string; queued: number; dropped: number;
+  }> => {
+    const { data } = await apiClient.post(`/orchestrator/runs/${executionId}/steer/`, { message });
+    return data;
+  },
+
   /** Loosen or tighten approvals for the rest of the running run. */
   setRunAutonomy: async (id: number | string, level: 'review' | 'ask' | 'auto' | 'full'):
     Promise<{ autonomy: string; execution_id: string }> => {
     const { data } = await apiClient.post(`/orchestrator/agents/${id}/autonomy/`, { level });
+    return data;
+  },
+
+  /** Loosen or tighten one coding-task worker, by execution. */
+  setWorkerAutonomy: async (executionId: string, level: 'review' | 'ask' | 'auto' | 'full'):
+    Promise<{ autonomy: string; execution_id: string }> => {
+    const { data } = await apiClient.post(`/orchestrator/runs/${executionId}/autonomy/`, { level });
     return data;
   },
 

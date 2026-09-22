@@ -48,9 +48,11 @@ interface Options {
   isGuest?: boolean;
   /** Provider list from `useAIModels`; used to validate the stored model. */
   providers: AIProvider[];
+  /** Platform fallback model value; preferred when the stored id is gone. */
+  fallbackModel?: string;
 }
 
-export function useChatModelSelection({ isGuest = false, providers }: Options) {
+export function useChatModelSelection({ isGuest = false, providers, fallbackModel }: Options) {
   /**
    * Restore the user's last chosen model.
    *
@@ -128,13 +130,18 @@ export function useChatModelSelection({ isGuest = false, providers }: Options) {
     if (!current || !current.models.length) return;
     if (current.models.some((m) => m.value === model)) return;
 
-    const fallback = current.models[0].value;
+    // Prefer the platform fallback when this provider serves it — it is the
+    // id the backend substitutes at preflight anyway, so the picker and the
+    // turn agree. Otherwise the provider's first model, as before.
+    const fallback = fallbackModel && current.models.some((m) => m.value === fallbackModel)
+      ? fallbackModel
+      : current.models[0].value;
     // See the note above: this is reconciliation with the server's catalogue,
     // not state that could have been derived during render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setModel(fallback);
     localStorage.setItem(MODEL_KEY, fallback);
-  }, [isGuest, providers, provider, model]);
+  }, [isGuest, providers, provider, model, fallbackModel]);
 
   /** Persists the choice locally; the caller syncs it to the session. */
   const select = useCallback((nextProvider: string, nextModel: string) => {

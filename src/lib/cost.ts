@@ -1,8 +1,8 @@
 /**
  * How a cost is written down.
  *
- * One module because the same figure appears on the Runs list, inside a run's
- * turns, on the agent list and in Overview, and a cost that reads `₹0.02` in
+ * One module because the same figure appears on the Activity list, inside a run's
+ * turns, on the agent list and in Insights, and a cost that reads `₹0.02` in
  * one place and `$0.0002` in another is a cost nobody trusts. The backend does
  * every piece of arithmetic (`llm/pricing.py`); this only formats, deliberately
  * — a second implementation of the math in TypeScript is exactly the drift

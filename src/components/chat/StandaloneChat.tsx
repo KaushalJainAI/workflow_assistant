@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useDeferredValue } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   RUN_STATUS_EVENT,
   abortChatRun,
@@ -10,6 +11,7 @@ import {
   type RunMeta,
 } from '../../lib/chatRuns';
 import { usePersistedState } from '../../hooks/usePersistedState';
+import { clearChatDraft, useChatDraft } from '../../hooks/useChatDraft';
 import ThinkingTimer from './ThinkingTimer';
 import { 
   Copy,
@@ -43,6 +45,7 @@ import {
   LifeBuoy,
   FileText,
   ChevronRight,
+  Slash,
   Bot,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -59,6 +62,7 @@ import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
 import ChartArtifact from './ChartArtifact';
 import TodoPanel from './TodoPanel';
+import PlanPanel from '../orchestration/PlanPanel';
 import FileCards from '../files/FileCards';
 import FilePreviewProvider from '../files/FilePreviewProvider';
 import MarkdownMessage from './MarkdownMessage';
@@ -68,6 +72,8 @@ import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData, ChatSession
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useChatStream, type StreamEvent } from '../../hooks/useChatStream';
+import { usePlanStream } from '../../hooks/usePlanStream';
+import { planProgress } from '../../lib/planStream';
 import { useMessagePanels } from '../../hooks/useMessagePanels';
 import { useMessageSelection } from '../../hooks/useMessageSelection';
 import { useChatModelSelection } from '../../hooks/useChatModelSelection';
@@ -88,6 +94,7 @@ import commandsService from '../../api/commands';
 import {
   buildCommandPayload,
   findCommand,
+  prefillCommandInput,
   splitCommandLine,
   type CommandChip as CommandChipData,
   type CommandDef,
@@ -118,6 +125,12 @@ const argText = (value: unknown): string => (typeof value === 'string' ? value :
 export default function StandaloneChat() {
   const { isAuthenticated } = useAuth();
   const isGuest = !isAuthenticated;
+  const location = useLocation();
+  const navigate = useNavigate();
+  /** The sidebar "New chat" CTA lands here with this flag, from any page
+      including this one — an explicit fresh start, not a restore. */
+  const newChatRequested =
+    (location.state as { newChat?: boolean } | null)?.newChat === true;
   
   // Helper to strip XML/HTML tags from tool call argument values
   const stripXmlTags = (val: unknown): string => {
@@ -127,7 +140,6 @@ export default function StandaloneChat() {
   
   // --- Chat State ---
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
   // `isLoading` means *the agent is working on a turn*, and nothing else. It
   // drives the live block, so fetching a transcript must never set it — doing
   // that is what made arriving on the page claim the model was thinking.
@@ -157,6 +169,9 @@ export default function StandaloneChat() {
   );
   const conversationId = isGuest ? guestConversationId : authConversationId;
   const setConversationId = isGuest ? setGuestConversationId : setAuthConversationId;
+  // The composer's unsent text, kept per conversation: typing half a message,
+  // switching threads and coming back restores each box where it was left.
+  const [input, setInput] = useChatDraft(conversationId, isGuest);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -196,7 +211,7 @@ export default function StandaloneChat() {
   // --- Model Selection State ---
   // Default to NVIDIA Nemotron 3 Super so the chat works out-of-the-box using
   // the server-side NVIDIA_API_KEY (no per-user credential required).
-  const { providers: dynamicProviders } = useAIModels();
+  const { providers: dynamicProviders, meta: catalogueMeta } = useAIModels();
 
   const {
     provider: llmProvider,
@@ -209,7 +224,7 @@ export default function StandaloneChat() {
     dropdownRef,
     select: selectModel,
     adopt: adoptSessionModel,
-  } = useChatModelSelection({ isGuest, providers: dynamicProviders });
+  } = useChatModelSelection({ isGuest, providers: dynamicProviders, fallbackModel: catalogueMeta?.fallback?.model });
 
   // Which rungs are on offer depends on the model chosen just above, so this
   // reads that selection rather than owning it. See `useEffortSelection` for
@@ -256,6 +271,16 @@ export default function StandaloneChat() {
     clearPendingToolCall,
     dismissBlockedAttachments,
   } = useChatStream();
+
+  // The coding team's lanes, locks and changes — beside the turn's own
+  // state, not inside it, so worker heartbeats never re-render the
+  // transcript. Fed from the same frames (`task_update` / `lease_update` /
+  // `code_change`), which the lead's workers publish to the lead's sink.
+  const {
+    plan,
+    applyPlanEvent,
+    resetPlan,
+  } = usePlanStream();
 
   // Bound as consts so a `&&` guard narrows them inside event handlers too,
   // which a `live.x` property read does not.
@@ -379,6 +404,10 @@ export default function StandaloneChat() {
   // The transcript is refetched, so a turn that finished in the background
   // is present on arrival.
   useEffect(() => {
+    // An explicit "New chat" starts empty: restoring would repaint the
+    // previous transcript underneath it. The effect by
+    // `startNewConversation` below clears the ids; this just skips the fetch.
+    if (newChatRequested) return;
     if (isGuest) return; // Guests start with a fresh session each visit
     if (conversationId) {
       loadConversation(conversationId);
@@ -508,10 +537,23 @@ export default function StandaloneChat() {
     setIsRestoring(false);
     setSettledId(null);
     resetStream();
+    resetPlan();
     // `setConversationId` comes from `usePersistedState`, which returns a plain
     // `useState` setter — stable, but the linter cannot see that through the
     // custom hook's tuple, so it is listed rather than suppressed.
-  }, [resetStream, setConversationId]);
+  }, [resetStream, resetPlan, setConversationId]);
+
+  /**
+   * Consumes the sidebar "New chat" flag. Works both when arriving from
+   * another page (mounts fresh, and the restore effect above already stood
+   * down) and when already here (same path, new location state). The flag
+   * is replaced away so a reload does not wipe the chat the user then starts.
+   */
+  useEffect(() => {
+    if (!newChatRequested) return;
+    startNewConversation();
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [newChatRequested, startNewConversation, navigate, location.pathname, location.search]);
 
   const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -523,6 +565,8 @@ export default function StandaloneChat() {
       // Both caches too, or the deleted thread paints again on the next reload.
       queryClient.removeQueries({ queryKey: ['chatSession', id] });
       forgetTranscript(id);
+      // Its unsent draft goes with it, or the text haunts the next thread.
+      clearChatDraft(id, isGuest);
       if (conversationId === id) {
         startNewConversation();
       }
@@ -826,6 +870,7 @@ export default function StandaloneChat() {
   const handleStreamEvent = (event: StreamEvent, meta: RunMeta = {}, replayed = false) => {
     const { optimisticId, intentToSend } = { optimisticId: meta.optimisticId, intentToSend: meta.intent };
     applyStreamEvent(event);
+    applyPlanEvent(event);
 
     switch (event.type) {
       case 'status': {
@@ -941,6 +986,7 @@ export default function StandaloneChat() {
     if (!run) return;
 
     resetStream();
+    resetPlan();
     setIsLoading(run.status === 'running');
 
     return subscribeChatRun(conversationId, (frame: RunFrame, replayed) => {
@@ -960,7 +1006,7 @@ export default function StandaloneChat() {
     // `runningKeys` is the signal that a run was created for this conversation
     // after the effect first ran (a brand-new session starts its run one tick
     // after `conversationId` is set).
-  }, [conversationId, runningKeys, resetStream, clearStreamStatus]);
+  }, [conversationId, runningKeys, resetStream, resetPlan, clearStreamStatus]);
 
   /**
    * Send a message to a turn that is already running, instead of dropping it.
@@ -1043,7 +1089,7 @@ export default function StandaloneChat() {
         break;
       }
       case 'approvals':
-        window.location.href = '/overview';
+        window.location.href = '/runs';
         break;
       case 'connect': {
         const label = commandChips[0]?.label ?? arg;
@@ -1160,6 +1206,7 @@ export default function StandaloneChat() {
     setIsLoading(true);
 
     resetStream();
+    resetPlan();
     setIsReasoningExpanded(false);
     setIsLiveCodeExpanded(true);
     setIsLiveSourcesExpanded(true);
@@ -1352,8 +1399,11 @@ export default function StandaloneChat() {
       <div
         className={cn(
           "h-full bg-card border-r border-border transition-colors duration-300 ease-in-out flex flex-col overflow-hidden",
-          // Mobile: fixed overlay
-          "fixed md:relative left-0 top-0 z-40 md:z-30 md:flex-shrink-0",
+          // Mobile: fixed overlay. Above the global floating hamburger
+          // (z-60), which otherwise paints over the drawer's "Conversations"
+          // header — the drawer is modal (own backdrop, own close button),
+          // so it is the topmost thing while open.
+          "fixed md:relative left-0 top-0 z-[70] md:z-30 md:flex-shrink-0",
           showHistory
             ? "w-[85vw] max-w-[320px] md:w-[300px] translate-x-0"
             : "w-0 -translate-x-full md:translate-x-0 md:w-0 md:opacity-0 md:border-none"
@@ -1676,10 +1726,13 @@ export default function StandaloneChat() {
           </div>
         )}
 
+        {/* Transcript + plan rail: the panel sits beside the scroll area on
+            wide screens and collapses to a bottom sheet on phones. */}
+        <div className="flex min-h-0 flex-1">
         {/* Dynamic Transition Area */}
-        <div 
+        <div
           className={cn(
-            "flex-1 overflow-y-auto px-4 md:px-6 transition-colors duration-1000 ease-in-out relative",
+            "flex-1 min-w-0 overflow-y-auto px-4 md:px-6 transition-colors duration-1000 ease-in-out relative",
             // Initial state: truly center the hero (no asymmetric padding that
             // shoves it upward and leaves a dead zone above the composer).
             // Transcript: only enough head room to clear the sticky header —
@@ -2443,8 +2496,29 @@ export default function StandaloneChat() {
                         {live.content && statusPanel}
 
                         {/* The plan, updated live — this is what turns forty
-                            tool calls into something a person can follow. */}
-                        {live.todos.length > 0 && <TodoPanel todos={live.todos} live />}
+                            tool calls into something a person can follow.
+                            When the run dispatched a team, the transcript
+                            shows a one-line pill that focuses the side panel
+                            instead of repeating the list. */}
+                        {live.todos.length > 0 && plan.tasks.length === 0 && (
+                          <TodoPanel todos={live.todos} live />
+                        )}
+                        {live.todos.length > 0 && plan.tasks.length > 0 && (() => {
+                          const { done, total } = planProgress(plan.tasks);
+                          return (
+                            <button
+                              onClick={() => {
+                                document.getElementById('plan-panel')
+                                  ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                              }}
+                              className="my-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-muted/20 px-3 py-1.5 text-[12px] text-muted-foreground hover:bg-muted/40"
+                            >
+                              <span className="font-medium text-foreground">Plan updated</span>
+                              <span className="tabular-nums">({done}/{total})</span>
+                              <span aria-hidden>→</span>
+                            </button>
+                          );
+                        })()}
 
                         <FileCards files={live.files} />
 
@@ -2850,6 +2924,20 @@ export default function StandaloneChat() {
           </div>
         </div>
 
+          {(plan.tasks.length > 0 || plan.leases.length > 0 || plan.changes.length > 0) && (
+            // `contents` so the anchor id does not disturb the flex row —
+            // the rail and the phone sheet both live inside PlanPanel.
+            <div id="plan-panel" className="contents">
+              <PlanPanel
+                todos={live.todos}
+                tasks={plan.tasks}
+                leases={plan.leases}
+                changes={plan.changes}
+              />
+            </div>
+          )}
+        </div>
+
         {/* Dynamic Navigation/Input Area */}
         <footer className={cn(
           // pb uses the safe-area inset so the composer toolbar clears the
@@ -2977,9 +3065,10 @@ export default function StandaloneChat() {
                         setCommandArgText('');
                         // Leave the task text in the box after the name; the
                         // payload carries the structured command, the text
-                        // carries what the user typed to say.
-                        const rest = splitCommandLine(input)?.rest ?? '';
-                        setInput(rest ? `/${command.name} ${rest}` : `/${command.name} `);
+                        // carries what the user typed to say. Prose typed
+                        // before opening the palette (e.g. via the Commands
+                        // button) is kept as the task, never discarded.
+                        setInput(prefillCommandInput(input, command.name));
                         setPaletteOpen(false);
                         textareaRef.current?.focus();
                       }}
@@ -3128,6 +3217,41 @@ export default function StandaloneChat() {
                     {/* Left: intent pills */}
                     <div className="flex items-center gap-1.5 min-w-0 flex-1 basis-0">
                       <div className="flex items-center gap-1.5 min-w-0 max-w-full overflow-x-auto scrollbar-none scroll-rail pr-1">
+                        {/* Slash commands, without typing `/`. Typing a
+                            leading slash is undiscoverable — on a phone
+                            keyboard it is two taps away behind the symbols
+                            page — so this opens the same palette the slash
+                            opens. Hidden for guests, who have no commands. */}
+                        {!isGuest && (
+                          <button
+                            onClick={() => {
+                              if (isLoading) return;
+                              setCommandError(null);
+                              setPaletteOpen((open) => !open);
+                              textareaRef.current?.focus();
+                            }}
+                            disabled={isLoading}
+                            aria-label="Open slash commands"
+                            aria-expanded={paletteOpen}
+                            title="Slash commands ( / )"
+                            className={cn(
+                              "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[10px] font-bold shrink-0 border",
+                              "transition-colors duration-200 ease-out active:scale-95",
+                              "disabled:opacity-40",
+                              paletteOpen
+                                ? 'bg-primary/10 border-primary/30 text-primary'
+                                : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40",
+                            )}
+                          >
+                            <Slash className="w-3.5 h-3.5" />
+                            {/* Label stays on phones too, like Search/Research:
+                                an icon alone says nothing about what tapping
+                                it opens. The row scrolls if space runs out. */}
+                            <span className="inline">
+                               Commands
+                            </span>
+                          </button>
+                        )}
                         {[
                           // Coding / Files / Workflow removed along with the
                           // server-side tools that backed them. A pill that sets
@@ -3287,7 +3411,24 @@ export default function StandaloneChat() {
                                           : "hover:bg-muted/50 text-foreground/70 font-medium"
                                       )}
                                     >
-                                      <span className="truncate flex-1">{m.name}</span>
+                                      <span className="flex-1 min-w-0">
+                                        <span className="truncate block">{m.name}</span>
+                                        {/* Training-data notice, sourced from
+                                            the catalogue row's description
+                                            (seeded in `populate_models.py`),
+                                            not hard-coded here: every free
+                                            Zen model retains or trains on
+                                            data, and an agent with mailbox
+                                            access could send one your Gmail.
+                                            Shown only for opencode free
+                                            models — other providers' rows
+                                            keep their one-line layout. */}
+                                        {llmProvider === 'opencode' && m.is_free && m.description ? (
+                                          <span className="block truncate text-[10px] font-normal opacity-70">
+                                            {m.description}
+                                          </span>
+                                        ) : null}
+                                      </span>
                                       {m.is_free && (
                                         <span className={cn(
                                           "text-[7px] font-semibold  px-1.5 py-0.5 rounded shrink-0",
@@ -3312,6 +3453,29 @@ export default function StandaloneChat() {
                                   ) : null;
                                 })()}
                               </div>
+
+                              {/* Zen models need the user's own key (no
+                                  platform key by design, ToS), so a keyless
+                                  user gets a way forward, not just a dimmed
+                                  grid. The Credentials page lists the
+                                  `opencode` type once seeded; it takes no
+                                  pre-selection param, so this is a plain
+                                  link. */}
+                              {(() => {
+                                const current = dynamicProviders.find(p => p.slug === llmProvider);
+                                if (!current || current.has_credentials || current.slug !== 'opencode') return null;
+                                return (
+                                  <div className="px-3 pb-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setShowModelDropdown(false); navigate('/credentials'); }}
+                                      className="w-full text-center text-[11px] text-primary hover:underline font-medium py-1.5"
+                                    >
+                                      Add your OpenCode Zen key to use these models
+                                    </button>
+                                  </div>
+                                );
+                              })()}
 
                               {/* Renders nothing when this model has no effort
                                   control, which is most of the catalogue. */}

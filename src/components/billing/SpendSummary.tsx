@@ -2,7 +2,7 @@
  * What model calls cost over the last 30 days — agents and chat together.
  *
  * Nothing in the app showed this. The only spend on screen was per agent on
- * Overview and per conversation in the chat header, and the endpoint behind
+ * Activity and per conversation in the chat header, and the endpoint behind
  * Insights summed agent runs only, so chat — for most people most of their
  * use — was in no total anywhere. Shown beside credits because the two are the
  * two meters and people confuse them: this is the providers' price, credits

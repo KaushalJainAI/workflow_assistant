@@ -73,15 +73,69 @@ export interface AIProvider {
   models: AIModel[];
 }
 
+/** The platform fallback model: what runs execute on when their configured
+ *  model is retired or unknown. Read-only for most callers; staff change it
+ *  through `updateFallback`. */
+export interface FallbackModel {
+  provider: string;
+  model: string;
+}
+
+export interface CatalogueMeta {
+  /** Last completed refresh, or null when none has ever run. */
+  last_refresh: {
+    at: string;
+    by: string;
+    added: number;
+    updated: number;
+    retired: { value: string; replaced_by: string }[];
+    new_upstream: string[];
+    affected_agents: unknown[];
+  } | null;
+  fallback: FallbackModel;
+}
+
+export interface RefreshSummary {
+  added: number;
+  updated: number;
+  retired: { value: string; replaced_by: string }[];
+  new_upstream: string[];
+  affected_agents: { id: number; name: string; old: string; suggested: string }[];
+}
+
 const nodeService = {
   /**
    * Get all AI providers and their models with credential status
    */
-  async getAIModels(): Promise<{ providers: AIProvider[] }> {
+  async getAIModels(): Promise<{ providers: AIProvider[]; meta?: CatalogueMeta }> {
     // No cache-buster: the catalogue changes when a credential is added, not
     // between two renders of the same page, and `?t=` made every caller a
     // cache miss at every layer. Freshness is React Query's job now.
-    const response = await apiClient.get<{ providers: AIProvider[] }>('/llm/models/');
+    const response = await apiClient.get<{ providers: AIProvider[]; meta?: CatalogueMeta }>('/llm/models/');
+    return response.data;
+  },
+
+  /**
+   * Re-diff the live OpenRouter catalogue against the held rows (staff-only).
+   * New upstream ids arrive inactive for staff to activate; retired ids are
+   * reported with affected agents. Throws 403 for non-staff, 409 while a
+   * refresh is already running.
+   */
+  async refreshModels(): Promise<RefreshSummary> {
+    const response = await apiClient.post<RefreshSummary>('/llm/models/refresh/');
+    return response.data;
+  },
+
+  /** Read the platform fallback model (everyone). */
+  async getFallback(): Promise<FallbackModel> {
+    const response = await apiClient.get<FallbackModel>('/llm/fallback/');
+    return response.data;
+  },
+
+  /** Change the platform fallback model (staff-only). */
+  async updateFallback(provider: string, model: string): Promise<FallbackModel & { warning?: string }> {
+    const response = await apiClient.patch<FallbackModel & { warning?: string }>(
+      '/llm/fallback/', { provider, model });
     return response.data;
   },
 

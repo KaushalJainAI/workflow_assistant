@@ -40,6 +40,23 @@ export type FireOutcome =
 /** Where a schedule's cron came from, and therefore what may overwrite it. */
 export type TriggerOrigin = 'builder' | 'manual';
 
+/**
+ * One status per trigger, computed on the server
+ * (`agents/views/triggers.py::trigger_status`). The card renders this
+ * instead of assembling warning boxes from the raw columns.
+ */
+export type TriggerStatus =
+  | 'scheduler_down'
+  | 'needs_permission'
+  | 'agent_paused'
+  | 'self_disabled'
+  | 'ended'
+  | 'paused'
+  | 'not_started'
+  | 'overdue'
+  | 'failing'
+  | 'ok';
+
 export interface Trigger {
   id: number;
   subagent: number;
@@ -84,6 +101,11 @@ export interface Trigger {
   description: string;
   /** The next few firings, ISO, already narrowed by the window. */
   upcoming: string[];
+  /** Server-computed health: one word plus one human sentence with its fix. */
+  status: TriggerStatus;
+  status_message: string;
+  /** The run the last firing started, as the id `/runs?run=` links by. */
+  last_run_id: string | null;
   /** Only ever populated for webhook triggers, and only for the owner. */
   webhook_url: string | null;
   created_at: string;
@@ -122,7 +144,15 @@ export interface PreviewInput {
 
 export interface RunNowResult {
   outcome: FireOutcome;
+  /** Present when the run started (202): the id `/runs?run=` links by. */
+  execution_id?: string;
   trigger: Trigger;
+}
+
+/** What `/triggers/health/` answers: is anything sweeping, and since when. */
+export interface SchedulerHealth {
+  running: boolean;
+  last_tick_at: string | null;
 }
 
 const triggersService = {
@@ -184,13 +214,27 @@ const triggersService = {
   },
 
   /**
-   * Fire a schedule now, through the sweep's own path. Not a shortcut to
-   * `agents/{id}/execute/`: that would prove the agent runs, which was never
-   * in doubt — the question is whether the *scheduled* path runs.
+   * Fire a schedule now, through the sweep's own gates. Answers 202 with the
+   * execution id as soon as the run has *started* — the request no longer
+   * waits for the whole agent run, so the button cannot time out behind a
+   * proxy. A manual firing is extra, not the next slot: `next_due_at` does
+   * not move.
    */
   runNow: async (id: number): Promise<RunNowResult> => {
     const { data } = await apiClient.post<RunNowResult>(
       `/orchestrator/triggers/${id}/run/`, {},
+    );
+    return data;
+  },
+
+  /**
+   * Whether the in-process scheduler is checking in. The Schedules page
+   * polls it for the red banner — a stopped scheduler must say so instead
+   * of showing cards that look healthy while nothing fires.
+   */
+  health: async (): Promise<SchedulerHealth> => {
+    const { data } = await apiClient.get<SchedulerHealth>(
+      '/orchestrator/triggers/health/',
     );
     return data;
   },

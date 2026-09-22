@@ -348,7 +348,7 @@ function StatusCard({
       {str(card.paused_until) && <Row label="Paused until" value={str(card.paused_until)} />}
       {pending.length > 0 && (
         <button
-          onClick={() => onNavigate?.('/overview')}
+          onClick={() => onNavigate?.('/runs')}
           className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-amber-500/15 px-3 text-[12px] font-bold text-amber-600"
         >
           <AlertTriangle className="h-3.5 w-3.5" />

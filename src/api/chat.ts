@@ -84,6 +84,9 @@ export interface SteerResult {
 export interface TodoItem {
   text: string;
   status: 'open' | 'doing' | 'done' | 'blocked';
+  /** Which worker owns this step, and which plan task it mirrors (coding lead). */
+  owner?: string;
+  task_id?: string;
 }
 
 /** One point on a chart. `y` is null where the value is unknown, which the

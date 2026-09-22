@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { Link, useNavigate } from 'react-router-dom';
-import { 
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import {
   Settings as SettingsIcon,
   User,
   Bell,
@@ -17,7 +17,9 @@ import {
   Zap,
   Check,
   Rocket,
-  LogOut
+  LogOut,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import InsightsDashboard from '../components/billing/InsightsDashboard';
@@ -26,6 +28,7 @@ import ChangeEmail from '../components/settings/ChangeEmail';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../contexts/authState';
 import { authService } from '../api/auth';
+import nodeService from '../api/nodeService';
 import Select from '../components/ui/Select';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import NotificationsTab from '../components/settings/NotificationsTab';
@@ -85,6 +88,20 @@ interface SettingsForm {
 
 export default function Settings() {
   const [activeTab, setActiveTab] = usePersistedState<SettingsTab>('settings.tab', 'general');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // `?tab=` deep-links a tab (the retired /insights route lands here).
+  // Consumed on mount: an unknown value is ignored, and the param is
+  // replaced away so a reload keeps the user's own last tab, not the link's.
+  useEffect(() => {
+    const asked = searchParams.get('tab');
+    const visible: readonly string[] = ['general', 'account', 'insights', 'billing', 'notifications', 'appearance', 'api'];
+    if (asked && visible.includes(asked)) {
+      setActiveTab(asked as SettingsTab);
+      setSearchParams({}, { replace: true });
+    }
+    // Mount only: this honours the inbound link, not later tab switches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { theme, setTheme, colorTheme, setColorTheme } = useTheme();
   const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
@@ -93,7 +110,14 @@ export default function Settings() {
   const [isCopied, setIsCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const { providers: catalogue } = useAIModels();
+  const { providers: catalogue, meta, refreshCatalog, refresh: refetchCatalogue } = useAIModels();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Fallback editor state. The editor opens seeded from the server's current
+  // pair; saving is staff-only on the backend, and a 403 says so plainly.
+  const [fbEditing, setFbEditing] = useState(false);
+  const [fbProvider, setFbProvider] = useState('');
+  const [fbModel, setFbModel] = useState('');
+  const [isSavingFallback, setIsSavingFallback] = useState(false);
   
   // Form State
   const [formData, setFormData] = useState<SettingsForm>({
@@ -181,6 +205,53 @@ export default function Settings() {
 
   const handleSelectChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  /** Live catalogue refresh: re-diffs OpenRouter against the held rows. */
+  const handleRefreshCatalog = async () => {
+    setIsRefreshing(true);
+    try {
+      const summary = await refreshCatalog();
+      const retired = summary.retired.length;
+      toast.success(
+        `Model catalog refreshed: ${summary.added} new, ${summary.updated} updated, ${retired} retired` +
+        (summary.affected_agents.length
+          ? ` — ${summary.affected_agents.length} agent(s) moved to the fallback and their owners were notified`
+          : ''),
+      );
+    } catch (error) {
+      const status = (error as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(
+        status === 403
+          ? 'Refreshing the catalog is staff-only'
+          : status === 409
+            ? 'A refresh is already running — try again in a minute'
+            : detail || 'Could not refresh the catalog',
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  /** Save the platform fallback model (staff-only on the backend). */
+  const handleSaveFallback = async () => {
+    setIsSavingFallback(true);
+    try {
+      const saved = await nodeService.updateFallback(fbProvider, fbModel);
+      setFbEditing(false);
+      await refetchCatalogue();
+      toast.success(`Fallback model is now ${saved.provider}/${saved.model}`);
+      if (saved.warning) toast.error(saved.warning);
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(
+        status === 403 ? 'Changing the fallback model is staff-only' : detail || 'Could not save the fallback',
+      );
+    } finally {
+      setIsSavingFallback(false);
+    }
   };
 
   const handleSave = async () => {
@@ -386,6 +457,115 @@ export default function Settings() {
                       </p>
                     )}
                   </div>
+
+                  {/* Catalogue refresh + fallback. The catalogue is global
+                      state every picker reads, so the refresh lives next to
+                      the pickers it serves rather than on a page of its own.
+                      The fallback is what runs execute on when their
+                      configured model is retired or unknown. */}
+                  <div className="flex items-center justify-between gap-4 pt-3 border-t border-border/50">
+                    <div>
+                      <p className="font-medium">Model catalogue</p>
+                      <p className="text-sm text-muted-foreground">
+                        {meta?.last_refresh
+                          ? `Last refreshed ${new Date(meta.last_refresh.at).toLocaleString()}`
+                          : 'Never refreshed from live'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleRefreshCatalog()}
+                      disabled={isRefreshing}
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline disabled:opacity-50"
+                    >
+                      {isRefreshing
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <RefreshCw className="w-3.5 h-3.5" />}
+                      {isRefreshing ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {fbEditing ? (
+                    <div className="pt-3 border-t border-border/50 space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-medium">Fallback provider</p>
+                          <p className="text-sm text-muted-foreground">Who serves the fallback</p>
+                        </div>
+                        <Select
+                          value={fbProvider}
+                          onChange={(val) => {
+                            const first = catalogue.find((p) => p.slug === val)?.models?.[0]?.value ?? '';
+                            setFbProvider(val);
+                            setFbModel(first);
+                          }}
+                          options={catalogue.map((p) => ({ value: p.slug, label: p.name }))}
+                          placeholder="Choose a provider"
+                          className="w-[250px]"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-medium">Fallback model</p>
+                          <p className="text-sm text-muted-foreground">Runs on retired models execute here</p>
+                        </div>
+                        <Select
+                          value={fbModel}
+                          onChange={setFbModel}
+                          showSearch={(catalogue.find((p) => p.slug === fbProvider)?.models?.length ?? 0) > 8}
+                          options={(catalogue.find((p) => p.slug === fbProvider)?.models ?? []).map((mo) => ({
+                            value: mo.value,
+                            label: mo.is_free ? `${mo.name} · free` : mo.name,
+                          }))}
+                          placeholder="Choose a model"
+                          className="w-[250px]"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFbEditing(false)}
+                          className="text-sm text-muted-foreground hover:underline"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveFallback()}
+                          disabled={!fbModel || isSavingFallback}
+                          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline disabled:opacity-50"
+                        >
+                          {isSavingFallback ? 'Saving…' : 'Save fallback'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium">Fallback model</p>
+                        <p className="text-sm text-muted-foreground">
+                          Runs on a retired or unknown model execute here instead — the stored
+                          configuration is left untouched and the owner is notified
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">
+                          {meta?.fallback ? `${meta.fallback.provider}/${meta.fallback.model}` : '…'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFbProvider(meta?.fallback?.provider ?? formData.llm_provider);
+                            setFbModel(meta?.fallback?.model ?? formData.llm_model);
+                            setFbEditing(true);
+                          }}
+                          className="text-sm text-primary hover:underline"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">

@@ -1,6 +1,6 @@
 /**
- * The one definition of "what is waiting on you", shared by the Sidebar badge,
- * Inbox and Overview.
+ * The one definition of "what is waiting on you", shared by the Sidebar badge
+ * and the Activity page.
  *
  * Three components used to declare the same `['hitl','pending']` query with
  * three different intervals, so the effective poll rate was whichever page
@@ -27,7 +27,7 @@ const LIVE_INTERVAL_MS = 120_000;
 const FALLBACK_INTERVAL_MS = 20_000;
 
 // Module-level because the publisher (useHITLReminders, mounted once in Layout)
-// and the readers (Sidebar, Inbox, Overview) are siblings, not ancestor and
+// and the readers (Sidebar, Activity) are siblings, not ancestor and
 // descendant. A context would mean wrapping the shell in a provider that exists
 // to carry one boolean.
 let socketLive = false;

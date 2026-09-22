@@ -73,7 +73,7 @@ export default function FolderTile({
           e.stopPropagation();
           setMenuOpen((v) => !v);
         }}
-        className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+        className="p-1.5 rounded-md text-muted-foreground hover:bg-muted"
         aria-label={`Actions for ${folder.name}`}
       >
         <MoreVertical className="w-4 h-4" />
@@ -81,18 +81,18 @@ export default function FolderTile({
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
-          <div className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1">
+          <div className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg py-1">
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onRename(folder); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted"
             >
               <Pencil className="w-3.5 h-3.5" /> Rename
             </button>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(folder); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
             >
               <Trash2 className="w-3.5 h-3.5" /> Move to Trash
             </button>
@@ -108,21 +108,21 @@ export default function FolderTile({
         {...dragHandlers}
         onDoubleClick={() => onOpen(folder)}
         className={cn(
-          'flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 cursor-pointer transition-colors',
+          'flex items-center gap-3 px-4 py-3 border-b border-border cursor-pointer transition-colors bg-card',
           isDropTarget
-            ? 'bg-blue-50 dark:bg-blue-950/40 ring-1 ring-inset ring-blue-400'
-            : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+            ? 'bg-primary/10 ring-1 ring-inset ring-primary'
+            : 'hover:bg-muted'
         )}
       >
         <FolderIcon className="w-5 h-5 text-amber-500 shrink-0" />
         <button
           type="button"
           onClick={() => onOpen(folder)}
-          className="flex-1 min-w-0 text-left font-medium text-gray-900 dark:text-gray-100 truncate"
+          className="flex-1 min-w-0 text-left font-medium text-card-foreground truncate"
         >
           {folder.name}
         </button>
-        <span className="text-sm text-gray-400 shrink-0">{subtitle}</span>
+        <span className="text-sm text-muted-foreground shrink-0">{subtitle}</span>
         {menu}
       </div>
     );
@@ -133,10 +133,10 @@ export default function FolderTile({
       {...dragHandlers}
       onDoubleClick={() => onOpen(folder)}
       className={cn(
-        'group relative rounded-lg border p-4 cursor-pointer card-hover',
+        'group relative rounded-lg border p-4 cursor-pointer card-hover bg-card',
         isDropTarget
-          ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-400'
-          : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-sm'
+          ? 'border-primary bg-primary/10 ring-1 ring-primary'
+          : 'border-border hover:border-border-strong hover:shadow-sm'
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -147,10 +147,10 @@ export default function FolderTile({
         >
           <FolderIcon className="w-8 h-8 text-amber-500 shrink-0" />
           <div className="min-w-0">
-            <p className="font-medium text-gray-900 dark:text-gray-100 truncate" title={folder.name}>
+            <p className="font-medium text-card-foreground truncate" title={folder.name}>
               {folder.name}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
           </div>
         </button>
         <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">

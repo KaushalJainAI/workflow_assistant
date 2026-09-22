@@ -108,7 +108,7 @@ export function useHITLReminders(enabled: boolean = true) {
       if (message.type === 'reminder') {
         const title = asText(d.title);
         const body = asText(d.body ?? d.message);
-        const actionUrl = asText(d.action_url) || '/overview';
+        const actionUrl = asText(d.action_url) || '/runs';
         const tagKey = asText(d.request_id) ? `hitl-${asText(d.request_id)}` : `hitl-${asText(d.kind) || 'reminder'}`;
         surface(title, body, actionUrl, tagKey, typeof d.stage === 'number' ? d.stage : undefined);
         queryClient.invalidateQueries({ queryKey: ['hitl'] });
@@ -116,7 +116,7 @@ export function useHITLReminders(enabled: boolean = true) {
       } else if (message.type === 'new_request') {
         const title = asText(d.title) || 'Agent needs you';
         const body = asText(d.message ?? d.body);
-        surface(title, body, '/overview', `hitl-${asText(d.request_id) || 'new'}`);
+        surface(title, body, '/runs', `hitl-${asText(d.request_id) || 'new'}`);
         queryClient.invalidateQueries({ queryKey: ['hitl'] });
       } else if (message.type === 'notification') {
         const title = asText(d.title) || 'Notification';

@@ -23,12 +23,13 @@
  * still editable here rather than being locked out by its own UI.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, CalendarClock, Check, Globe, Loader2 } from 'lucide-react';
 import { triggersService, type OverlapPolicy, type SchedulePreview } from '../../api';
+import agentsService from '../../api/agents';
 import {
   DAY_NAMES,
   HOUR_INTERVALS,
-  KIND_LABELS,
   MINUTE_INTERVALS,
   allZones,
   describe as describeLocally,
@@ -46,8 +47,22 @@ import type { ScheduleDraft } from './scheduleDraft';
  *  number key does not fire a request per repeat, short enough to feel live. */
 const PREVIEW_DEBOUNCE_MS = 350;
 
-const OVERLAP_COPY: Record<OverlapPolicy, { label: string; hint: string }> = {
-  skip: {
+/**
+ * The Repeats chips, in the order people think them: calendar shapes first,
+ * intervals after, the escape hatch last. Plain labels — "Weekdays", not
+ * "Every weekday" — because the chip is a choice, not a sentence.
+ */
+const REPEAT_ORDER: { kind: ScheduleKind; label: string }[] = [
+  { kind: 'daily', label: 'Every day' },
+  { kind: 'weekdays', label: 'Weekdays' },
+  { kind: 'weekly', label: 'Weekly' },
+  { kind: 'monthly', label: 'Monthly' },
+  { kind: 'hourly', label: 'Every few hours' },
+  { kind: 'minutes', label: 'Every few minutes' },
+  { kind: 'custom', label: 'Custom' },
+];
+
+const OVERLAP_COPY: Record<OverlapPolicy, { label: string; hint: string }> = {  skip: {
     label: 'Skip this firing',
     hint: 'Leave the running one alone and wait for the next slot.',
   },
@@ -100,6 +115,8 @@ export default function ScheduleEditor({
   onChange,
   agentAllowsUnattended = true,
   showAdvanced = true,
+  agentId = null,
+  onUnattendedAllowed,
 }: {
   value: ScheduleDraft;
   onChange: (next: ScheduleDraft) => void;
@@ -117,6 +134,14 @@ export default function ScheduleEditor({
    * silently discarded on save is worse than not offering them.
    */
   showAdvanced?: boolean;
+  /**
+   * The agent being scheduled, so the "Allow it" button can grant the
+   * unattended permission without leaving the form. Null renders the old
+   * go-to-settings paragraph instead.
+   */
+  agentId?: number | null;
+  /** Fired after the grant lands, so the caller can refresh the row. */
+  onUnattendedAllowed?: () => void;
 }) {
   // The spec is derived from the cron the parent holds, so this component has
   // no second source of truth to keep in step — `cron` is the only state.
@@ -130,6 +155,14 @@ export default function ScheduleEditor({
 
   const zones = useMemo(() => allZones(), []);
   const set = (patch: Partial<ScheduleDraft>) => onChange({ ...value, ...patch });
+
+  // Granting "may run unattended" without leaving the form. Nobody should
+  // have to go to the agent's settings to make the schedule they are
+  // building work.
+  const allow = useMutation({
+    mutationFn: () => agentsService.update(agentId!, { allowUnattended: true }),
+    onSuccess: () => onUnattendedAllowed?.(),
+  });
 
   const applySpec = (next: ScheduleSpec) => {
     setSpec(next);
@@ -190,7 +223,26 @@ export default function ScheduleEditor({
 
   return (
     <div className="space-y-4">
-      {!agentAllowsUnattended && (
+      {!agentAllowsUnattended && agentId != null && (
+        <div className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
+          <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] text-destructive">
+              This agent isn&rsquo;t allowed to run on its own yet, so every
+              firing of this schedule will be refused.
+            </p>
+            <button
+              type="button"
+              onClick={() => allow.mutate()}
+              disabled={allow.isPending}
+              className="mt-1.5 rounded-lg bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {allow.isPending ? 'Allowing…' : 'Allow it'}
+            </button>
+          </div>
+        </div>
+      )}
+      {!agentAllowsUnattended && agentId == null && (
         <div className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
           <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
           <p className="text-[12px] text-destructive">
@@ -204,7 +256,7 @@ export default function ScheduleEditor({
 
       <Field label="Repeats">
         <div className="flex flex-wrap gap-1.5">
-          {(Object.keys(KIND_LABELS) as ScheduleKind[]).map((kind) => (
+          {REPEAT_ORDER.map(({ kind, label }) => (
             <button
               key={kind}
               type="button"
@@ -216,7 +268,7 @@ export default function ScheduleEditor({
                   : 'border-border/60 text-muted-foreground hover:text-foreground',
               )}
             >
-              {KIND_LABELS[kind]}
+              {label}
             </button>
           ))}
         </div>
@@ -299,32 +351,34 @@ export default function ScheduleEditor({
         </Field>
       )}
 
-      {/* Hour and minute matter for everything except the two interval forms,
-          where the hour is meaningless and would just be a dead control. */}
-      {spec.kind !== 'minutes' && spec.kind !== 'custom' && (
-        <Field label="At" hint={spec.kind === 'hourly' ? 'minutes past the hour' : ''}>
-          <div className="flex items-center gap-1.5">
-            {spec.kind !== 'hourly' && (
-              <>
-                <input
-                  type="number" min={0} max={23} value={spec.hour}
-                  onChange={(e) => applySpec({ ...spec, hour: Number(e.target.value) })}
-                  className={cn(inputCls, 'w-20 tabular-nums text-center')}
-                  aria-label="Hour"
-                />
-                <span className="text-muted-foreground">:</span>
-              </>
-            )}
-            <input
-              type="number" min={0} max={59} value={spec.minute}
-              onChange={(e) => applySpec({ ...spec, minute: Number(e.target.value) })}
-              className={cn(inputCls, 'w-20 tabular-nums text-center')}
-              aria-label="Minute"
-            />
-            <span className="ml-1 text-[12px] text-muted-foreground">
-              24-hour clock
-            </span>
-          </div>
+      {/* One clock control, not two number boxes: a time input shows the
+          user's own 12/24-hour format, and transposed hour/minute was the
+          commonest silent mistake of the old pair. Hourly keeps a single
+          "minutes past the hour" number; the interval forms need no clock. */}
+      {spec.kind === 'hourly' && (
+        <Field label="At" hint="minutes past the hour">
+          <input
+            type="number" min={0} max={59} value={spec.minute}
+            onChange={(e) => applySpec({ ...spec, minute: Number(e.target.value) })}
+            className={cn(inputCls, 'w-20 tabular-nums text-center')}
+            aria-label="Minute"
+          />
+        </Field>
+      )}
+      {spec.kind !== 'minutes' && spec.kind !== 'hourly' && spec.kind !== 'custom' && (
+        <Field label="At">
+          <input
+            type="time" step={60}
+            value={`${String(spec.hour).padStart(2, '0')}:${String(spec.minute).padStart(2, '0')}`}
+            onChange={(e) => {
+              const [h, m] = e.target.value.split(':').map(Number);
+              if (Number.isFinite(h) && Number.isFinite(m)) {
+                applySpec({ ...spec, hour: h, minute: m });
+              }
+            }}
+            className={cn(inputCls, 'w-36 tabular-nums')}
+            aria-label="Time of day"
+          />
         </Field>
       )}
 
@@ -339,6 +393,22 @@ export default function ScheduleEditor({
           />
         </Field>
       )}
+
+      {/* Every schedule needs one of these (or the agent's brief), so it
+          sits in the open directly after the time — not one disclosure
+          deep, where the field people actually fill went unseen. */}
+      <Field
+        label="Goal"
+        hint="what should it do each time? Falls back to the agent's own brief"
+      >
+        <textarea
+          value={value.goal}
+          onChange={(e) => set({ goal: e.target.value })}
+          rows={2}
+          placeholder="What should it do each time this fires?"
+          className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm resize-y focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </Field>
 
       <Field label="Timezone" hint="the schedule is read in this zone">
         <Select
@@ -400,7 +470,7 @@ export default function ScheduleEditor({
       {showAdvanced && (
       <details className="group">
         <summary className="cursor-pointer text-[12px] font-medium text-muted-foreground hover:text-foreground">
-          Name, window, and what to do when it overlaps
+          More options
         </summary>
         <div className="mt-3 space-y-4">
           <Field label="Name" hint="optional — an agent can have several schedules">
@@ -437,20 +507,7 @@ export default function ScheduleEditor({
             date rather than sitting armed for a firing that will never come.
           </p>
 
-          <Field
-                label="Goal"
-                hint="optional — defaults to the agent's own brief"
-              >
-                <textarea
-                  value={value.goal}
-                  onChange={(e) => set({ goal: e.target.value })}
-                  rows={2}
-                  placeholder="What should it do each time this fires?"
-                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm resize-y focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </Field>
-
-              <Field label="If the previous run is still going">
+          <Field label="If the previous run is still going">
                 <div className="space-y-1.5">
                   {(Object.keys(OVERLAP_COPY) as OverlapPolicy[]).map((id) => (
                     <button

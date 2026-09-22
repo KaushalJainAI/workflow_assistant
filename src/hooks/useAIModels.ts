@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import nodeService, { type AIProvider } from '../api/nodeService';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import nodeService, { type AIProvider, type CatalogueMeta } from '../api/nodeService';
 import { tokenManager } from '../api/client';
 
 /**
@@ -18,6 +19,7 @@ import { tokenManager } from '../api/client';
  */
 export function useAIModels() {
   const authenticated = tokenManager.isAuthenticated();
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['ai-models'],
@@ -25,10 +27,27 @@ export function useAIModels() {
     enabled: authenticated,
   });
 
+  /**
+   * Live catalogue refresh (staff-only): re-diffs OpenRouter's `/v1/models`
+   * against the held rows, then re-reads both catalogue consumers.
+   *
+   * Both keys — the agent builder keeps its own (`['agent-builder',
+   * 'models']`) over the same underlying request, so invalidating only
+   * `['ai-models']` would leave the builder showing the dead list.
+   */
+  const refreshCatalog = useCallback(async () => {
+    const summary = await nodeService.refreshModels();
+    await queryClient.invalidateQueries({ queryKey: ['ai-models'] });
+    await queryClient.invalidateQueries({ queryKey: ['agent-builder', 'models'] });
+    return summary;
+  }, [queryClient]);
+
   return {
     providers: (data?.providers ?? []) as AIProvider[],
+    meta: (data?.meta ?? null) as CatalogueMeta | null,
     isLoading: authenticated ? isLoading : false,
     error: (error as Error | null) ?? null,
     refresh: refetch,
+    refreshCatalog,
   };
 }

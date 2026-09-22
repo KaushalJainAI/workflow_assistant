@@ -54,10 +54,10 @@ export default function Breadcrumbs({
         {...dropProps(null)}
         className={cn(
           'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors shrink-0',
-          'hover:bg-gray-100 dark:hover:bg-gray-800',
+          'hover:bg-muted',
           current === null
-            ? 'text-gray-900 dark:text-gray-100 font-medium'
-            : 'text-gray-500 dark:text-gray-400'
+            ? 'text-foreground font-medium'
+            : 'text-muted-foreground'
         )}
       >
         <Home className="w-3.5 h-3.5" />
@@ -66,15 +66,15 @@ export default function Breadcrumbs({
 
       {trail.map((crumb) => (
         <div key={crumb.id} className="flex items-center gap-1 min-w-0">
-          <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 shrink-0" />
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
           <button
             type="button"
             onClick={() => onNavigate(crumb.id)}
             {...dropProps(crumb.id)}
             className={cn(
               'px-2 py-1 rounded-md truncate max-w-[10rem] transition-colors',
-              'text-gray-500 dark:text-gray-400',
-              'hover:bg-gray-100 dark:hover:bg-gray-800'
+              'text-muted-foreground',
+              'hover:bg-muted hover:text-foreground'
             )}
             title={crumb.name}
           >
@@ -85,9 +85,9 @@ export default function Breadcrumbs({
 
       {current && (
         <div className="flex items-center gap-1 min-w-0">
-          <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 shrink-0" />
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
           <span
-            className="px-2 py-1 font-medium text-gray-900 dark:text-gray-100 truncate max-w-[12rem]"
+            className="px-2 py-1 font-medium text-foreground truncate max-w-[12rem]"
             title={current.name}
             aria-current="page"
           >

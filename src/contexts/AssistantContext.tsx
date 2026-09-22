@@ -53,20 +53,25 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const openAssistant = useCallback(() => setIsAssistantOpen(true), []);
   const closeAssistant = useCallback(() => setIsAssistantOpen(false), []);
 
-  const { providers: dynamicProviders, isLoading: isModelsLoading } = useAIModels();
+  const { providers: dynamicProviders, isLoading: isModelsLoading, meta: catalogueMeta } = useAIModels();
 
-  // A stored model the chosen provider no longer lists falls back to that
-  // provider's first model. Derived rather than written back into state by an
-  // effect (which rendered the retired model for a frame, then re-rendered);
-  // only the persisted copy is corrected, and that is a side effect proper.
+  // A stored model the chosen provider no longer lists falls back to the
+  // platform fallback when this provider serves it (the id the backend would
+  // substitute anyway), else to that provider's first model. Derived rather
+  // than written back into state by an effect (which rendered the retired
+  // model for a frame, then re-rendered); only the persisted copy is
+  // corrected, and that is a side effect proper.
   const staleModelFallback = useMemo(() => {
     if (isModelsLoading || dynamicProviders.length === 0) return null;
     const currentProvider = dynamicProviders.find(p => p.slug === llmProvider);
     if (!currentProvider || currentProvider.models.length === 0) return null;
-    return currentProvider.models.some(m => m.value === llmModel)
-      ? null
-      : currentProvider.models[0].value;
-  }, [dynamicProviders, isModelsLoading, llmProvider, llmModel]);
+    if (currentProvider.models.some(m => m.value === llmModel)) return null;
+    const platformFallback = catalogueMeta?.fallback?.model;
+    if (platformFallback && currentProvider.models.some(m => m.value === platformFallback)) {
+      return platformFallback;
+    }
+    return currentProvider.models[0].value;
+  }, [dynamicProviders, isModelsLoading, catalogueMeta, llmProvider, llmModel]);
   const effectiveModel = (staleModelFallback ?? llmModel) || user?.llm_model || DEFAULT_MODEL;
 
   useEffect(() => {

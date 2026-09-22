@@ -14,10 +14,12 @@
  * checkable: what it says in words, when it fires next, and what happened last
  * time it fired.
  *
- * The run-now button still goes through `sweep.fire`, the same path the
- * scheduler uses, and reports the sweep's own one-word outcome. A test button
- * that took a shortcut past the overlap policy and the unattended gate would
- * prove the button works and nothing else.
+ * The run-once button goes through the sweep's own gates
+ * (`sweep.prepare(manual=True)` — same paused-agent, overlap and no-goal
+ * rules, but an extra firing that never moves `next_due_at`), and answers
+ * 202 with the run id as soon as the run starts. A test button that took a
+ * shortcut past the overlap policy and the unattended gate would prove the
+ * button works and nothing else.
  *
  * It is also where **webhooks** are made. That half of the trigger model has
  * been complete on the server since triggers shipped — a secret-in-path
@@ -43,7 +45,6 @@ import {
   Check,
   Clock,
   Copy,
-  Globe,
   KeyRound,
   Loader2,
   Pencil,
@@ -51,7 +52,6 @@ import {
   Plus,
   Trash2,
   Webhook,
-  X,
   Zap,
 } from 'lucide-react';
 import {
@@ -60,24 +60,15 @@ import {
   type Trigger,
   type TriggerMode,
 } from '../api';
+import { statusTone } from '../lib/triggerStatus';
 // `api/index.ts` does not re-export the agents service; the agent picker is the
 // only thing on this page that needs it.
 import agentsService from '../api/agents';
 import { cn } from '../lib/utils';
-import { apiErrorMessage } from '../lib/apiError';
 import PageHeader from '../components/layout/PageHeader';
 import Select from '../components/ui/Select';
 import { Switch } from '../components/ui/Switch';
-import ScheduleEditor from '../components/schedules/ScheduleEditor';
-import WebhookEditor from '../components/schedules/WebhookEditor';
-import {
-  emptyDraft,
-  type ScheduleDraft,
-} from '../components/schedules/scheduleDraft';
-import {
-  emptyWebhookDraft,
-  type WebhookDraft,
-} from '../components/schedules/webhookDraft';
+import TriggerModal from '../components/schedules/TriggerModal';
 import { absoluteHookUrl, curlFor } from '../lib/webhooks';
 
 /**
@@ -88,7 +79,7 @@ import { absoluteHookUrl, curlFor } from '../lib/webhooks';
 const OUTCOME_COPY: Record<FireOutcome, { label: string; hint: string; tone: string }> = {
   fired: {
     label: 'Started',
-    hint: 'The run is under way — watch it on Runs.',
+    hint: 'The run has started.',
     tone: 'text-success',
   },
   queued: {
@@ -187,187 +178,49 @@ function OutcomeBanner({ outcome }: { outcome: FireOutcome }) {
   );
 }
 
-/** A trigger as the editor's draft, so opening one to edit is not a re-type. */
-function draftOf(t: Trigger): ScheduleDraft {
-  return {
-    cron: t.schedule_cron || t.config?.cron || '',
-    timezone: t.timezone || 'UTC',
-    name: t.name || '',
-    goal: t.goal || '',
-    overlap: t.overlap,
-    startsAt: t.starts_at,
-    endsAt: t.ends_at,
-  };
-}
-
-/** A webhook trigger as its own editor's draft. */
-function webhookDraftOf(t: Trigger): WebhookDraft {
-  return { name: t.name || '', goal: t.goal || '' };
-}
-
-/**
- * One modal, two forms. Which one is decided by `mode`, and the payloads are
- * genuinely different shapes — a schedule PATCHes a cron, a zone, an overlap
- * policy and a window; a webhook PATCHes a name and a goal, because those are
- * the only two fields anything on its path reads.
- */
-function TriggerModal({
-  trigger,
-  mode,
-  agentId,
-  agentAllowsUnattended,
-  agentHasPrompt,
-  onClose,
-}: {
-  /** null when creating. */
-  trigger: Trigger | null;
-  mode: TriggerMode;
-  agentId: number;
-  agentAllowsUnattended: boolean;
-  agentHasPrompt: boolean;
-  onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const isWebhook = mode === 'webhook';
-  const [draft, setDraft] = useState<ScheduleDraft>(
-    () => (trigger && !isWebhook ? draftOf(trigger) : emptyDraft()),
-  );
-  const [hook, setHook] = useState<WebhookDraft>(
-    () => (trigger && isWebhook ? webhookDraftOf(trigger) : emptyWebhookDraft()),
-  );
-  const [error, setError] = useState('');
-
-  const save = useMutation({
-    mutationFn: async () => {
-      const payload = isWebhook
-        ? { name: hook.name, goal: hook.goal }
-        : {
-          cron: draft.cron,
-          timezone: draft.timezone,
-          name: draft.name,
-          goal: draft.goal,
-          overlap: draft.overlap,
-          starts_at: draft.startsAt,
-          ends_at: draft.endsAt,
-        };
-      return trigger
-        ? triggersService.update(trigger.id, payload)
-        : triggersService.create({ ...payload, subagent: agentId, mode });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['triggers'] });
-      onClose();
-    },
-    onError: (err: unknown) => {
-      // The server's own words. Its validation is stricter than the form's —
-      // it refuses an expression that never comes round, and a webhook with
-      // nothing to ask, neither of which field-level checking here can catch.
-      // `apiErrorMessage` knows the DRF field-error shape, so `{"cron": ["..."]}`
-      // reads as the sentence rather than the fallback.
-      setError(apiErrorMessage(err, 'Could not save this trigger.'));
-    },
-  });
-
-  // A schedule with no cron cannot be saved; a webhook whose agent is silent
-  // needs a goal, which is the server's rule stated before the round trip.
-  const incomplete = isWebhook
-    ? (!agentHasPrompt && !hook.goal.trim())
-    : !draft.cron.trim();
-
-  const title = trigger
-    ? (isWebhook ? 'Edit webhook' : 'Edit schedule')
-    : (isWebhook ? 'New webhook' : 'New schedule');
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-lg border border-border/60 bg-card shadow-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-          <h2 className="text-[15px] font-semibold">{title}</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="max-h-[70vh] overflow-y-auto p-4">
-          {isWebhook ? (
-            <>
-              <WebhookEditor
-                value={hook}
-                onChange={(next) => { setHook(next); setError(''); }}
-                agentAllowsUnattended={agentAllowsUnattended}
-                agentHasPrompt={agentHasPrompt}
-              />
-              {!trigger && (
-                <p className="mt-4 text-[12px] text-muted-foreground">
-                  The URL is generated when you save, and shown on the card. It is
-                  the only credential &mdash; anyone who has it can start a run.
-                </p>
-              )}
-            </>
-          ) : (
-            <ScheduleEditor
-              value={draft}
-              onChange={(next) => { setDraft(next); setError(''); }}
-              agentAllowsUnattended={agentAllowsUnattended}
-            />
-          )}
-        </div>
-
-        {error && (
-          <p className="flex items-start gap-1.5 border-t border-border/60 px-4 py-2 text-[12px] text-destructive">
-            <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" />
-            {error}
-          </p>
-        )}
-
-        <div className="flex items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
-          <button
-            onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground hover:text-foreground"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => save.mutate()}
-            disabled={save.isPending || incomplete}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
-          >
-            {save.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            {trigger ? 'Save' : (isWebhook ? 'Create webhook' : 'Create schedule')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function TriggerCard({ trigger, onEdit }: {
   trigger: Trigger; onEdit: () => void;
 }) {
   const qc = useQueryClient();
   const [outcome, setOutcome] = useState<FireOutcome | null>(null);
+  // The run a 202 started, so the card links to it instead of describing it.
+  const [runId, setRunId] = useState<string | null>(null);
   // Two copy buttons, so one flag would flash the wrong tick.
   const [copied, setCopied] = useState<'url' | 'curl' | null>(null);
   const [confirmRotate, setConfirmRotate] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmAllow, setConfirmAllow] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['triggers'] });
 
   const runNow = useMutation({
     mutationFn: () => triggersService.runNow(trigger.id),
+    onMutate: () => {
+      setOutcome(null);
+      setRunId(null);
+    },
     onSuccess: (res) => {
       setOutcome(res.outcome);
+      setRunId(res.execution_id ?? null);
       invalidate();
     },
   });
 
   const toggle = useMutation({
     mutationFn: (enabled: boolean) => triggersService.update(trigger.id, { enabled }),
+    onSuccess: invalidate,
+  });
+
+  // The two fixes that live on the agent, not the schedule: letting it run
+  // unwatched, and resuming it. Both PATCH the agent, then re-read the
+  // triggers — the card's status comes from the server, so it clears itself.
+  const allowUnattended = useMutation({
+    mutationFn: () => agentsService.update(trigger.subagent, { allowUnattended: true }),
+    onSuccess: () => { setConfirmAllow(false); invalidate(); },
+  });
+
+  const resumeAgent = useMutation({
+    mutationFn: () => agentsService.update(trigger.subagent, { status: 'active' }),
     onSuccess: invalidate,
   });
 
@@ -390,9 +243,6 @@ function TriggerCard({ trigger, onEdit }: {
   const isWebhook = trigger.mode === 'webhook';
   const hookUrl = absoluteHookUrl(trigger.webhook_url, window.location.origin);
 
-  // A trigger disables itself after five consecutive failures. Saying only
-  // "disabled" would hide the reason, and the reason is the whole story.
-  const selfDisabled = !trigger.enabled && trigger.consecutive_failures >= 5;
   const lastCopy = trigger.last_outcome ? OUTCOME_COPY[trigger.last_outcome] : null;
 
   const copy = async (what: 'url' | 'curl') => {
@@ -425,15 +275,12 @@ function TriggerCard({ trigger, onEdit }: {
             <p className="text-[12px] text-muted-foreground">{trigger.agent_name}</p>
           )}
 
-          {/* The reading, not the syntax. The cron string is still shown, but
-              second — it is the detail, not the headline. */}
+          {/* The reading, not the syntax. The description already names the
+              zone ("Every weekday at 08:00 (Asia/Kolkata)"), so the cron
+              string and the separate timezone line added nothing — they now
+              live only inside the editor's Custom tab. */}
           {trigger.description && (
             <p className="mt-1 text-[13px]">{trigger.description}</p>
-          )}
-          {isSchedule && (
-            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-              {trigger.schedule_cron || trigger.config?.cron}
-            </p>
           )}
           {trigger.goal && (
             <p className="mt-1 text-[12px] text-muted-foreground line-clamp-2">
@@ -453,29 +300,35 @@ function TriggerCard({ trigger, onEdit }: {
       {isSchedule && (
         <div className="mt-3 grid grid-cols-2 gap-3 text-[12px]">
           <div>
-            <p className="text-muted-foreground">Next due</p>
+            <p className="text-muted-foreground">Next run</p>
             <p className="font-medium flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {trigger.enabled ? relative(trigger.next_due_at) : 'paused'}
             </p>
-            {trigger.enabled && trigger.upcoming[0] && (
-              <p className="text-muted-foreground">{absolute(trigger.upcoming[0])}</p>
+            {/* Relative and absolute from the same stored `next_due_at`.
+                The old date line recalculated from *now* and could disagree
+                with the relative text sitting above it. */}
+            {trigger.enabled && trigger.next_due_at && (
+              <p className="text-muted-foreground">{absolute(trigger.next_due_at)}</p>
             )}
           </div>
           <div>
             <p className="text-muted-foreground">Last run</p>
             <p className="font-medium">{relative(trigger.last_fired_at)}</p>
             {lastCopy && (
-              <p className={cn('truncate', lastCopy.tone)}>{lastCopy.label}</p>
+              trigger.last_run_id ? (
+                <Link
+                  to={`/runs?run=${trigger.last_run_id}`}
+                  className={cn('block truncate hover:underline', lastCopy.tone)}
+                >
+                  {lastCopy.label}
+                </Link>
+              ) : (
+                <p className={cn('truncate', lastCopy.tone)}>{lastCopy.label}</p>
+              )
             )}
           </div>
         </div>
-      )}
-
-      {isSchedule && trigger.timezone && trigger.timezone !== 'UTC' && (
-        <p className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-          <Globe className="w-3 h-3" /> {trigger.timezone}
-        </p>
       )}
 
       {trigger.queued_for && (
@@ -556,45 +409,122 @@ function TriggerCard({ trigger, onEdit }: {
         </p>
       )}
 
-      {/* The reason a run failed is stored on the row now, not only in a
-          server log the user has no access to. */}
-      {trigger.last_error && trigger.last_outcome !== 'fired' && (
-        <p className="mt-3 rounded-lg border border-border/60 bg-secondary/40 px-3 py-2 text-[12px] text-muted-foreground">
-          {trigger.last_error}
-        </p>
-      )}
-
-      {!trigger.agent_allows_unattended && trigger.enabled && (
-        <div className="mt-3 flex gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2">
-          <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-          <p className="text-[12px] text-warning">
-            <Link to={`/agents/${trigger.subagent}`} className="underline">
-              {trigger.agent_name}
-            </Link>{' '}
-            can't run automatically, so every run is
-            refused.
-          </p>
+      {/* One status row, computed on the server — one sentence plus the one
+          fix where a fix exists. This replaces the five separate warning
+          blocks (unattended, self-disabled, failure count, last error, and
+          the error-coloured outcome label), which made the user read a whole
+          card to learn "is this working?". `ok` shows nothing at all. */}
+      {isSchedule && trigger.status !== 'ok' && (
+        <div className={cn(
+          'mt-3 flex items-start gap-2 rounded-lg border px-3 py-2',
+          statusTone(trigger.status) === 'warn'
+            ? 'border-warning/40 bg-warning/5'
+            : 'border-destructive/40 bg-destructive/5',
+        )}>
+          <span className={cn(
+            'mt-1.5 h-2 w-2 shrink-0 rounded-full',
+            statusTone(trigger.status) === 'warn' ? 'bg-warning' : 'bg-destructive',
+          )} />
+          <div className="min-w-0 flex-1">
+            <p className={cn(
+              'text-[12px] leading-snug',
+              statusTone(trigger.status) === 'warn' ? 'text-warning' : 'text-destructive',
+            )}>
+              {trigger.status_message}
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {trigger.status === 'needs_permission' && (
+                <button
+                  onClick={() => setConfirmAllow(true)}
+                  className="rounded-lg bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground"
+                >
+                  Allow it
+                </button>
+              )}
+              {trigger.status === 'agent_paused' && (
+                <button
+                  onClick={() => resumeAgent.mutate()}
+                  disabled={resumeAgent.isPending}
+                  className="rounded-lg bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  {resumeAgent.isPending ? 'Resuming…' : 'Resume agent'}
+                </button>
+              )}
+              {(trigger.status === 'self_disabled' || trigger.status === 'paused') && (
+                <button
+                  onClick={() => toggle.mutate(true)}
+                  disabled={toggle.isPending}
+                  className="rounded-lg bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  Turn back on
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {selfDisabled && (
-        <div className="mt-3 flex gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
-          <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+      {confirmAllow && (
+        <div className="mt-3 rounded-lg border border-border/60 bg-secondary/40 px-3 py-2">
+          <p className="text-[12px]">
+            Let {trigger.agent_name} run when nobody is watching? It will
+            still stop and ask before anything it&rsquo;s set to ask about.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => allowUnattended.mutate()}
+              disabled={allowUnattended.isPending}
+              className="rounded-lg bg-primary px-3 py-1 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {allowUnattended.isPending ? 'Allowing…' : 'Allow it'}
+            </button>
+            <button
+              onClick={() => setConfirmAllow(false)}
+              className="rounded-lg px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {outcome === 'fired' && runId ? (
+        <div className="mt-3 rounded-lg border border-border/60 bg-secondary/40 px-3 py-2">
+          <p className="text-[13px] font-semibold text-success">
+            Started ·{' '}
+            <Link to={`/runs?run=${runId}`} className="underline">
+              Open run →
+            </Link>
+          </p>
+        </div>
+      ) : (
+        outcome && <OutcomeBanner outcome={outcome} />
+      )}
+
+      {confirmDelete && (
+        <div className="mt-3 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
           <p className="text-[12px] text-destructive">
-            Disabled itself after {trigger.consecutive_failures} failures in a row.
-            Re-enabling clears the count — but fix the cause first, or it will
-            switch itself off again.
+            Delete this {isWebhook ? 'webhook' : 'schedule'}? This can&rsquo;t be undone.
+            {isWebhook && ' Anything pointed at its URL will start getting 404s.'}
           </p>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+              className="flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1 text-[12px] font-medium text-destructive-foreground disabled:opacity-50"
+            >
+              {remove.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+              Delete
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="rounded-lg px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground"
+            >
+              Keep it
+            </button>
+          </div>
         </div>
       )}
-      {trigger.enabled && trigger.consecutive_failures > 0 && (
-        <p className="mt-3 text-[12px] text-warning">
-          {trigger.consecutive_failures} failure
-          {trigger.consecutive_failures === 1 ? '' : 's'} in a row — disables itself at 5.
-        </p>
-      )}
-
-      {outcome && <OutcomeBanner outcome={outcome} />}
 
       <div className="mt-3 flex items-center gap-2 border-t border-border/60 pt-3">
         {isSchedule && (
@@ -606,7 +536,7 @@ function TriggerCard({ trigger, onEdit }: {
             {runNow.isPending
               ? <Loader2 className="w-3 h-3 animate-spin" />
               : <Play className="w-3 h-3" />}
-            Run now
+            Run once now
           </button>
         )}
         {trigger.mode !== 'event' && (
@@ -630,8 +560,8 @@ function TriggerCard({ trigger, onEdit }: {
           </button>
         )}
         <button
-          onClick={() => remove.mutate()}
-          disabled={remove.isPending}
+          onClick={() => setConfirmDelete(true)}
+          disabled={remove.isPending || confirmDelete}
           className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground hover:text-destructive disabled:opacity-50"
         >
           <Trash2 className="w-3 h-3" />
@@ -642,10 +572,11 @@ function TriggerCard({ trigger, onEdit }: {
   );
 }
 
-/** What a new trigger needs before there is a form to fill in: which agent, and
- *  which way it starts. Both in one step, because two modals to answer two
- *  questions is a wizard nobody asked for. */
-function NewTriggerPicker({ onPick, onCancel }: {
+/** What a new trigger needs before there is a form to fill in: which agent.
+ *  The mode is decided by which button opened this — one modal answering one
+ *  question, not a wizard asking two. */
+function NewTriggerPicker({ mode, onPick, onCancel }: {
+  mode: TriggerMode;
   onPick: (choice: {
     mode: TriggerMode; agentId: number;
     allowsUnattended: boolean; hasPrompt: boolean;
@@ -657,20 +588,9 @@ function NewTriggerPicker({ onPick, onCancel }: {
     queryFn: () => agentsService.list(),
   });
   const [selected, setSelected] = useState('');
-  const [mode, setMode] = useState<TriggerMode>('schedule');
 
   const chosen = agents.find((a) => String(a.id) === selected);
-
-  const MODES: { value: TriggerMode; label: string; hint: string; icon: typeof CalendarClock }[] = [
-    {
-      value: 'schedule', icon: CalendarClock, label: 'On a schedule',
-      hint: 'Runs at times you choose, in your own timezone.',
-    },
-    {
-      value: 'webhook', icon: Webhook, label: 'When something calls a URL',
-      hint: 'Runs whenever another system POSTs to a secret URL.',
-    },
-  ];
+  const isWebhook = mode === 'webhook';
 
   return (
     <div
@@ -681,35 +601,14 @@ function NewTriggerPicker({ onPick, onCancel }: {
         className="w-full max-w-sm rounded-lg border border-border/60 bg-card p-4 shadow-md"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-[15px] font-semibold">What should start a run?</h2>
+        <h2 className="text-[15px] font-semibold">
+          {isWebhook
+            ? 'Which agent should the URL start?'
+            : 'Which agent should run on a schedule?'}
+        </h2>
         <p className="mt-1 text-[12px] text-muted-foreground">
-          An agent can have as many of each as you need.
+          An agent can have as many {isWebhook ? 'webhooks' : 'schedules'} as you need.
         </p>
-
-        <div className="mt-3 space-y-2">
-          {MODES.map((m) => {
-            const Icon = m.icon;
-            return (
-              <button
-                key={m.value}
-                onClick={() => setMode(m.value)}
-                className={cn(
-                  'flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors',
-                  mode === m.value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border/60 hover:bg-secondary',
-                )}
-              >
-                <Icon className={cn('mt-0.5 h-4 w-4 shrink-0',
-                  mode === m.value ? 'text-primary' : 'text-muted-foreground')} />
-                <span>
-                  <span className="block text-[13px] font-medium">{m.label}</span>
-                  <span className="block text-[11px] text-muted-foreground">{m.hint}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
 
         <div className="mt-3">
           {isLoading ? (
@@ -772,10 +671,21 @@ export default function Schedules() {
     // "next due" that has already passed.
     refetchInterval: 30_000,
   });
+  // Whether anything is running the sweep. Polled slowly: the lease renews
+  // every 30s, so a minute is plenty to notice it stopped — and this is the
+  // message that would have caught "nothing ever fires" on day one.
+  const { data: health } = useQuery({
+    queryKey: ['trigger-health'],
+    queryFn: () => triggersService.health(),
+    refetchInterval: 60_000,
+  });
+  const schedulerDown =
+    health && !health.running && triggers.some((t) => t.enabled);
 
-  // Three states rather than a boolean: picking an agent, editing a draft, or
-  // closed. Creating needs an agent chosen first, editing already has one.
-  const [picking, setPicking] = useState(false);
+  // Three states rather than a boolean: picking an agent (for a known mode),
+  // editing a draft, or closed. Creating needs an agent chosen first,
+  // editing already has one.
+  const [picking, setPicking] = useState<TriggerMode | null>(null);
   const [editing, setEditing] = useState<{
     trigger: Trigger | null;
     mode: TriggerMode;
@@ -787,19 +697,35 @@ export default function Schedules() {
   return (
     <div className="min-h-full bg-background">
       <PageHeader
-        title="Triggers"
-        subtitle="What starts a run without you, and whether it is actually running"
+        title="Schedules"
+        subtitle="Run agents automatically, on a timetable or when another app calls a link"
         icon={CalendarClock}
       />
 
       <div className="px-4 py-6 md:px-8">
-        <div className="mb-4 flex justify-end">
+        {schedulerDown && (
+          <div className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <p className="text-[13px] text-destructive">
+              Schedules are not running right now. The scheduler last checked
+              in {health?.last_tick_at ? relative(health.last_tick_at) : 'never'}.
+            </p>
+          </div>
+        )}
+        <div className="mb-4 flex items-center justify-end gap-3">
           <button
-            onClick={() => setPicking(true)}
+            onClick={() => setPicking('webhook')}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+          >
+            <Webhook className="w-4 h-4" />
+            New webhook
+          </button>
+          <button
+            onClick={() => setPicking('schedule')}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground"
           >
             <Plus className="w-4 h-4" />
-            New trigger
+            New schedule
           </button>
         </div>
 
@@ -819,37 +745,67 @@ export default function Schedules() {
               refused.
             </p>
             <button
-              onClick={() => setPicking(true)}
+              onClick={() => setPicking('schedule')}
               className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground"
             >
               <Plus className="w-4 h-4" />
-              New trigger
+              New schedule
             </button>
           </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {triggers.map((t) => (
-              <TriggerCard
-                key={t.id}
-                trigger={t}
-                onEdit={() => setEditing({
-                  trigger: t,
-                  mode: t.mode,
-                  agentId: t.subagent,
-                  unattended: t.agent_allows_unattended,
-                  hasPrompt: t.agent_has_prompt,
-                })}
-              />
-            ))}
-          </div>
+          <>
+            <section aria-label="Schedules">
+              <h2 className="mb-2 text-[13px] font-semibold text-muted-foreground">
+                Schedules
+              </h2>
+              <div className="grid gap-3 md:grid-cols-2">
+                {triggers.filter((t) => t.mode !== 'webhook').map((t) => (
+                  <TriggerCard
+                    key={t.id}
+                    trigger={t}
+                    onEdit={() => setEditing({
+                      trigger: t,
+                      mode: t.mode,
+                      agentId: t.subagent,
+                      unattended: t.agent_allows_unattended,
+                      hasPrompt: t.agent_has_prompt,
+                    })}
+                  />
+                ))}
+              </div>
+            </section>
+            {triggers.some((t) => t.mode === 'webhook') && (
+              <section aria-label="Webhooks" className="mt-6">
+                <h2 className="mb-2 text-[13px] font-semibold text-muted-foreground">
+                  Webhooks
+                </h2>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {triggers.filter((t) => t.mode === 'webhook').map((t) => (
+                    <TriggerCard
+                      key={t.id}
+                      trigger={t}
+                      onEdit={() => setEditing({
+                        trigger: t,
+                        mode: t.mode,
+                        agentId: t.subagent,
+                        unattended: t.agent_allows_unattended,
+                        hasPrompt: t.agent_has_prompt,
+                      })}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         )}
       </div>
 
       {picking && (
         <NewTriggerPicker
-          onCancel={() => setPicking(false)}
+          mode={picking}
+          onCancel={() => setPicking(null)}
           onPick={({ mode, agentId, allowsUnattended, hasPrompt }) => {
-            setPicking(false);
+            setPicking(null);
             setEditing({
               trigger: null, mode, agentId,
               unattended: allowsUnattended, hasPrompt,

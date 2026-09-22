@@ -16,11 +16,10 @@ import {
   FlaskConical,
   User,
   Activity,
-  Radar,
   Bot,
   LayoutGrid,
   Clapperboard,
-  BarChart3,
+  // BarChart3,  // Insights lives in Settings now; no top-level entry
   // LineChart,  // MVP: unused while Evals is hidden
   // SlidersHorizontal,  // MVP: unused while Tuning is hidden
 } from "lucide-react";
@@ -102,9 +101,9 @@ const Sidebar = () => {
     // Badge counts: what is waiting on you (blue count) and what the agent is
     // doing unattended (violet dot). Polled, because the nav outlives any one
     // execution WebSocket.
-    // The pending query lives in useHitlPending so that Inbox and Overview,
-    // which want the same URL and the same data, share one timer instead of
-    // each declaring their own interval over the shared key.
+    // The pending query lives in useHitlPending so that Activity and the
+    // reminders, which want the same URL and the same data, share one timer
+    // instead of each declaring their own interval over the shared key.
     const { data: pending = [] } = useHitlPending(isAuthenticated);
     const pendingCount = pending.length;
     // No global "something is running" push exists (the execution socket is
@@ -174,12 +173,14 @@ const Sidebar = () => {
             title: "Work",
             items: [
                 { icon: MessageCircle, label: "Ask", path: "/ai-chat", guestOk: true },
-                // Overview now absorbs Inbox functionally — single surface ordered
-                // by whether it needs a human (approvals first, then analytics).
-                // pending badge moves from Inbox to Overview; Inbox route redirects.
-                { icon: Radar, label: "Overview", path: "/overview", pending: true },
-                { icon: Activity, label: "Runs", path: "/runs", agent: true },
-                { icon: BarChart3, label: "Insights", path: "/insights" },
+                // Activity is the single surface ordered by whether it needs
+                // a human: approvals first, then runs. `pending` shows the
+                // blue "waiting on you" count, `agent` the violet "running
+                // unattended" dot. /overview and /inbox redirect here so old
+                // links keep working.
+                { icon: Activity, label: "Activity", path: "/runs", agent: true, pending: true },
+                // Insights answers "is any of this working?" and lives only
+                // in Settings now — one way in, not two.
             ],
         },
         {
@@ -204,13 +205,20 @@ const Sidebar = () => {
                 // configuration, a schedule is a standing commitment to
                 // spend on it. The second is worth being able to audit in
                 // one place without opening every agent to find it.
-                { icon: CalendarClock, label: "Triggers", path: "/schedules" },
-                { icon: GraduationCap, label: "Skills", path: "/skills" },
-                // Evals sit next to Skills rather than under Runs: a suite is
+                { icon: CalendarClock, label: "Schedules", path: "/schedules" },
+                { icon: Clapperboard, label: "Studio", path: "/imagine" },
+            ],
+        },
+        {
+            title: "Improve",
+            items: [
+                // How you make it better: reusable capabilities (Skills) and
+                // the suites that grade what the agents do (Evals). They sit
+                // together here rather than under Build/Runs: a suite is
                 // something you author, and its result is only final once a
                 // person has answered the review queue.
+                { icon: GraduationCap, label: "Skills", path: "/skills" },
                 { icon: FlaskConical, label: "Evals", path: "/evals" },
-                { icon: Clapperboard, label: "Studio", path: "/imagine" },
             ],
         },
         // Plugins vs Connectors vs Tools — unambiguous now:
@@ -316,31 +324,27 @@ const Sidebar = () => {
             </div>
 
             <div className="p-3">
-                {/* The primary action is "make a new automation", and an
-                    automation is an agent — the deterministic workflow canvas is
-                    now something you drop into from an agent, not the thing you
-                    start from. */}
+                {/* The primary action is starting a fresh conversation — chat
+                    is where most work begins, including work that later
+                    becomes an agent. Guests get their own chat at `/`; the
+                    `newChat` flag tells the composer to skip restoring the
+                    previous transcript, wherever it lands. */}
                 <button
                     onClick={() => {
-                        if (isGuest) {
-                            toast.info('Log in to create agents');
-                            navigate('/login');
-                            return;
-                        }
-                        navigate('/agents/new');
+                        navigate(isGuest ? '/' : '/ai-chat', { state: { newChat: true } });
                     }}
                     className={cn(
                         "flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors duration-150 font-semibold shadow-sm overflow-hidden whitespace-nowrap mx-auto",
                         collapsed ? "w-10 h-10 p-0" : "w-full py-2.5 px-4 gap-2"
                     )}
-                    title={collapsed ? "New agent" : undefined}
+                    title={collapsed ? "New chat" : undefined}
                 >
                     <Plus className="w-5 h-5 shrink-0" />
                     <span className={cn(
                         "transition-all duration-300 overflow-hidden",
                         collapsed ? "w-0 opacity-0 ml-0" : "w-auto opacity-100 ml-2"
                     )}>
-                        New agent
+                        New chat
                     </span>
                 </button>
             </div>

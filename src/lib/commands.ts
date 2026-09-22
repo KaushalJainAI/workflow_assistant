@@ -127,6 +127,23 @@ export function findCommand(
 }
 
 /**
+ * Build the composer text after a palette pick (`/name <task>`).
+ *
+ * The task text is whatever the user had already typed, so opening the
+ * palette from the Commands button never discards prose: a partial `/par`
+ * filter is replaced, but plain text (`summarise this`) is kept as the
+ * task following the picked command. A bare `/` or empty box yields just
+ * the command prefix.
+ */
+export function prefillCommandInput(input: string, name: string): string {
+  const trimmed = (input ?? '').trim();
+  if (!trimmed || trimmed === '/') return `/${name} `;
+  const parsed = splitCommandLine(input);
+  const rest = parsed ? parsed.rest : trimmed;
+  return rest ? `/${name} ${rest}` : `/${name} `;
+}
+
+/**
  * Serialise chips into the `TurnRequest.command` payload. Chips carry ids so
  * the backend never re-resolves a name the user already chose.
  */
