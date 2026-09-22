@@ -3,9 +3,9 @@
  *
  * Every control here had a backend and no caller: `runs/{id}/cancel/` (new),
  * `agents/{id}/steer/` and `agents/{id}/autonomy/`. Approve and reject are not
- * repeated here on purpose — the Inbox answers a paused run through the same
- * functions `agent_approve` uses, and a second answering screen is a second
- * place for the two to drift. A paused run links there (Overview) instead.
+ * repeated here on purpose — the Activity page answers a paused run through
+ * the same functions `agent_approve` uses, and a second answering screen is
+ * a second place for the two to drift. A paused run links there instead.
  *
  * Steer and autonomy address the agent's *latest* running run, because that is
  * how the endpoints key their mailbox. When that is not the run on screen, the
@@ -106,7 +106,7 @@ export default function RunControls({ executionId, agentId, status }: {
     <div className="mb-3 p-3 rounded border border-border bg-card space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         {paused && (
-          <Link to="/overview"
+          <Link to="/runs"
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded bg-primary text-primary-foreground text-[13px] font-semibold">
             <Inbox className="w-3.5 h-3.5" />
             Answer it
