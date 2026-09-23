@@ -24,6 +24,12 @@ const SIZES = {
  * `bg-slate-900/60+blur`, solid) and 4 z-values. Scrim is always
  * `bg-black/50`, always `z-50` (toasts own `z-[200]`), entrance always
  * `entrance-overlay / entrance-modal`. Escape closes; body scroll locks.
+ *
+ * The box is a capped flex column (`max-h`, `dvh` so a phone URL bar cannot
+ * push the footer off screen) and `ModalBody` is the scroll region — header
+ * and footer stay pinned while long forms scroll between them. Without this
+ * a tall dialog grows past the viewport and its actions are unreachable
+ * (body scroll is locked while open).
  */
 export function Modal({ onClose, children, size = 'md', label }: ModalProps) {
   useEffect(() => {
@@ -50,7 +56,10 @@ export function Modal({ onClose, children, size = 'md', label }: ModalProps) {
         aria-modal="true"
         aria-label={label}
         onClick={(e) => e.stopPropagation()}
-        className={cn('modal w-full entrance-modal', SIZES[size])}
+        className={cn(
+          'modal w-full entrance-modal flex flex-col max-h-[90vh] max-h-[90dvh]',
+          SIZES[size],
+        )}
       >
         {children}
       </div>
@@ -65,7 +74,11 @@ export function ModalBody({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn('px-5 py-4', className)}>{children}</div>;
+  return (
+    <div className={cn('px-5 py-4 flex-1 min-h-0 overflow-y-auto', className)}>
+      {children}
+    </div>
+  );
 }
 
 export function ModalFooter({
@@ -78,7 +91,7 @@ export function ModalFooter({
   return (
     <div
       className={cn(
-        'flex items-center justify-end gap-2 px-5 py-4 border-t border-border',
+        'flex items-center justify-end gap-2 px-5 py-4 border-t border-border shrink-0',
         className,
       )}
     >

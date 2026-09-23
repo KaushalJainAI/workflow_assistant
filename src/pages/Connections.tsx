@@ -44,6 +44,7 @@ import {
 } from '../api/credentials';
 import { mcpService, MCPToolsError, type MCPServer, type MCPServerCategory } from '../api/mcp';
 import MCPServerModal from '../components/mcp/MCPServerModal';
+import MessagingChannels from '../components/messaging/MessagingChannels';
 import PageHeader from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Loading';
@@ -1072,6 +1073,18 @@ export default function Connections() {
             </p>
           </div>
         )}
+
+        {/* Messaging channels. Same page because the question is the same —
+            "what can act as me, and what does it still need" — but a separate
+            section because channels are platform tools with vault keys, not
+            MCP servers. */}
+        <MessagingChannels
+          credentialTypes={typesQuery.data?.types ?? []}
+          onKeyStored={() => {
+            queryClient.invalidateQueries({ queryKey: ['credentials'] });
+            queryClient.invalidateQueries({ queryKey: ['messagingChannels'] });
+          }}
+        />
 
         {/* Advanced. The MCP vocabulary lives here and nowhere else: it is a real
             capability, but naming a subprocess is not a task for most people. */}

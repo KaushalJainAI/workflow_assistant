@@ -46,6 +46,12 @@ export const pagesService = {
     const path = isPublic ? `/inference/public/pages/${slug}/download/` : `/inference/pages/${slug}/download/`;
     return (await apiClient.get(path, { responseType: 'blob' })).data;
   },
+
+  previewBlobUrl: async (slug: string, isPublic: boolean): Promise<string> => {
+    const path = isPublic ? `/inference/public/pages/${slug}/download/` : `/inference/pages/${slug}/download/`;
+    const blob = (await apiClient.get<Blob>(path, { responseType: 'blob', params: { inline: '1' } })).data;
+    return URL.createObjectURL(blob);
+  },
 };
 
 export default pagesService;

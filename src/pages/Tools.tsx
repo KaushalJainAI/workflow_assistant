@@ -3,7 +3,9 @@
  * for the whole workspace.
  *
  * Vocabulary: Tool = callable function (code, ours), Plugin = external MCP pack
- * (Connections), Connector = credential (Credentials). Nothing is created here.
+ * (Connections), Connector = credential (Credentials). Custom tools — your own
+ * API and database connections, private until shared — live in "My tools"
+ * above the catalogue (`components/tools/CustomTools.tsx`).
  *
  * Two levels of configuration, and the page says which is which rather than
  * leaving the user to guess: a **grant** in the agent builder decides what one
@@ -46,6 +48,11 @@ import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
 import { Button } from '../components/ui/Button';
+import {
+  InstallFromLinkDialog,
+  MyToolsSection,
+  NewToolDialog,
+} from '../components/tools/CustomTools';
 import toolsService, {
   type ToolCategory,
   type ToolChange,
@@ -727,6 +734,7 @@ export default function Tools() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [toolDialog, setToolDialog] = useState<'new' | 'link' | null>(null);
 
   const mutation = useMutation({
     mutationFn: (changes: Record<string, ToolChange>) => toolsService.update(changes),
@@ -837,11 +845,13 @@ export default function Tools() {
           changedCount > 0 ? ` · ${changedCount} changed from default` : ''
         }`}
         actions={
-          <Link to="/agents/new">
-            <Button size="md" className="whitespace-nowrap">
-              New agent
-            </Button>
-          </Link>
+          <Button
+            size="md"
+            className="whitespace-nowrap"
+            onClick={() => setToolDialog('new')}
+          >
+            New tool
+          </Button>
         }
       >
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
@@ -881,6 +891,13 @@ export default function Tools() {
       )}
 
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-8 custom-scrollbar">
+        {!searching && (
+          <MyToolsSection
+            onNew={() => setToolDialog('new')}
+            onInstallLink={() => setToolDialog('link')}
+          />
+        )}
+
         {visible.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Search className="w-10 h-10 text-muted-foreground/30 mb-3" />
@@ -950,6 +967,13 @@ export default function Tools() {
           onToggle={(next) => toggleTool(selected.tool, next)}
           onSaveConfig={(config) => mutation.mutate({ [selected.tool.name]: { config } })}
         />
+      )}
+
+      {toolDialog === 'new' && (
+        <NewToolDialog onClose={() => setToolDialog(null)} />
+      )}
+      {toolDialog === 'link' && (
+        <InstallFromLinkDialog onClose={() => setToolDialog(null)} />
       )}
     </div>
   );

@@ -15,6 +15,15 @@ import {
 } from 'lucide-react';
 import { logsService, type InsightsOverview } from '../../api/logs';
 import { costQualifier, describeCost, formatCost } from '../../lib/cost';
+import {
+  ChartLegend,
+  RateTrend,
+  RunsDayBars,
+  SpendDayBars,
+  StatusDonut,
+  ToolShareBar,
+} from './InsightsCharts';
+import { parseCost, rateTextClass } from '../../lib/insights';
 
 const RANGE_DAYS = { '7d': 7, '14d': 14, '30d': 30 } as const;
 type TimeRange = keyof typeof RANGE_DAYS;
@@ -180,7 +189,6 @@ export default function InsightsDashboard() {
   const failures = Object.entries(data.quality.by_failure_category ?? {}).sort((a, b) => b[1] - a[1]);
   const signals = Object.entries(data.quality.signals_by_kind ?? {}).sort((a, b) => b[1] - a[1]);
   const usage = spend.daily_usage ?? [];
-  const maxUsage = Math.max(...usage.map((d) => d.tokens), 1);
   const byKind = spend.by_kind ?? [];
   const prev = data.previous;
   const runsDelta = prev ? delta(totalRuns, prev.total_executions) : null;
@@ -200,6 +208,7 @@ export default function InsightsDashboard() {
               </span>
             )}
           </p>
+          <div className="mt-2"><ChartLegend /></div>
         </div>
         <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg border border-border">
           {(Object.keys(RANGE_DAYS) as TimeRange[]).map((r) => (
@@ -245,7 +254,9 @@ export default function InsightsDashboard() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-xs text-muted-foreground">Success rate</p>
-          <p className="text-2xl font-bold mt-1 tabular-nums">{runs.success_rate.toFixed(0)}%</p>
+          <p className={`text-2xl font-bold mt-1 tabular-nums ${rateTextClass(runs.success_rate)}`}>
+            {runs.success_rate.toFixed(0)}%
+          </p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {runs.failed} failed · avg {formatDuration(runs.avg_duration_ms)}
             {prev ? ` · was ${prev.success_rate.toFixed(0)}%` : ''}
@@ -307,10 +318,28 @@ export default function InsightsDashboard() {
             </ul>
           )}
           {spend.by_model.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-4">
-              Top model: <span className="font-medium text-foreground">{spend.by_model[0].model_id}</span>
-              {' '}· {formatCost(spend.by_model[0].cost_usd, allSource)} across {spend.by_model[0].turns} turns
-            </p>
+            <div className="mt-4">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Spend by model — downgrade the top bar first</p>
+              <ul className="space-y-2">
+                {spend.by_model.slice(0, 5).map((m) => {
+                  const cost = parseCost(m.cost_usd);
+                  const maxModel = Math.max(...spend.by_model.map((x) => parseCost(x.cost_usd)), 0) || 1;
+                  return (
+                    <li key={`${m.provider}/${m.model_id}`}>
+                      <div className="flex items-baseline justify-between gap-2 text-xs">
+                        <span className="font-mono truncate" title={`${m.provider}/${m.model_id}`}>
+                          {m.model_id}
+                        </span>
+                        <span className="tabular-nums text-muted-foreground shrink-0">
+                          {formatCost(m.cost_usd, allSource)} · {m.turns} turns
+                        </span>
+                      </div>
+                      <div className="mt-1"><Bar pct={(cost / maxModel) * 100} tone="bg-emerald-500/70" /></div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
           {byKind.length > 0 && (
             <p className="text-xs text-muted-foreground mt-2">
@@ -342,7 +371,7 @@ export default function InsightsDashboard() {
                     <div className="flex items-baseline justify-between gap-2 text-sm">
                       <Link to={to} className="font-medium truncate hover:underline">{a.workflow_name}</Link>
                       <span className="tabular-nums text-muted-foreground shrink-0">
-                        {a.runs} runs · {a.success_rate.toFixed(0)}% ok
+                        {a.runs} runs · <span className={`font-medium ${rateTextClass(a.success_rate)}`}>{a.success_rate.toFixed(0)}% ok</span>
                       </span>
                     </div>
                     <div className="mt-1"><Bar pct={(a.runs / max) * 100} /></div>
@@ -373,11 +402,21 @@ export default function InsightsDashboard() {
                 <li key={t.tool}>
                   <div className="flex items-baseline justify-between gap-2 text-sm">
                     <span className="font-mono text-[13px] truncate" title={t.error || undefined}>{t.tool}</span>
-                    <span className={`tabular-nums shrink-0 text-xs ${t.failed > 0 ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
-                      {t.calls} calls{t.failed > 0 ? ` · ${t.failed} failed` : ''} · {t.success_rate.toFixed(0)}%
+                    <span className="tabular-nums shrink-0 text-xs text-muted-foreground">
+                      {t.calls} calls{t.failed > 0 ? <span className="text-red-500 font-medium"> · {t.failed} failed</span> : ''} ·{' '}
+                      <span className={`font-medium ${rateTextClass(t.success_rate)}`}>{t.success_rate.toFixed(0)}%</span>
                     </span>
                   </div>
-                  <div className="mt-1"><Bar pct={t.success_rate} tone={t.success_rate < 80 ? 'bg-red-500/70' : 'bg-blue-500/60'} /></div>
+                  {/* Width is volume, the red segment is failures: the old bar
+                      drew the rate as a width, so a 2-call tool looked busier
+                      than a 200-call one at 95%. */}
+                  <div className="mt-1">
+                    <ToolShareBar
+                      calls={t.calls}
+                      failed={t.failed}
+                      maxCalls={Math.max(...data.tools.map((x) => x.calls), 1)}
+                    />
+                  </div>
                   {t.execution_id && (
                     <Link to={`/runs?run=${t.execution_id}`} className="text-[11px] text-primary hover:underline">
                       Open failing run{t.error ? ` — ${t.error.slice(0, 100)}` : ''}
@@ -393,24 +432,20 @@ export default function InsightsDashboard() {
           {daily.length === 0 ? (
             <p className="text-sm text-muted-foreground">No runs on these days.</p>
           ) : (
-            <div className="h-44 flex items-end gap-1">
-              {daily.slice(-30).map((d) => (
-                <div key={d.date} className="flex-1 flex flex-col justify-end h-full group relative" title={`${d.date}: ${d.count} runs, ${d.success} ok`}>
-                  <div className="w-full bg-primary/60 rounded-t-sm min-h-[2px]" style={{ height: `${(d.count / maxDaily) * 100}%` }} />
-                </div>
-              ))}
-            </div>
+            <>
+              <RunsDayBars daily={daily} max={maxDaily} />
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Runs per day — emerald succeeded, red everything else. Hover a bar for the split.
+              </p>
+            </>
           )}
           {usage.length > 0 && (
             <div className="mt-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Tokens per day</p>
-              <div className="h-20 flex items-end gap-1">
-                {usage.slice(-30).map((d) => (
-                  <div key={d.date} className="flex-1 flex flex-col justify-end h-full" title={`${d.date}: ${d.tokens.toLocaleString()} tokens`}>
-                    <div className="w-full bg-emerald-500/60 rounded-t-sm min-h-[2px]" style={{ height: `${(d.tokens / maxUsage) * 100}%` }} />
-                  </div>
-                ))}
-              </div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Spend per day</p>
+              <SpendDayBars
+                daily={usage.map((u) => ({ date: u.date, cost: parseCost(u.cost_usd) }))}
+                max={Math.max(...usage.map((u) => parseCost(u.cost_usd)), 0)}
+              />
             </div>
           )}
           <div className="mt-4 space-y-1.5">
@@ -426,6 +461,28 @@ export default function InsightsDashboard() {
             <MessagesSquare className="w-3 h-3" />
             {spend.chat ? `${spend.chat.messages} chat answers · ${spend.chat.tokens.toLocaleString()} tokens` : 'No chat traffic priced in this period'}
           </p>
+        </Card>
+
+        <Card
+          title="Reliability"
+          icon={<Activity className="w-4 h-4 text-emerald-500" />}
+          action={<Link to="/runs?status=failed" className="text-xs text-primary hover:underline">Failed runs</Link>}
+        >
+          <p className="text-xs font-medium text-muted-foreground mb-2">Success rate per day</p>
+          {daily.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No runs on these days.</p>
+          ) : (
+            <>
+              <RateTrend daily={daily} />
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Dashed amber is 80%. Empty days break the line — nothing ran, so there is no rate to plot.
+              </p>
+            </>
+          )}
+          <div className="mt-4">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Outcomes in this period</p>
+            <StatusDonut byStatus={data.runs.by_status ?? {}} />
+          </div>
         </Card>
       </div>
 

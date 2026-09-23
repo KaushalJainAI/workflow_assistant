@@ -43,6 +43,7 @@ import { PillSelect } from '../components/imagine/PillSelect';
 import { ResultCard } from '../components/imagine/ResultCard';
 import { StyleGallery } from '../components/imagine/StyleGallery';
 import { SendButton } from '../components/ui/SendButton';
+import SidebarMenuButton from '../components/layout/SidebarMenuButton';
 import { cn } from '../lib/utils';
 
 type ViewMode = 'agent' | 'studio';
@@ -138,9 +139,9 @@ export default function Imagine() {
   const patch = (next: Partial<typeof params>) => setParams(prev => ({ ...prev, ...next }));
 
   const header = (
-    <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-border/40">
-      {/* pl-12 on mobile clears the Sidebar's fixed hamburger (top-3 left-3). */}
-      <div className="flex items-center gap-2 min-w-0 pl-12 md:pl-0">
+    <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-border/40 min-h-14">
+      <div className="flex items-center gap-2 min-w-0">
+        <SidebarMenuButton />
         {viewMode === 'agent' && (
           <button
             onClick={() => setShowAgentHistory(true)}

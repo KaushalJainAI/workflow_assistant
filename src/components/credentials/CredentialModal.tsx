@@ -51,6 +51,7 @@ export default function CredentialModal({
   onClose,
   onSave,
   initialData,
+  preselectedType,
   credentialTypes,
 }: CredentialModalProps) {
   const [name, setName] = useState('');
@@ -71,7 +72,7 @@ export default function CredentialModal({
   // them, which is the cascading render React's docs (and the compiler's
   // lint) steer away from. Same trigger as the effect had: any change to
   // these inputs while open.
-  const resetInputs = [isOpen, initialData, credentialTypes] as const;
+  const resetInputs = [isOpen, initialData, credentialTypes, preselectedType] as const;
   const [seenInputs, setSeenInputs] = useState<typeof resetInputs | null>(null);
   if (!seenInputs || resetInputs.some((input, i) => input !== seenInputs[i])) {
     setSeenInputs(resetInputs);
@@ -92,9 +93,9 @@ export default function CredentialModal({
         setFormData(fields);
         setLoadedData(fields);
       } else {
-        // Create Mode
+        // Create Mode — pointed at a type when opened from a connection card.
         setName('');
-        setSelectedType(null);
+        setSelectedType(preselectedType ?? null);
         setFormData({});
         setLoadedData({});
         setSearchTerm('');

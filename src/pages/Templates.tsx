@@ -21,8 +21,8 @@
  * each one from their own rows — so a template can be shared without carrying
  * anything private, and credentials never travel.
  */
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -47,6 +47,7 @@ import {
   Swords,
   Table2,
   Target,
+  Trash2,
   User,
   Wrench,
   X,
@@ -54,6 +55,8 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import agentsService, { type Agent } from '../api/agents';
 import templatesService, {
   type AgentTemplate,
   type RequirementChoices,
@@ -86,7 +89,10 @@ const TEMPLATE_ICONS: Record<string, LucideIcon> = {
   target: Target,
 };
 
-/* One-click packs, keyed by the backend's `gallery.PACKS` slugs. */
+/* One-click packs, keyed by the backend's `gallery.PACKS` slugs. Display
+   metadata only — which template belongs to which pack comes from each
+   entry's `pack` field, computed server-side from that same dict, so the
+   grouping cannot disagree with what a pack actually installs. */
 const PACKS: { slug: string; title: string; blurb: string; icon: LucideIcon }[] = [
   { slug: 'office', title: 'Office pack — Analyst, Slides, Writer', icon: Presentation,
     blurb: 'Three specialists that turn files into files: clean a spreadsheet, build a deck, write a report. One click, no setup.' },
@@ -131,7 +137,7 @@ const GRANT_COPY: Record<string, string> = {
   mcp: 'Use your connections',
   voice: 'Transcribe audio and speak text',
   esign: 'Send documents for e-signature',
-  talk: 'Message on Slack, WhatsApp, Teams and SMS',
+  talk: 'Message on Slack, WhatsApp, Teams, SMS and Telegram',
   data: 'Query databases',
   api: 'Call HTTP APIs',
   subAgents: 'Delegate to your other agents',
@@ -141,7 +147,14 @@ const REQUIREMENT_NOUN: Record<string, string> = {
   connector: 'Connection',
   knowledge_base: 'Knowledge base',
   skill: 'Skill',
+  api_tool: 'API tool',
+  data_tool: 'Database tool',
 };
+
+/** Custom-tool requirement: reuse your own or take the author's frozen copy. */
+function isToolRequirement(type: string): boolean {
+  return type === 'api_tool' || type === 'data_tool';
+}
 
 const autonomyStyle: Record<Autonomy, string> = {
   full: 'bg-agent-subtle text-agent border-agent-line',
@@ -161,17 +174,28 @@ function granted(template: AgentTemplate): string[] {
 
 function TemplateCard({
   template,
+  installed,
   onInstall,
+  onUninstall,
 }: {
   template: AgentTemplate;
+  /** The caller's own agents installed from this entry — empty when it isn't. */
+  installed: Agent[];
   onInstall: () => void;
+  onUninstall: (agents: Agent[]) => void;
 }) {
   const Icon = TEMPLATE_ICONS[template.icon] ?? Bot;
   const autonomy = (template.config.autonomy ?? 'ask') as Autonomy;
   const chips = granted(template);
+  const isInstalled = installed.length > 0;
 
   return (
-    <div className="bg-card border border-border rounded flex flex-col hover:border-border-strong transition-colors">
+    <div
+      className={cn(
+        'bg-card border rounded flex flex-col hover:border-border-strong transition-colors',
+        isInstalled ? 'border-agent-line' : 'border-border',
+      )}
+    >
       <div className="p-4 flex-1">
         <div className="flex items-start gap-3 mb-3">
           <span className="w-9 h-9 rounded bg-agent-subtle border border-agent-line text-agent flex items-center justify-center shrink-0">
@@ -201,6 +225,15 @@ function TemplateCard({
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground text-[11px] font-semibold">
                   <User className="w-3 h-3" />
                   {template.is_mine ? 'You' : template.author}
+                </span>
+              )}
+              {/* Joined client-side on `Agent.template_slug`: installing writes
+                  it and nothing edits it afterwards, so this cannot drift the
+                  way a name match could. */}
+              {isInstalled && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-agent-line bg-agent-subtle text-agent text-[11px] font-semibold">
+                  <Check className="w-3 h-3" />
+                  {installed.length === 1 ? 'Installed' : `Installed × ${installed.length}`}
                 </span>
               )}
             </div>
@@ -241,15 +274,131 @@ function TemplateCard({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onInstall}
-        className="flex items-center justify-center gap-1.5 border-t border-border px-3 py-2 text-[12px] font-semibold text-muted-foreground hover:bg-secondary"
-      >
-        <Download className="w-3 h-3" />
-        Use this {template.source === 'curated' ? 'template' : 'agent'}
-      </button>
+      {/* An installed entry stops offering itself and starts pointing at what
+          exists: open the agent, or remove it again. Uninstalling deletes the
+          agent rows — the runs stay on Runs, marked as deleted. */}
+      {isInstalled ? (
+        <div className="flex border-t border-border">
+          <Link
+            to={`/agents/${installed[0].id}`}
+            className="flex-1 px-3 py-2 text-[12px] font-semibold text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+          >
+            Open
+            {installed.length > 1 ? ` first of ${installed.length}` : ''}
+          </Link>
+          <button
+            type="button"
+            onClick={() => onUninstall(installed)}
+            className="flex-1 border-l border-border px-3 py-2 text-[12px] font-semibold text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+          >
+            <Trash2 className="w-3 h-3" />
+            Uninstall
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onInstall}
+          className="flex items-center justify-center gap-1.5 border-t border-border px-3 py-2 text-[12px] font-semibold text-muted-foreground hover:bg-secondary"
+        >
+          <Download className="w-3 h-3" />
+          Use this {template.source === 'curated' ? 'template' : 'agent'}
+        </button>
+      )}
     </div>
+  );
+}
+
+/**
+ * One pack as a section: the header is the one-click install, the grid
+ * underneath is the same members installed singly. The two stay consistent
+ * because both read the same membership — each member's `pack` field — and
+ * the same installed map, so "2 of 3 installed" and the per-card badges
+ * cannot disagree.
+ */
+function PackSection({
+  title,
+  blurb,
+  icon: PackIcon,
+  members,
+  installedBySlug,
+  packBusy,
+  onInstallPack,
+  onInstallTemplate,
+  onUninstall,
+}: {
+  title: string;
+  blurb: string;
+  icon: LucideIcon;
+  members: AgentTemplate[];
+  installedBySlug: Map<string, Agent[]>;
+  packBusy: boolean;
+  onInstallPack: () => void;
+  onInstallTemplate: (t: AgentTemplate) => void;
+  onUninstall: (agents: Agent[], label: string) => void;
+}) {
+  const installedCount = members.filter(
+    (m) => (installedBySlug.get(m.slug) ?? []).length > 0,
+  ).length;
+  const allInstalled = installedCount === members.length;
+  const installedAgents = members.flatMap((m) => installedBySlug.get(m.slug) ?? []);
+
+  return (
+    <section className="mb-8">
+      <div className="rounded border border-agent-line bg-agent-subtle p-4 mb-3 flex items-start gap-3">
+        <span className="w-9 h-9 rounded bg-card border border-agent-line text-agent flex items-center justify-center shrink-0">
+          <PackIcon className="w-4 h-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <h2 className="font-semibold text-foreground text-[14px]">{title}</h2>
+            <span className="text-[12px] text-muted-foreground tabular-nums">
+              {installedCount} of {members.length} installed
+            </span>
+          </div>
+          <p className="text-[13px] text-muted-foreground leading-relaxed mt-1">{blurb}</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {installedAgents.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onUninstall(installedAgents, title)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card text-muted-foreground text-[12px] font-semibold hover:bg-secondary"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Uninstall
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={packBusy || allInstalled}
+            onClick={onInstallPack}
+            title={allInstalled ? 'Every member of this pack is installed' : undefined}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-[12px] font-semibold hover:bg-primary/90 disabled:opacity-50"
+          >
+            {packBusy ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : allInstalled ? (
+              <Check className="w-3.5 h-3.5" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            {allInstalled ? 'Installed' : 'Install pack'}
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {members.map((t) => (
+          <TemplateCard
+            key={t.slug}
+            template={t}
+            installed={installedBySlug.get(t.slug) ?? []}
+            onInstall={() => onInstallTemplate(t)}
+            onUninstall={(agents) => onUninstall(agents, t.name)}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -268,10 +417,19 @@ function InstallDialog({
        base there is no choice to make, and asking anyway reads as a question
        the user got wrong when they leave it alone. The provider hint put the
        likeliest connection first, but a first is not an only, so a connection
-       is never preselected out of a longer list. */
+       is never preselected out of a longer list. A custom tool with no
+       candidates of your own preselects the author's copy: it is the only
+       way to satisfy the requirement, and it arrives unauthenticated. */
     const initial: RequirementChoices = {};
     for (const req of template.requirements) {
       if (req.candidates.length === 1) initial[req.key] = req.candidates[0].id;
+      else if (
+        isToolRequirement(req.type) &&
+        req.candidates.length === 0 &&
+        req.snapshot
+      ) {
+        initial[req.key] = 'install';
+      }
     }
     return initial;
   });
@@ -281,7 +439,19 @@ function InstallDialog({
       templatesService.install(template.slug, { name: name.trim(), requirements: choices }),
     onSuccess: (agent) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      toast.success(`${agent.name} installed`);
+      const needed = agent.credentials_needed ?? [];
+      if (needed.length > 0) {
+        /* Tools arrived, credentials did not — they never travel. Name what
+           to link so the agent is not silently missing its tools. */
+        toast.success(`${agent.name} installed`, {
+          description: `Link your own credential for ${needed
+            .map((n) => `"${n.tool}" (${n.slug})`)
+            .join(', ')} on the Tools page.`,
+          duration: 8000,
+        });
+      } else {
+        toast.success(`${agent.name} installed`);
+      }
       /* Straight into the builder: a template is a starting point, and the
          first thing anyone wants is to see what they just agreed to and
          change the brief. */
@@ -372,7 +542,7 @@ function InstallDialog({
                       </span>
                     </div>
                     <p className="text-[12px] text-muted-foreground mb-1">{req.why}</p>
-                    {req.candidates.length === 0 ? (
+                    {req.candidates.length === 0 && !req.snapshot ? (
                       /* An empty pool is a real answer, not a broken dropdown:
                          say what is missing and where it is made. */
                       <p className="text-[12px] text-destructive">
@@ -388,6 +558,7 @@ function InstallDialog({
                           setChoices((prev) => {
                             const next = { ...prev };
                             if (e.target.value === '') delete next[req.key];
+                            else if (e.target.value === 'install') next[req.key] = 'install';
                             else next[req.key] = Number(e.target.value);
                             return next;
                           })
@@ -395,6 +566,11 @@ function InstallDialog({
                         className="w-full px-3 py-2 bg-background border border-border rounded text-sm"
                       >
                         <option value="">Choose…</option>
+                        {req.snapshot && (
+                          <option value="install">
+                            Install author&apos;s copy of “{req.label}”
+                          </option>
+                        )}
                         {req.candidates.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.label}
@@ -403,6 +579,17 @@ function InstallDialog({
                         ))}
                       </select>
                     )}
+                    {isToolRequirement(req.type) &&
+                      choices[req.key] === 'install' &&
+                      req.snapshot?.auth_shape?.needs && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Arrives unauthenticated — you will link your own{' '}
+                          <span className="font-mono">
+                            {req.snapshot.auth_shape.needs.slug}
+                          </span>{' '}
+                          credential after installing.
+                        </p>
+                      )}
                   </div>
                 ))}
               </div>
@@ -485,7 +672,51 @@ export default function Templates() {
   const [installing, setInstalling] = useState<AgentTemplate | null>(null);
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
+  /* Which installed agents the uninstall confirm is about, if any. One dialog
+     for a card and for a whole pack: both remove agent rows, differing only
+     in how many. */
+  const [uninstalling, setUninstalling] = useState<{ agents: Agent[]; label: string } | null>(null);
   const queryClient = useQueryClient();
+
+  /* The caller's own agents, joined to entries on `template_slug` — the one
+     field installing writes and nothing edits, so the "installed" marks this
+     page renders cannot drift the way a name match could. */
+  const { data: myAgents = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => agentsService.list(),
+    staleTime: 30 * 1000,
+  });
+  const installedBySlug = useMemo(() => {
+    const map = new Map<string, Agent[]>();
+    for (const a of myAgents) {
+      if (!a.template_slug) continue;
+      const list = map.get(a.template_slug) ?? [];
+      list.push(a);
+      map.set(a.template_slug, list);
+    }
+    return map;
+  }, [myAgents]);
+
+  /* Uninstalling is deleting the installed agent rows — the runs stay on
+     Runs, marked as deleted. No second endpoint: a second way to remove an
+     agent is a second place for the ownership check to be forgotten. Deletes
+     run one at a time rather than in parallel, for the same reason pack
+     installs write one row per transaction. */
+  const uninstall = useMutation({
+    mutationFn: async (agents: Agent[]) => {
+      for (const a of agents) await agentsService.remove(a.id);
+    },
+    onSuccess: (_data, agents) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success(
+        agents.length === 1 ? `${agents[0].name} uninstalled` : `${agents.length} agents uninstalled`,
+      );
+      setUninstalling(null);
+    },
+    onError: () => {
+      toast.error('Could not uninstall.');
+    },
+  });
 
   const packInstall = useMutation({
     mutationFn: (pack: string) => templatesService.installPack(pack),
@@ -554,22 +785,47 @@ export default function Templates() {
   });
 
   const q = query.trim().toLowerCase();
-  const visibleTemplates = q
-    ? templates.filter((t) => {
-        const hay = `${t.name} ${t.tagline} ${t.description} ${t.slug} ${(t.tags ?? []).join(' ')}`.toLowerCase();
-        return hay.includes(q);
-      })
-    : templates;
-  const visiblePacks = q
-    ? PACKS.filter((p) => `${p.slug} ${p.title} ${p.blurb}`.toLowerCase().includes(q))
-    : PACKS;
-  const showPacks = (filter === 'all' || filter === 'curated') && visiblePacks.length > 0;
+  /* A query matching a pack's own title or blurb pulls in the whole pack:
+     searching "code" should surface the roster even when no single member
+     mentions the word. Catalogue order is kept, so the groups stay stable. */
+  const visibleTemplates = useMemo(() => {
+    if (!q) return templates;
+    const order = new Map(templates.map((t, i) => [t.slug, i]));
+    const packHits = new Set(
+      PACKS.filter((p) => `${p.slug} ${p.title} ${p.blurb}`.toLowerCase().includes(q)).map((p) => p.slug),
+    );
+    const matches = (t: AgentTemplate) =>
+      `${t.name} ${t.tagline} ${t.description} ${t.slug} ${(t.tags ?? []).join(' ')}`.toLowerCase().includes(q);
+    return templates
+      .filter((t) => matches(t) || (t.pack != null && packHits.has(t.pack)))
+      .sort((a, b) => (order.get(a.slug) ?? 0) - (order.get(b.slug) ?? 0));
+  }, [templates, q]);
+
+  /* Curated entries group by their server-computed `pack`; entries in no
+     pack stand alone. Community entries are never in a pack and render as
+     their own section. A pack the backend knows and this build's PACKS
+     metadata does not still renders — under its own slug — rather than
+     dropping its members. */
+  const curated = visibleTemplates.filter((t) => t.source === 'curated');
+  const community = visibleTemplates.filter((t) => t.source === 'community');
+  const knownPackSlugs = new Set(PACKS.map((p) => p.slug));
+  const packSections = PACKS.map((meta) => ({
+    ...meta,
+    members: curated.filter((t) => t.pack === meta.slug),
+  })).filter((s) => s.members.length > 0);
+  const orphanPackSlugs = [...new Set(
+    curated.map((t) => t.pack).filter((p): p is string => !!p && !knownPackSlugs.has(p)),
+  )];
+  const solo = curated.filter((t) => !t.pack);
+  const showCurated = filter === 'all' || filter === 'curated';
+  const showCommunity = filter === 'all' || filter === 'community' || filter === 'mine';
+  const installedAgents = myAgents.filter((a) => a.template_slug).length;
 
   const subtitle = isLoading
     ? 'Loading…'
     : q
       ? `${visibleTemplates.length} of ${templates.length} · "${query.trim()}"`
-      : `${templates.length} ${templates.length === 1 ? 'entry' : 'entries'} · install and edit`;
+      : `${templates.length} ${templates.length === 1 ? 'entry' : 'entries'} · ${installedAgents} installed · install and edit`;
 
   return (
     <div className="h-full flex flex-col">
@@ -579,7 +835,8 @@ export default function Templates() {
         <p className="text-[13px] text-muted-foreground max-w-2xl mb-4 leading-relaxed">
           Installing adds a copy to your account — your connections, your
           documents, editable in the builder. Nothing of the author's travels
-          with it.
+          with it. Uninstalling removes the copy again; its past runs stay on
+          Runs, marked as deleted.
         </p>
 
         <div className="flex items-center gap-2 mb-4 max-w-xl">
@@ -604,39 +861,10 @@ export default function Templates() {
           </div>
           {q && (
             <span className="text-[12px] text-muted-foreground whitespace-nowrap">
-              {visibleTemplates.length + visiblePacks.length} {visibleTemplates.length + visiblePacks.length === 1 ? 'result' : 'results'}
+              {visibleTemplates.length} {visibleTemplates.length === 1 ? 'result' : 'results'}
             </span>
           )}
         </div>
-
-        {showPacks && (
-          <div className="mb-5 grid max-w-4xl gap-3 md:grid-cols-2">
-            {visiblePacks.map((pack) => (
-              <div key={pack.slug} className="rounded border border-agent-line bg-agent-subtle p-4 flex items-start gap-3">
-                <span className="w-9 h-9 rounded bg-card border border-agent-line text-agent flex items-center justify-center shrink-0">
-                  <pack.icon className="w-4 h-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-foreground text-[14px]">{pack.title}</h3>
-                  <p className="text-[13px] text-muted-foreground leading-relaxed mt-1">{pack.blurb}</p>
-                </div>
-                <button
-                  type="button"
-                  disabled={packInstall.isPending}
-                  onClick={() => packInstall.mutate(pack.slug)}
-                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-[12px] font-semibold hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {packInstall.isPending && packInstall.variables === pack.slug ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5" />
-                  )}
-                  Install
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
 
         <div className="flex flex-wrap gap-1 mb-5">
           {FILTERS.map((f) => (
@@ -676,15 +904,100 @@ export default function Templates() {
                   : 'Nothing to show.'}
           </p>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {visibleTemplates.map((t) => (
-              <TemplateCard key={t.slug} template={t} onInstall={() => setInstalling(t)} />
+          <>
+            {showCurated && packSections.map((pack) => (
+              <PackSection
+                key={pack.slug}
+                title={pack.title}
+                blurb={pack.blurb}
+                icon={pack.icon}
+                members={pack.members}
+                installedBySlug={installedBySlug}
+                packBusy={packInstall.isPending && packInstall.variables === pack.slug}
+                onInstallPack={() => packInstall.mutate(pack.slug)}
+                onInstallTemplate={(t) => setInstalling(t)}
+                onUninstall={(agents, label) => setUninstalling({ agents, label })}
+              />
             ))}
-          </div>
+            {showCurated && orphanPackSlugs.map((packSlug) => (
+              <PackSection
+                key={packSlug}
+                title={packSlug}
+                blurb=""
+                icon={LayoutGrid}
+                members={curated.filter((t) => t.pack === packSlug)}
+                installedBySlug={installedBySlug}
+                packBusy={packInstall.isPending && packInstall.variables === packSlug}
+                onInstallPack={() => packInstall.mutate(packSlug)}
+                onInstallTemplate={(t) => setInstalling(t)}
+                onUninstall={(agents, label) => setUninstalling({ agents, label })}
+              />
+            ))}
+            {showCurated && solo.length > 0 && (
+              <section className="mb-8">
+                <div className="mb-3">
+                  <h2 className="font-semibold text-foreground text-[14px]">Standalone agents</h2>
+                  <p className="text-[13px] text-muted-foreground leading-relaxed mt-0.5">
+                    Installed one at a time — these belong to no pack.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {solo.map((t) => (
+                    <TemplateCard
+                      key={t.slug}
+                      template={t}
+                      installed={installedBySlug.get(t.slug) ?? []}
+                      onInstall={() => setInstalling(t)}
+                      onUninstall={(agents) => setUninstalling({ agents, label: t.name })}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+            {showCommunity && community.length > 0 && (
+              <section className="mb-8">
+                <div className="mb-3">
+                  <h2 className="font-semibold text-foreground text-[14px]">
+                    {filter === 'mine' ? 'Shared by you' : 'From the community'}
+                  </h2>
+                  <p className="text-[13px] text-muted-foreground leading-relaxed mt-0.5">
+                    {filter === 'mine'
+                      ? 'Agents you have published. Installing one still makes a separate copy.'
+                      : 'Agents other people published. Same install flow, read the permissions either way.'}
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {community.map((t) => (
+                    <TemplateCard
+                      key={t.slug}
+                      template={t}
+                      installed={[]}
+                      onInstall={() => setInstalling(t)}
+                      onUninstall={() => undefined}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         )}
       </div>
 
       {active && <InstallDialog template={active} onClose={closeInstall} />}
+      {uninstalling && (
+        <ConfirmDialog
+          title={`Uninstall ${uninstalling.label}?`}
+          body={
+            uninstalling.agents.length === 1
+              ? `${uninstalling.agents[0].name} and its schedules and settings are removed for good. Its past runs stay on Runs, marked as deleted. To keep the agent, archive it in the builder instead.`
+              : `${uninstalling.agents.length} agents (${uninstalling.agents.map((a) => a.name).join(', ')}) and their schedules and settings are removed for good. Their past runs stay on Runs, marked as deleted.`
+          }
+          confirmLabel="Uninstall"
+          busy={uninstall.isPending}
+          onCancel={() => setUninstalling(null)}
+          onConfirm={() => uninstall.mutate(uninstalling.agents)}
+        />
+      )}
     </div>
   );
 }

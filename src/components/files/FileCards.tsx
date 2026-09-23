@@ -104,15 +104,15 @@ function FileCard({ file }: { file: FileCardData }) {
           {ACTION_LABEL[file.action] ?? 'Saved'}
         </span>
         {file.type && (
-          // A rendered file is for taking away: one click, not preview-then-download.
+          // A rendered file is for taking away: one click Export, not preview-then-download.
           <button
             type="button"
             onClick={() => {
               downloadDocument({ id: file.document_id, filename: file.name, title: file.name })
-                .catch(() => toast.error('Could not download that file.'));
+                .catch(() => toast.error('Could not export that file.'));
             }}
-            title={`Download ${file.name}`}
-            aria-label={`Download ${file.name}`}
+            title={`Export ${file.name}`}
+            aria-label={`Export ${file.name}`}
             className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Download className="h-3.5 w-3.5" />

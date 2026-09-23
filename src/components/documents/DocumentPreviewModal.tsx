@@ -8,11 +8,13 @@
  * with that component.
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
 
 import type { Document } from '../../api/documents';
 import FilePreview from '../files/FilePreview';
+import EditorByType, { isEditableType } from '../files/EditorByType';
+import { cn } from '../../lib/utils';
 
 interface Props {
   doc: Document;
@@ -21,6 +23,8 @@ interface Props {
 }
 
 export function DocumentPreviewModal({ doc, onClose, onDownload }: Props) {
+  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
+  const editable = isEditableType(doc.file_type);
   // Escape closes, matching every other modal on the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -55,6 +59,24 @@ export function DocumentPreviewModal({ doc, onClose, onDownload }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {editable && (
+              <div className="mr-1 flex rounded-md border border-border/60 p-0.5 text-[11px]" role="group" aria-label="View">
+                {(['preview', 'edit'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={mode === m}
+                    onClick={() => setMode(m)}
+                    className={cn(
+                      'rounded px-2 py-0.5 capitalize transition-colors',
+                      mode === m ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
             {onDownload && (
               <button
                 onClick={() => onDownload(doc)}
@@ -70,7 +92,11 @@ export function DocumentPreviewModal({ doc, onClose, onDownload }: Props) {
           </div>
         </div>
 
-        <FilePreview doc={doc} className="flex-1" />
+        {mode === 'edit' && editable ? (
+          <EditorByType docId={doc.id} />
+        ) : (
+          <FilePreview doc={doc} className="flex-1" />
+        )}
       </div>
     </div>
   );

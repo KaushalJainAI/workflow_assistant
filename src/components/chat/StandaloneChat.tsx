@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useDeferredValue } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   RUN_STATUS_EVENT,
   abortChatRun,
@@ -83,6 +83,7 @@ import { prettyModel } from '../../lib/modelNames';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/authState';
 import GuestBanner from './GuestBanner';
+import SidebarMenuButton from '../layout/SidebarMenuButton';
 import FeedbackControl from '../runs/FeedbackControl';
 import { SendButton } from '../ui/SendButton';
 import { apiErrorMessage } from '../../lib/apiError';
@@ -138,6 +139,8 @@ export default function StandaloneChat() {
     return val.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_:.-]*[^>]*>/g, '').trim();
   };
   
+  const [params, setParams] = useSearchParams();
+
   // --- Chat State ---
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // `isLoading` means *the agent is working on a turn*, and nothing else. It
@@ -363,6 +366,36 @@ export default function StandaloneChat() {
   };
 
   /**
+   * A notification's "Open" lands here as `?session=<id>` (the chat approval
+   * writer links the waiting thread). Adopt it instead of the persisted one,
+   * and publish the open thread back into the URL so any conversation is
+   * linkable. Guests keep their fresh session: ids are user-scoped, so a
+   * linked auth id adopted into guest state would 404.
+   */
+  useEffect(() => {
+    if (isGuest || newChatRequested) return;
+    const s = params.get('session');
+    if (s && s !== conversationId) loadConversation(s);
+    // Runs on param change only; `loadConversation` paints through `applySession`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+  useEffect(() => {
+    if (isGuest) return;
+    const s = params.get('session');
+    if (conversationId ? s === conversationId : !s) return;
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (conversationId) next.set('session', conversationId);
+        else next.delete('session');
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
+
+  /**
    * Re-attach to turns the server is still running.
    *
    * A turn now outlives the request that started it, so a reload mid-answer
@@ -409,6 +442,9 @@ export default function StandaloneChat() {
     // `startNewConversation` below clears the ids; this just skips the fetch.
     if (newChatRequested) return;
     if (isGuest) return; // Guests start with a fresh session each visit
+    // A linked `?session=` is adopted by the effect above — restoring the
+    // persisted thread here as well would repaint over it, last-write-wins.
+    if (params.get('session')) return;
     if (conversationId) {
       loadConversation(conversationId);
     }
@@ -1384,9 +1420,8 @@ export default function StandaloneChat() {
          morphic look the Fluent tokens do not have. An answer surface
           reads better on a flat canvas — the content is the ornament. */}
 
-      {/* Guest banner — encourage login without blocking chat. On mobile it's a
-          56px band that visually contains the floating hamburger (fixed top-3
-          left-3, 44px tall), so they read as one top bar. */}
+      {/* Guest banner — encourage login without blocking chat. It carries its
+          own in-flow menu button, so banner + header read as one top bar. */}
       {isGuest && <GuestBanner model={llmModel} />}
 
       {/* 1. History Sidebar — overlay drawer on mobile, in-flow on desktop */}
@@ -1399,10 +1434,9 @@ export default function StandaloneChat() {
       <div
         className={cn(
           "h-full bg-card border-r border-border transition-colors duration-300 ease-in-out flex flex-col overflow-hidden",
-          // Mobile: fixed overlay. Above the global floating hamburger
-          // (z-60), which otherwise paints over the drawer's "Conversations"
-          // header — the drawer is modal (own backdrop, own close button),
-          // so it is the topmost thing while open.
+          // Mobile: fixed overlay drawer (own backdrop, own close button).
+          // Title-bar menu buttons are in-flow, so nothing floats over this
+          // header while it is open.
           "fixed md:relative left-0 top-0 z-[70] md:z-30 md:flex-shrink-0",
           showHistory
             ? "w-[85vw] max-w-[320px] md:w-[300px] translate-x-0"
@@ -1508,19 +1542,16 @@ export default function StandaloneChat() {
       {/* 2. Main Chat Area */}
       <div className="flex-1 flex flex-col h-full relative min-w-0 z-10 transition-colors duration-300">
         
-        {/* Transparent Header — leaves space on mobile for the global hamburger and guest banner */}
+        {/* Header — menu button is in-flow at the row start (authed users);
+            guests get theirs in the banner band above. */}
         <header className={cn(
           "h-16 shrink-0 flex items-center px-4 md:px-6 justify-between border-b border-border/40 bg-background/50",
-          // Guest: the banner band (56px on mobile, ~38px on desktop) overlays
-          // the top — push the header below it instead of stretching it.
+          // Guest: the banner band overlays the top — push the header below
+          // it instead of stretching it.
           isGuest && "mt-14 md:mt-10"
         )}>
-          <div className={cn(
-            "flex items-center gap-3 min-w-0",
-            // The floating hamburger overlays the header only for authed users;
-            // in guest mode it sits inside the banner band above.
-            !isGuest && "pl-12 md:pl-0"
-          )}>
+          <div className="flex items-center gap-3 min-w-0">
+            {!isGuest && <SidebarMenuButton />}
             {!showHistory && (
               <button
                 onClick={() => setShowHistory(true)}

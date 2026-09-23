@@ -83,6 +83,13 @@ export default function Documents() {
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedPath = searchParams.get('path');
   const linkedDoc = Number(searchParams.get('doc')) || null;
+  // `?kind=md,docx` narrows the listing to those file types (Apps launcher).
+  // Kept in the URL so the filter survives reloads and shares.
+  const kindParam = searchParams.get('kind');
+  const kindFilter = useMemo(
+    () => new Set((kindParam ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)),
+    [kindParam],
+  );
   useEffect(() => {
     if (!linkedPath && !linkedDoc) return;
     let cancelled = false;
@@ -173,8 +180,9 @@ export default function Documents() {
   const allDocuments = activeTab === 'personal' ? myDocuments : publicDocuments;
 
   const filteredDocuments = allDocuments.filter(doc =>
-    doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.filename.toLowerCase().includes(searchQuery.toLowerCase())
+    (doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.filename.toLowerCase().includes(searchQuery.toLowerCase())) &&
+    (kindFilter.size === 0 || kindFilter.has((doc.file_type || '').toLowerCase()))
   );
 
   const handleUpload = async (files: FileList) => {
@@ -567,6 +575,22 @@ export default function Documents() {
               onNavigate={setFolderId}
               onDropOn={(target) => performMove(dragging, target)}
             />
+          </div>
+        )}
+        {kindFilter.size > 0 && (
+          <div className="flex items-center gap-2 pt-2 text-[12px] text-muted-foreground">
+            <span>Showing {Array.from(kindFilter).join(', ')} files (from Apps).</span>
+            <button
+              type="button"
+              onClick={() => setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete('kind');
+                return next;
+              }, { replace: true })}
+              className="font-medium text-primary hover:underline"
+            >
+              Show all
+            </button>
           </div>
         )}
       </PageHeader>

@@ -20,7 +20,22 @@ import { asArray } from './unwrap';
 import type { Agent } from './agents';
 import type { AgentConfig } from '../types/agentConfig';
 
-export type RequirementType = 'connector' | 'knowledge_base' | 'skill';
+export type RequirementType =
+  | 'connector'
+  | 'knowledge_base'
+  | 'skill'
+  | 'api_tool'
+  | 'data_tool';
+
+/** A frozen tool snapshot a requirement can install as your own copy. */
+export interface ToolRequirementSnapshot {
+  tool_kind: 'api' | 'data';
+  config: Record<string, unknown>;
+  auth_shape: {
+    type?: string;
+    needs?: { slug: string; field: string };
+  };
+}
 
 /** Something the installer owns that could satisfy a requirement. */
 export interface RequirementCandidate {
@@ -49,6 +64,10 @@ export interface TemplateRequirement {
   /** A hint (an `icon_slug`) that reorders `candidates`; it never filters. */
   provider?: string;
   candidates: RequirementCandidate[];
+  /** Custom tools only: the author's frozen copy, installable as your own. */
+  snapshot?: ToolRequirementSnapshot;
+  /** Custom tools only: the access mode the author used. */
+  mode?: 'read' | 'all';
 }
 
 /** Where an entry came from. Presentation differs; installing does not. */
@@ -68,6 +87,12 @@ export interface AgentTemplate {
   description: string;
   icon: string;
   tags: string[];
+  /**
+   * The one-click pack this installs with, if any — computed server-side from
+   * `gallery.PACKS`, never stored, so the catalogue cannot disagree with the
+   * pack. What the Explore page groups by. Always `null` on shared entries.
+   */
+  pack?: string | null;
   /** Community entries only: the publisher's display name, never their email. */
   author: string | null;
   /** Community entries only. */
@@ -111,8 +136,25 @@ export interface PublishInput {
   requirements?: { key: string; label: string; why: string; optional?: boolean }[];
 }
 
-/** Requirement key -> the id the installer chose for it. */
-export type RequirementChoices = Record<string, number>;
+/**
+ * Requirement key -> what the installer chose: an id of their own row, or
+ * `'install'` to take the author's frozen tool copy as a private tool.
+ */
+export type RequirementChoices = Record<string, number | 'install'>;
+
+/** What an install can carry beyond the agent: auto-installed tool copies. */
+export interface InstalledTool {
+  tool: string;
+  tool_kind: 'api' | 'data';
+  connection_id: number;
+  needs?: { slug: string; field: string };
+}
+
+export interface InstallResult {
+  agent: Agent;
+  installed_tools?: InstalledTool[];
+  credentials_needed?: { tool: string; slug: string; field: string }[];
+}
 
 /**
  * A publicly shared agent, as somebody with no account sees it.
@@ -164,8 +206,8 @@ const templatesService = {
   install: async (
     slug: string,
     body: { name?: string; requirements?: RequirementChoices; timezone?: string } = {},
-  ): Promise<Agent> => {
-    const { data } = await apiClient.post<Agent>(
+  ): Promise<Agent & Partial<InstallResult>> => {
+    const { data } = await apiClient.post<Agent & Partial<InstallResult>>(
       `/orchestrator/templates/${slug}/install/`,
       {
         ...body,

@@ -101,8 +101,8 @@ export default function FilePreview({ doc, className }: Props) {
     () => (kind === 'csv' && text !== null ? parseCsv(clipped, CSV_PREVIEW_ROWS) : null),
     [kind, text, clipped],
   );
-  const pretty = useMemo(() => (kind === 'json' && text !== null ? formatJson(full) : null), [kind, text, full]);
-  const notebook = useMemo(() => (kind === 'notebook' && text !== null ? parseNotebook(full) : null), [kind, text, full]);
+  const pretty = useMemo(() => (kind === 'json' && text !== null ? formatJson(clipped) : null), [kind, text, clipped]);
+  const notebook = useMemo(() => (kind === 'notebook' && text !== null ? parseNotebook(clipped) : null), [kind, text, clipped]);
 
   // A rendered view that could not be built (a CSV with no rows, JSON that
   // does not parse, a notebook that is not one) falls back to source rather
@@ -227,7 +227,7 @@ export default function FilePreview({ doc, className }: Props) {
           ) : rendered && kind === 'json' && pretty !== null ? (
             <CodeView code={pretty} language="json" wrap={wrap} />
           ) : rendered && kind === 'html' ? (
-            <HtmlFrame html={full} title={doc.filename} />
+            <HtmlFrame html={clipped} title={doc.filename} />
           ) : rendered && kind === 'notebook' && notebook ? (
             <NotebookView notebook={notebook} />
           ) : (
@@ -235,7 +235,7 @@ export default function FilePreview({ doc, className }: Props) {
           )
         )}
 
-        {!loading && !error && truncated && (!rendered || kind === 'markdown' || kind === 'csv') && (
+        {!loading && !error && truncated && (
           <div className="flex items-center gap-3 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
             <span>
               Showing the first {limit.toLocaleString()} of {full.length.toLocaleString()} characters.

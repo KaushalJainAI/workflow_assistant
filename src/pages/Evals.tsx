@@ -233,17 +233,20 @@ export default function Evals() {
         )}
 
         {tab === 'suites' && (
-          <SuiteList
-            suites={suites}
-            loading={suitesQuery.isLoading}
-            agents={agents}
-            openSuite={openSuite}
-            onToggle={(id) => setOpenSuite((prev) => (prev === id ? null : id))}
-            onRun={(suiteId, agentId) => runSuite.mutate({ suiteId, agentId })}
-            runningId={runSuite.isPending ? (runSuite.variables?.suiteId ?? null) : null}
-            onDelete={(id) => removeSuite.mutate(id)}
-            onCreate={() => setShowCreate(true)}
-          />
+          <>
+            <StarterKitsCard agents={agents} onCloned={invalidate} />
+            <SuiteList
+              suites={suites}
+              loading={suitesQuery.isLoading}
+              agents={agents}
+              openSuite={openSuite}
+              onToggle={(id) => setOpenSuite((prev) => (prev === id ? null : id))}
+              onRun={(suiteId, agentId) => runSuite.mutate({ suiteId, agentId })}
+              runningId={runSuite.isPending ? (runSuite.variables?.suiteId ?? null) : null}
+              onDelete={(id) => removeSuite.mutate(id)}
+              onCreate={() => setShowCreate(true)}
+            />
+          </>
         )}
 
         {tab === 'runs' && (
@@ -401,46 +404,92 @@ function SuiteList({
   return (
     <div className="space-y-3">
       {suites.map((suite) => (
-        <div key={suite.id} className="rounded-lg border border-border/60 bg-card overflow-hidden">
-          <div className="p-4 flex items-center justify-between gap-4">
-            <button onClick={() => onToggle(suite.id)} className="flex items-center gap-3 min-w-0 text-left">
-              <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition', openSuite === suite.id && 'rotate-90')} />
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{suite.name}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {suite.case_count} case{suite.case_count === 1 ? '' : 's'}
-                  {' · '}pass at {Math.round(suite.pass_threshold * 100)}%
-                  {' · '}review: {suite.supervision}
-                </div>
-              </div>
-            </button>
+        <SuiteRow
+          key={suite.id}
+          suite={suite}
+          agents={agents}
+          openSuite={openSuite}
+          onToggle={onToggle}
+          onRun={onRun}
+          runningId={runningId}
+          onDelete={onDelete}
+        />
+      ))}
+    </div>
+  );
+}
 
-            <div className="flex items-center gap-3 shrink-0">
-              {suite.last_run && <ScoreCell run={{ ...suite.last_run, pending_review_count: suite.last_run.pending_review }} />}
-              <button
-                onClick={() => onRun(suite.id, suite.subagent ?? undefined)}
-                disabled={runningId === suite.id || suite.case_count === 0}
-                title={suite.case_count === 0 ? 'This suite has no cases yet.' : 'Run every case against the agent'}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition disabled:opacity-40"
-              >
-                {runningId === suite.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                Run
-              </button>
-              <button
-                onClick={() => onDelete(suite.id)}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition"
-                title="Delete suite"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+function SuiteRow({ suite, agents, openSuite, onToggle, onRun, runningId, onDelete }: {
+  suite: EvalSuite;
+  agents: Array<{ id: number; name: string }>;
+  openSuite: number | null;
+  onToggle: (id: number) => void;
+  onRun: (suiteId: number, agentId?: number) => void;
+  runningId: number | null;
+  onDelete: (id: number) => void;
+}) {
+  // The suite may name no agent ("Choose when running") — the old Run button
+  // then fired with `undefined` and the backend answered 400, with no picker
+  // anywhere to fix it. The row owns the pick: suite default first, else the
+  // user's choice here, and Run stays disabled until one exists.
+  const [agentPick, setAgentPick] = useState<string>('');
+  const effectiveAgent = agentPick !== '' ? Number(agentPick) : (suite.subagent ?? undefined);
+  const canRun = suite.case_count > 0 && effectiveAgent !== undefined && runningId !== suite.id;
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
+      <div className="p-4 flex items-center justify-between gap-4 flex-wrap">
+        <button onClick={() => onToggle(suite.id)} className="flex items-center gap-3 min-w-0 text-left flex-1">
+          <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition', openSuite === suite.id && 'rotate-90')} />
+          <div className="min-w-0">
+            <div className="text-sm font-medium truncate">{suite.name}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {suite.case_count} case{suite.case_count === 1 ? '' : 's'}
+              {' · '}pass at {Math.round(suite.pass_threshold * 100)}%
+              {' · '}review: {suite.supervision}
             </div>
           </div>
+        </button>
 
-          {openSuite === suite.id && (
-            <SuiteCases suiteId={suite.id} agents={agents} subagent={suite.subagent} />
-          )}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {suite.last_run && <ScoreCell run={{ ...suite.last_run, pending_review_count: suite.last_run.pending_review }} />}
+          <select
+            value={agentPick !== '' ? agentPick : (suite.subagent != null ? String(suite.subagent) : '')}
+            onChange={(e) => setAgentPick(e.target.value)}
+            title="Which agent should this suite run against?"
+            className="max-w-44 truncate border border-border rounded-lg px-2 py-1.5 text-xs bg-background"
+          >
+            <option value="">Pick an agent…</option>
+            {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          <button
+            onClick={() => effectiveAgent !== undefined && onRun(suite.id, effectiveAgent)}
+            disabled={!canRun}
+            title={
+              suite.case_count === 0
+                ? 'This suite has no cases yet.'
+                : effectiveAgent === undefined
+                  ? 'Pick an agent first — this suite names none.'
+                  : `Run every case against ${agents.find((a) => a.id === effectiveAgent)?.name ?? 'the agent'}`
+            }
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition disabled:opacity-40"
+          >
+            {runningId === suite.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+            Run
+          </button>
+          <button
+            onClick={() => onDelete(suite.id)}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition"
+            title="Delete suite"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
-      ))}
+      </div>
+
+      {openSuite === suite.id && (
+        <SuiteCases suiteId={suite.id} agents={agents} subagent={suite.subagent} />
+      )}
     </div>
   );
 }
@@ -536,6 +585,75 @@ function RunList({ runs, loading, openRun, onToggle }: {
           {openRun === run.run_id && <RunResults runId={run.run_id} error={run.error_message} />}
         </div>
       ))}
+    </div>
+  );
+}
+
+function StarterKitsCard({ agents, onCloned }: {
+  agents: Array<{ id: number; name: string }>;
+  onCloned: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [agentId, setAgentId] = useState<string>('');
+  const kitsQuery = useQuery({
+    queryKey: ['eval', 'starter-kits', agentId],
+    queryFn: () => evalsService.starterKits(agentId ? Number(agentId) : undefined),
+    staleTime: 60_000,
+  });
+  const clone = useMutation({
+    mutationFn: (template: string) => evalsService.cloneStarter({
+      template, ...(agentId ? { agent_id: Number(agentId) } : {}),
+    }),
+    onSuccess: (suite) => {
+      toast.success(`Starter "${suite.name}" created with ${suite.cases.length} cases.`);
+      queryClient.invalidateQueries({ queryKey: ['eval'] });
+      onCloned();
+    },
+    onError: (error: unknown) => {
+      const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error('Could not clone the starter', { description: detail ?? 'Please try again.' });
+    },
+  });
+  const kits = kitsQuery.data?.kits ?? [];
+  const recommended = new Set(kitsQuery.data?.recommended ?? []);
+  if (kitsQuery.isLoading) return null;
+  if (kits.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-border/60 bg-card p-4">
+      <div className="flex flex-wrap items-center gap-2 mb-1">
+        <h3 className="text-sm font-semibold">Start from a starter dataset</h3>
+        <span className="text-[11px] text-muted-foreground">Core checks plus real-world tasks · normal · ambiguous · impossible · guardrail · hallucination trap</span>
+        <select
+          className="ml-auto border border-border rounded px-2 py-1 text-xs bg-background"
+          value={agentId}
+          onChange={(e) => setAgentId(e.target.value)}
+        >
+          <option value="">No agent (generic)</option>
+          {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2 mt-2">
+        {kits.map((k) => (
+          <div key={k.slug} className="border border-border/60 rounded p-3 flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium">
+                {k.name}
+                {recommended.has(k.slug) && (
+                  <span className="ml-2 text-[10px] uppercase tracking-wide font-semibold text-primary">Recommended</span>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground">{k.description} · {k.case_count} cases</div>
+            </div>
+            <button
+              onClick={() => clone.mutate(k.slug)}
+              disabled={clone.isPending}
+              className="shrink-0 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50"
+            >
+              {clone.isPending && clone.variables === k.slug ? 'Cloning…' : 'Clone'}
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

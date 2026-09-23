@@ -158,14 +158,17 @@ export default function CommandCard({
 }
 
 function HelpCard({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  // Backend-owned: the palette lists from `/api/chat/commands/`, this card is
+  // the offline copy — keep the names in step when commands are added.
   const groups: { title: string; items: string[] }[] = [
     { title: 'Agents', items: ['/agent <name> [task]', '/skill <name> [text]', '/schedule <agent> <when>'] },
     { title: 'Goals', items: ['/goal <what you want done>', '/goal (lists missions)'] },
     { title: 'Memory', items: ['/memory', '/memory <fact>', '/memory forget <text>'] },
-    { title: 'Code', items: ['/code-review [target]', '/code <project>'] },
-    { title: 'Documents', items: ['/deck <what>', '/doc <what>', '/sheet <what>', '/dashboard <what>', '/export md|docx|pdf', '/summarize'] },
+    { title: 'Code', items: ['/code-review [target]', '/code <project>', '/run <what>'] },
+    { title: 'Documents', items: ['/deck <what>', '/doc <what>', '/sheet <what>', '/chart <what>', '/diagram <what>', '/pdf <what>', '/dashboard <what>', '/export md|docx|pdf', '/summarize', '/kb <question>', '/extract <what>'] },
+    { title: 'Media & web', items: ['/image <what>', '/speak <text>', '/transcribe', '/search <question>', '/read <url>', '/download <url>'] },
     { title: 'Session', items: ['/new', '/mode ask|auto|plan', '/model <name>', '/effort <level>', '/research <question>', '/file <path>'] },
-    { title: 'Account', items: ['/status', '/cost', '/pause [duration]', '/resume', '/eval', '/approvals', '/connect <service>', '/browse <url>', '/sql <connection> <question>', '/publish'] },
+    { title: 'Account', items: ['/status', '/cost', '/pause [duration]', '/resume', '/eval', '/approvals', '/connect <service>', '/browse <url>', '/sql <connection> <question>', '/api <connection> <goal>', '/message <text>', '/sign <what>', '/publish'] },
   ];
   return (
     <Shell title="What you can type">

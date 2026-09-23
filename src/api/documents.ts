@@ -215,8 +215,22 @@ export const documentsService = {
     return r.data;
   },
 
-  async download(id: number): Promise<Blob> {
-    const r = await apiClient.get<Blob>(`/inference/documents/${id}/download/`, { responseType: 'blob' });
+  async download(id: number, opts?: { inline?: boolean }): Promise<Blob> {
+    const r = await apiClient.get<Blob>(`/inference/documents/${id}/download/`, {
+      responseType: 'blob',
+      params: opts?.inline ? { inline: '1' } : undefined,
+    });
+    return r.data;
+  },
+
+  /** In-browser save for text documents. Sends `If-Match` so a stale editor
+   *  gets a 412 instead of clobbering a newer save. */
+  async updateContent(id: number, content: string, expectedUpdatedAt?: string): Promise<Document> {
+    const r = await apiClient.patch<Document>(
+      `/inference/documents/${id}/content/`,
+      { content, ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}) },
+      expectedUpdatedAt ? { headers: { 'If-Match': expectedUpdatedAt } } : undefined,
+    );
     return r.data;
   },
 
@@ -224,7 +238,7 @@ export const documentsService = {
    *  Fetches via `Authorization` header (no token in URL) and returns a
    *  `blob:` URL. Use for previews; `download()` for saves. */
   async previewBlobUrl(id: number): Promise<string> {
-    const blob = await this.download(id);
+    const blob = await this.download(id, { inline: true });
     return URL.createObjectURL(blob);
   },
 

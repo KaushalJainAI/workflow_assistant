@@ -55,11 +55,19 @@ export interface LastRun {
   created_at: string;
 }
 
+export interface StarterKit {
+  slug: string;
+  name: string;
+  description: string;
+  case_count: number;
+}
+
 export interface EvalSuite {
   id: number;
   name: string;
   slug: string;
   description: string;
+  template_slug?: string | null;
   subagent: number | null;
   pass_threshold: number;
   supervision: SupervisionPolicy;
@@ -94,6 +102,8 @@ export interface EvalRun {
   error_count: number;
   pending_review_count: number;
   score: number | null;
+  /** 0-100 display form of score. Null while provisional. */
+  score_100: number | null;
   /** null while `status` is `awaiting_review` — provisional, not missing. */
   passed: boolean | null;
   /** How often a human agreed with the graders. The number that matters. */
@@ -128,6 +138,13 @@ export interface EvalReview {
   updated_at: string;
 }
 
+export interface ResultFlags {
+  gave_up: boolean;
+  guardrail: boolean;
+  hallucination: boolean;
+  out_of_scope: boolean;
+}
+
 export interface EvalResult {
   id: number;
   run: string;
@@ -140,6 +157,7 @@ export interface EvalResult {
   /** The graders' answer, kept for ever so agreement stays computable. */
   auto_passed: boolean | null;
   auto_score: number | null;
+  auto_score_100: number | null;
   grades: unknown;
   weight: number;
   review_state: string;
@@ -148,6 +166,9 @@ export interface EvalResult {
   /** The review's verdict when there is one, else the graders'. */
   final_passed: boolean | null;
   final_score: number;
+  /** 0-100 display form of final_score. Null while provisional. */
+  final_score_100: number | null;
+  flags: ResultFlags;
   tokens: number;
   duration_ms: number | null;
   error_message: string;
@@ -251,6 +272,18 @@ const evalsService = {
 
   scorecard: async (agentId: number): Promise<unknown> => {
     const { data } = await apiClient.get(`/eval/agents/${agentId}/scorecard/`);
+    return data;
+  },
+
+  starterKits: async (agentId?: number): Promise<{ kits: StarterKit[]; recommended: string[] }> => {
+    const { data } = await apiClient.get('/eval/starter-kits/', {
+      params: agentId ? { agent_id: agentId } : {},
+    });
+    return { kits: data?.kits ?? [], recommended: data?.recommended ?? [] };
+  },
+
+  cloneStarter: async (body: { template: string; name?: string; agent_id?: number }): Promise<SuiteDetail> => {
+    const { data } = await apiClient.post('/eval/suites/from-template/', body);
     return data;
   },
 

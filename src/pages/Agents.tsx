@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Sliders, LayoutGrid, Share2, Play, Archive, ArchiveRestore } from 'lucide-react';
+import { Bot, Plus, Wrench, ShieldCheck, Zap, Clock, Sliders, LayoutGrid, Share2, Play, Archive, ArchiveRestore, Search, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PageHeader from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -108,8 +108,204 @@ function grants(agent: Agent, names: Map<number, string>) {
   return [...conns, ...tools];
 }
 
-function EmptyStateView() {
+/** One category section on the list: the agents sharing a first tag, split by
+ *  how they run. `AgentSerializer.validate_tags` keeps the user's order, and
+ *  the first tag is the one they think of the agent as — so it is the
+ *  grouping, while the remaining tags stay searchable. */
+interface CategoryGroup {
+  key: string;
+  label: string;
+  scheduled: Agent[];
+  onDemand: Agent[];
+}
+
+function groupByCategory(agents: Agent[]): CategoryGroup[] {
+  const map = new Map<string, CategoryGroup>();
+  for (const a of agents) {
+    // Group key is case-folded so "Research" and "research" do not split;
+    // the label keeps whichever casing was seen first.
+    const raw = (a.tags ?? [])[0]?.trim() ?? '';
+    const key = raw.toLowerCase() || 'uncategorized';
+    let g = map.get(key);
+    if (!g) {
+      g = { key, label: raw || 'Uncategorized', scheduled: [], onDemand: [] };
+      map.set(key, g);
+    }
+    (a.schedule ? g.scheduled : g.onDemand).push(a);
+  }
+  // Alphabetical, Uncategorized last — a stable order that does not reshuffle
+  // as counts change, the way sorting by size would.
+  return [...map.values()].sort((x, y) =>
+    x.key === 'uncategorized' ? 1 : y.key === 'uncategorized' ? -1 : x.label.localeCompare(y.label),
+  );
+}
+
+/**
+ * One agent card, shared by every section on this page. The whole card opens
+ * the builder, prefilled — a list you cannot click into is a dead end, and
+ * editing an agent is the same act as creating one, so it is the same board.
+ */
+function AgentCard({
+  agent,
+  connectorNames,
+  onRun,
+  onShare,
+  onRestore,
+  restorePending,
+}: {
+  agent: Agent;
+  connectorNames: Map<number, string>;
+  onRun: (a: Agent) => void;
+  onShare: (a: Agent) => void;
+  onRestore: (id: number) => void;
+  restorePending: boolean;
+}) {
+  // Before the first run there is no honest percentage to show.
+  const pct = agent.runs ? Math.round((agent.unattended / agent.runs) * 100) : null;
+  const chips = grants(agent, connectorNames);
   return (
+    <div
+      key={agent.id}
+      className="bg-card border border-border rounded hover:border-border-strong transition-colors"
+    >
+      <Link
+        to={`/agents/${agent.id}`}
+        className="block p-4 hover:bg-secondary/40 transition-colors"
+      >
+        <div className="flex items-start gap-3 mb-3">
+          <span className="w-9 h-9 rounded bg-agent-subtle border border-agent-line text-agent flex items-center justify-center text-[13px] font-semibold shrink-0">
+            {initials(agent.name)}
+          </span>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-foreground truncate">{agent.name}</h3>
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded border text-[11px] font-semibold',
+                autonomyStyle[agent.autonomy]
+              )}
+            >
+              <ShieldCheck className="w-3 h-3" />
+              {AUTONOMY_COPY[agent.autonomy].label}
+            </span>
+            {/* Only the statuses that change behaviour: a
+                paused agent's schedules are not firing. */}
+            {(agent.status === 'paused' || agent.status === 'archived') && (
+              <span className="inline-flex items-center mt-1 ml-1.5 px-1.5 py-0.5 rounded border border-border text-[11px] font-semibold text-muted-foreground"
+                title={STATUS_COPY[agent.status as AgentStatus]?.hint}>
+                {STATUS_COPY[agent.status as AgentStatus]?.label ?? agent.status}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p
+          className="text-[13px] text-muted-foreground leading-relaxed mb-3 line-clamp-2 min-h-[2.6em]"
+          title={agent.description || undefined}
+        >
+          {summary(agent)}
+        </p>
+
+        {chips.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-4">
+            {chips.slice(0, MAX_CHIPS).map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary border border-border text-[11px] text-muted-foreground"
+              >
+                <Wrench className="w-3 h-3" />
+                {t}
+              </span>
+            ))}
+            {chips.length > MAX_CHIPS && (
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 rounded border border-dashed border-border text-[11px] text-muted-foreground"
+                title={chips.slice(MAX_CHIPS).join(', ')}
+              >
+                +{chips.length - MAX_CHIPS} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* One footer line: when it runs and what it has done. The
+            bar is how much of its work needed nobody — the number
+            that says whether delegating to it is paying off — and it
+            only appears once there is a run to measure. */}
+        <div className="pt-3 border-t border-border">
+          <div className="flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
+            <span className="flex items-center gap-1 min-w-0 truncate">
+              <Clock className="w-3 h-3 shrink-0" />
+              {TRIGGER_COPY[agent.schedule ? 'maintenance' : 'goal'].label}
+            </span>
+            <span className="tabular-nums shrink-0">
+              {agent.runs ? `${agent.runs} ${agent.runs === 1 ? 'run' : 'runs'}` : 'Not run yet'}
+              {agent.spend ? ` · ₹${agent.spend}` : ''}
+            </span>
+          </div>
+          {pct !== null && (
+            <div className="mt-2 flex items-center gap-2" title="Share of runs that finished without needing you">
+              <div className="h-1 flex-1 bg-secondary rounded overflow-hidden">
+                <span className="block h-full bg-agent rounded" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground tabular-nums">
+                <Zap className="w-3 h-3" />
+                {pct}% on its own
+              </span>
+            </div>
+          )}
+        </div>
+      </Link>
+
+      {/* One surface now: the builder. The canvas that used to sit
+          beside it was retired 2026-08-24 — a run is read on the
+          Activity page (/runs), not projected onto a graph. */}
+      <div className="flex border-t border-border">
+        <Link
+          to={`/agents/${agent.id}`}
+          className="flex-1 px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+        >
+          <Sliders className="w-3 h-3" />
+          Configure
+        </Link>
+        {/* Sharing sits on the agent rather than on Explore, because
+            what you publish is something you own — and the dialog
+            shows the whole payload before anything leaves. */}
+        {/* Run by hand. The execute endpoint had no caller in the
+            app, so an agent could only be run by asking chat to. */}
+        {agent.status === 'archived' ? (
+          <button
+            type="button"
+            onClick={() => onRestore(agent.id)}
+            disabled={restorePending}
+            className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+          >
+            <ArchiveRestore className="w-3 h-3" />
+            Restore
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onRun(agent)}
+            className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+          >
+            <Play className="w-3 h-3" />
+            Run
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onShare(agent)}
+          className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
+        >
+          <Share2 className="w-3 h-3" />
+          Share
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EmptyStateView() {  return (
     <EmptyState
       align="left"
       icon={Bot}
@@ -151,9 +347,25 @@ export default function Agents() {
   // Before archive was settable the only way to clear an agent out of this
   // list was to delete it, which also took its run history.
   const [showArchived, setShowArchived] = useState(false);
+  const [query, setQuery] = useState('');
   const archivedCount = allAgents.filter((a) => a.status === 'archived').length;
   const agents = allAgents.filter((a) =>
     showArchived ? a.status === 'archived' : a.status !== 'archived');
+
+  /* Search across what a card actually shows — the name, the one line written
+     for a person, the brief's content, and the tags — the same shape as
+     Explore's search, so the two lists answer a query the same way. */
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? agents.filter((a) =>
+        `${a.name} ${a.description ?? ''} ${a.brief ?? ''} ${(a.tags ?? []).join(' ')}`.toLowerCase().includes(q))
+    : agents;
+
+  /* The automation split, inside each category: what runs on its own schedule
+     versus what runs when asked. A paused agent stays in its section with its
+     paused mark rather than moving — pausing changes whether it fires, not
+     what it is. */
+  const categories = groupByCategory(visible);
   const queryClient = useQueryClient();
   const restore = useMutation({
     mutationFn: (id: number) => agentsService.update(id, { status: 'active' }),
@@ -173,9 +385,32 @@ export default function Agents() {
   });
 
   const totalRuns = allAgents.reduce((n, a) => n + (a.runs ?? 0), 0);
+  const activeCount = allAgents.length - archivedCount;
+  const categoryCount = groupByCategory(agents).length;
   const subtitle = isLoading
     ? 'Loading…'
-    : `${allAgents.length - archivedCount} ${allAgents.length - archivedCount === 1 ? 'agent' : 'agents'} · ${totalRuns} runs`;
+    : q
+      ? `${visible.length} of ${agents.length} · "${query.trim()}"`
+      : `${activeCount} ${activeCount === 1 ? 'agent' : 'agents'} · ${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'} · ${totalRuns} runs`;
+
+  /* One grid everywhere — category sections, their Scheduled / On demand
+     sub-groups, and the archive bin all render through it, so a card looks
+     the same wherever it sits. */
+  const renderGrid = (list: Agent[]) => (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {list.map((a) => (
+        <AgentCard
+          key={a.id}
+          agent={a}
+          connectorNames={connectorNames}
+          onRun={setRunningAgent}
+          onShare={setSharing}
+          onRestore={(id) => restore.mutate(id)}
+          restorePending={restore.isPending}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <div className="h-full flex flex-col">
@@ -209,6 +444,35 @@ export default function Agents() {
       />
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        {agents.length > 0 && (
+          <div className="flex items-center gap-2 mb-4 max-w-xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search agents by name, description, category or tag…"
+                className="w-full pl-8 pr-8 py-2 bg-background border border-border rounded text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-secondary text-muted-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {q && (
+              <span className="text-[12px] text-muted-foreground whitespace-nowrap">
+                {visible.length} {visible.length === 1 ? 'result' : 'results'}
+              </span>
+            )}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-12">
             <Spinner size="md" />
@@ -222,157 +486,49 @@ export default function Agents() {
           <p className="text-[13px] text-muted-foreground py-12">Nothing is archived.</p>
         ) : agents.length === 0 ? (
           <EmptyStateView />
+        ) : visible.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground py-12 max-w-md leading-relaxed">
+            {`No agents match "${query.trim()}". Try a different name, description or tag.`}
+          </p>
+        ) : showArchived ? (
+          /* The archive is a bin, not a structure: one flat grid, still searchable. */
+          renderGrid(visible)
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {agents.map((a) => {
-              // Before the first run there is no honest percentage to show.
-              const pct = a.runs ? Math.round((a.unattended / a.runs) * 100) : null;
-              const chips = grants(a, connectorNames);
+          <>
+            {categories.map((c) => {
+              const total = c.scheduled.length + c.onDemand.length;
+              // A category holding both kinds gets its Scheduled / On demand
+              // subheads; a single-kind one renders bare cards, since a lone
+              // subhead restating the obvious is noise, not structure.
+              const split = c.scheduled.length > 0 && c.onDemand.length > 0;
               return (
-                /* The whole card opens the builder, prefilled. A list you cannot
-                   click into is a dead end — and editing an agent is the same act
-                   as creating one, so it is the same board. */
-                <div
-                  key={a.id}
-                  className="bg-card border border-border rounded hover:border-border-strong transition-colors"
-                >
-                <Link
-                  to={`/agents/${a.id}`}
-                  className="block p-4 hover:bg-secondary/40 transition-colors"
-                >
-                  <div className="flex items-start gap-3 mb-3">
-                    <span className="w-9 h-9 rounded bg-agent-subtle border border-agent-line text-agent flex items-center justify-center text-[13px] font-semibold shrink-0">
-                      {initials(a.name)}
-                    </span>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-foreground truncate">{a.name}</h3>
-                      <span
-                        className={cn(
-                          'inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded border text-[11px] font-semibold',
-                          autonomyStyle[a.autonomy]
-                        )}
-                      >
-                        <ShieldCheck className="w-3 h-3" />
-                        {AUTONOMY_COPY[a.autonomy].label}
-                      </span>
-                      {/* Only the statuses that change behaviour: a
-                          paused agent's schedules are not firing. */}
-                      {(a.status === 'paused' || a.status === 'archived') && (
-                        <span className="inline-flex items-center mt-1 ml-1.5 px-1.5 py-0.5 rounded border border-border text-[11px] font-semibold text-muted-foreground"
-                          title={STATUS_COPY[a.status as AgentStatus]?.hint}>
-                          {STATUS_COPY[a.status as AgentStatus]?.label ?? a.status}
-                        </span>
-                      )}
-                    </div>
+                <section key={c.key} className="mb-8">
+                  <div className="mb-3">
+                    <h2 className="font-semibold text-foreground text-[14px]">
+                      {c.label} · {total}
+                    </h2>
+                    <p className="text-[13px] text-muted-foreground leading-relaxed mt-0.5">
+                      {c.key === 'uncategorized'
+                        ? 'No category tag yet — set the first tag in the builder to file these.'
+                        : `Agents filed under “${c.label}” — the first tag in the builder.`}
+                    </p>
                   </div>
-
-                  <p
-                    className="text-[13px] text-muted-foreground leading-relaxed mb-3 line-clamp-2 min-h-[2.6em]"
-                    title={a.description || undefined}
-                  >
-                    {summary(a)}
-                  </p>
-
-                  {chips.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-4">
-                      {chips.slice(0, MAX_CHIPS).map((t) => (
-                        <span
-                          key={t}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary border border-border text-[11px] text-muted-foreground"
-                        >
-                          <Wrench className="w-3 h-3" />
-                          {t}
-                        </span>
-                      ))}
-                      {chips.length > MAX_CHIPS && (
-                        <span
-                          className="inline-flex items-center px-1.5 py-0.5 rounded border border-dashed border-border text-[11px] text-muted-foreground"
-                          title={chips.slice(MAX_CHIPS).join(', ')}
-                        >
-                          +{chips.length - MAX_CHIPS} more
-                        </span>
-                      )}
-                    </div>
+                  {split && (
+                    <h3 className="text-[12px] font-semibold text-muted-foreground mt-4 mb-2">
+                      Scheduled · {c.scheduled.length}
+                    </h3>
                   )}
-
-                  {/* One footer line: when it runs and what it has done. The
-                      bar is how much of its work needed nobody — the number
-                      that says whether delegating to it is paying off — and it
-                      only appears once there is a run to measure. */}
-                  <div className="pt-3 border-t border-border">
-                    <div className="flex items-center justify-between gap-2 text-[12px] text-muted-foreground">
-                      <span className="flex items-center gap-1 min-w-0 truncate">
-                        <Clock className="w-3 h-3 shrink-0" />
-                        {TRIGGER_COPY[a.schedule ? 'maintenance' : 'goal'].label}
-                      </span>
-                      <span className="tabular-nums shrink-0">
-                        {a.runs ? `${a.runs} ${a.runs === 1 ? 'run' : 'runs'}` : 'Not run yet'}
-                        {a.spend ? ` · ₹${a.spend}` : ''}
-                      </span>
-                    </div>
-                    {pct !== null && (
-                      <div className="mt-2 flex items-center gap-2" title="Share of runs that finished without needing you">
-                        <div className="h-1 flex-1 bg-secondary rounded overflow-hidden">
-                          <span className="block h-full bg-agent rounded" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground tabular-nums">
-                          <Zap className="w-3 h-3" />
-                          {pct}% on its own
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </Link>
-
-                {/* One surface now: the builder. The canvas that used to sit
-                    beside it was retired 2026-08-24 — a run is read on the
-                    Activity page (/runs), not projected onto a graph. */}
-                <div className="flex border-t border-border">
-                  <Link
-                    to={`/agents/${a.id}`}
-                    className="flex-1 px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
-                  >
-                    <Sliders className="w-3 h-3" />
-                    Configure
-                  </Link>
-                  {/* Sharing sits on the agent rather than on Explore, because
-                      what you publish is something you own — and the dialog
-                      shows the whole payload before anything leaves. */}
-                  {/* Run by hand. The execute endpoint had no caller in the
-                      app, so an agent could only be run by asking chat to. */}
-                  {a.status === 'archived' ? (
-                    <button
-                      type="button"
-                      onClick={() => restore.mutate(a.id)}
-                      disabled={restore.isPending}
-                      className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
-                    >
-                      <ArchiveRestore className="w-3 h-3" />
-                      Restore
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setRunningAgent(a)}
-                      className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
-                    >
-                      <Play className="w-3 h-3" />
-                      Run
-                    </button>
+                  {c.scheduled.length > 0 && renderGrid(c.scheduled)}
+                  {split && (
+                    <h3 className="text-[12px] font-semibold text-muted-foreground mt-4 mb-2">
+                      On demand · {c.onDemand.length}
+                    </h3>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setSharing(a)}
-                    className="flex-1 border-l border-border px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary inline-flex items-center justify-center gap-1.5"
-                  >
-                    <Share2 className="w-3 h-3" />
-                    Share
-                  </button>
-                </div>
-                </div>
+                  {c.onDemand.length > 0 && renderGrid(c.onDemand)}
+                </section>
               );
             })}
-          </div>
+          </>
         )}
       </div>
 

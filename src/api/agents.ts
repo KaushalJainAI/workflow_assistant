@@ -19,6 +19,13 @@ export interface Agent extends AgentConfig {
   unattended: number;
   /** Credits spent across those runs. */
   spend: number;
+  /**
+   * Which catalogue entry this was installed from, if any — `null` for an
+   * agent built by hand. Read-only and observed, never configured: installing
+   * writes it and nothing edits it afterwards. What the Explore page joins on
+   * to show "installed" and to offer uninstall.
+   */
+  template_slug?: string | null;
   /** `retired` when the configured model's catalogue row is inactive. */
   model_status?: 'ok' | 'retired';
   created_at: string;
@@ -162,6 +169,29 @@ const agentsService = {
     messages: { role: 'user' | 'agent'; text: string; changes: AgentProposalChange[] }[];
   }> => {
     const { data } = await apiClient.get(`/orchestrator/agents/${id}/builder-chat/`);
+    return data;
+  },
+
+  /**
+   * Orchestrator-driven creation wizard (replaces the builder's chat pane).
+   * Both endpoints are read-only: questions proposes what to ask, propose
+   * returns the config to approve. Creation itself goes through `create()`.
+   */
+  wizardQuestions: async (description: string): Promise<{
+    questions: { id: string; text: string; why: string; multi: boolean; options?: string[] }[];
+    memory_hints: string[];
+  }> => {
+    const { data } = await apiClient.post('/orchestrator/agents/wizard/questions/', { description });
+    return { questions: data?.questions ?? [], memory_hints: data?.memory_hints ?? [] };
+  },
+
+  wizardPropose: async (description: string, answers: Record<string, unknown>): Promise<{
+    config: Partial<AgentConfig>;
+    explanations: string[];
+    warnings: string[];
+    eval_suggestion: { message: string };
+  }> => {
+    const { data } = await apiClient.post('/orchestrator/agents/wizard/propose/', { description, answers });
     return data;
   },
 

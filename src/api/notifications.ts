@@ -43,6 +43,20 @@ export interface HITLReminderPayload {
   action_url?: string;
 }
 
+/** A live user-asked reminder. Creation stays in chat (the tool quotes the
+ *  user's own timing); this surface lists and cancels. */
+export interface ScheduledReminder {
+  id: number;
+  title: string;
+  message: string;
+  repeat: 'none' | 'hourly' | 'daily' | 'weekly';
+  send_email: boolean;
+  next_run_at: string;
+  last_sent_at: string | null;
+  times_sent: number;
+  created_at: string;
+}
+
 /** One browser subscribed for closed-browser push (Web Push). */
 export interface PushSubscriptionRow {
   id: number;
@@ -106,5 +120,14 @@ export const notificationsService = {
 
   async unsubscribePush(endpoint: string): Promise<void> {
     await apiClient.post('/notifications/push/unsubscribe/', { endpoint });
+  },
+
+  async listScheduled(): Promise<ScheduledReminder[]> {
+    const response = await apiClient.get('/notifications/scheduled/');
+    return asArray<ScheduledReminder>(response.data);
+  },
+
+  async cancelScheduled(id: number): Promise<void> {
+    await apiClient.delete(`/notifications/scheduled/${id}/`);
   },
 };

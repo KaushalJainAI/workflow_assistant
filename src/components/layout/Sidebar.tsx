@@ -18,6 +18,8 @@ import {
   Activity,
   Bot,
   LayoutGrid,
+  LayoutDashboard,
+  AppWindow,
   Clapperboard,
   // BarChart3,  // Insights lives in Settings now; no top-level entry
   // LineChart,  // MVP: unused while Evals is hidden
@@ -25,6 +27,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState, useEffect } from "react";
+import { OPEN_SIDEBAR_EVENT } from "./sidebarBus";
 import { useQuery } from "@tanstack/react-query";
 import { useHitlPending } from "../../hooks/useHitlPending";
 import { useAuth } from "../../contexts/authState";
@@ -235,7 +238,9 @@ const Sidebar = () => {
                 // section headings (Plugins vs Connectors).
                 { icon: Plug, label: "Connections", path: "/connections" },
                 { icon: KeyRound, label: "Credentials", path: "/credentials" },
-                { icon: FileText, label: "Documents", path: "/documents" },
+                { icon: AppWindow, label: "Apps", path: "/apps" },
+                { icon: FileText, label: "Documents", path: "/documents", match: ["/documents"] },
+                { icon: LayoutDashboard, label: "Dashboards", path: "/dashboards" },
                 // Pages: snapshots published by link (`publish_page`), and withdrawing them.
                 { icon: Globe, label: "Pages", path: "/pages" },
             ],
@@ -244,29 +249,19 @@ const Sidebar = () => {
 
 
 
+    /* Title bars own their menu button now (`SidebarMenuButton`, in-flow at the
+       start of each header). It fires this event; the sidebar just opens.
+       There is deliberately no floating button here any more: a `fixed`
+       hamburger needed `pl-12` clearance hacks on every page and painted over
+       drawer headers (the "Conversations" collision) on phones. */
+    useEffect(() => {
+        const open = () => setCollapsed(false);
+        window.addEventListener(OPEN_SIDEBAR_EVENT, open);
+        return () => window.removeEventListener(OPEN_SIDEBAR_EVENT, open);
+    }, []);
+
     return (
         <>
-        {/* Mobile: floating hamburger to open drawer */}
-        {isMobile && collapsed && (
-            <button
-                onClick={() => setCollapsed(false)}
-                /* `top-3 left-3` plus the safe-area inset: on a notched phone in
-                   landscape the inset is what keeps this off the sensor housing,
-                   and it is 0 everywhere else. Pages reserve 48px for it with
-                   `pl-12` — see PageHeader. */
-                className="md:hidden fixed z-[60] p-2.5 rounded-lg bg-card border border-border shadow-md"
-                style={{
-                    top: 'max(0.75rem, env(safe-area-inset-top))',
-                    left: 'max(0.75rem, env(safe-area-inset-left))',
-                }}
-                aria-label="Open menu"
-                aria-expanded={false}
-                aria-controls="app-sidebar"
-            >
-                <Menu className="w-5 h-5" />
-            </button>
-        )}
-
         {/* Mobile: backdrop when drawer is open */}
         {isMobile && !collapsed && (
             <div

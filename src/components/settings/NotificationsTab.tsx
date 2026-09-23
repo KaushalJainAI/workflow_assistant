@@ -3,6 +3,7 @@ import { Bell, CheckCircle, Clock, ShieldAlert, AlertTriangle, Info } from 'luci
 import { Link } from 'react-router-dom';
 import { notificationsService, type Notification } from '../../api/notifications';
 import ReminderPreferences from './ReminderPreferences';
+import ScheduledReminders from './ScheduledReminders';
 import { cn } from '../../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -38,7 +39,9 @@ function actionLink(notification: Notification): { to: string; label: string } |
   if (ACTION_PATHS[url]) return { to: url, label: ACTION_PATHS[url] };
   if (url.startsWith('/') && !url.startsWith('//')) {
     const base = `/${url.slice(1).split('/')[0]}`;
-    if (['/agents', '/runs', '/overview', '/documents', '/templates'].includes(base)) {
+    // `?request=` / `?run=` / `?session=` deep links arrive here from the
+    // writers; the query is what makes them land on the thing, not the page.
+    if (['/agents', '/runs', '/overview', '/documents', '/templates', '/ai-chat'].includes(base)) {
       return { to: url, label: 'Open' };
     }
   }
@@ -103,6 +106,10 @@ export default function NotificationsTab() {
   return (
     <div className="space-y-6 max-w-4xl">
       <ReminderPreferences />
+
+      <div className="border-t border-border/50 pt-6" />
+
+      <ScheduledReminders />
 
       <div className="border-t border-border/50 pt-6" />
 

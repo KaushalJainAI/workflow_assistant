@@ -59,6 +59,7 @@ import { statusTone } from '../lib/triggerStatus';
 import { EFFORT_LABELS } from '../hooks/useEffortSelection';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../hooks/useChatModelSelection';
 import { useAuth } from '../contexts/authState';
+import SidebarMenuButton from '../components/layout/SidebarMenuButton';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
 
@@ -833,10 +834,10 @@ export default function AgentBuilder() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* `flex-wrap` and `pl-12` on mobile: three action buttons plus a title do
-          not fit on a phone, and the Sidebar's fixed hamburger sits over the
-          top-left corner. */}
-      <header className="px-4 md:px-6 py-3 md:py-4 border-b border-border flex flex-wrap items-center gap-3 pl-12 md:pl-6">
+      {/* Menu button is in-flow (same 40px slot as every title bar) so it
+          wraps with the actions instead of floating over the corner. */}
+      <header className="px-4 md:px-6 py-3 md:py-4 border-b border-border flex flex-wrap items-center gap-3">
+        <SidebarMenuButton />
         <div className="p-2 bg-agent-subtle border border-agent-line rounded shrink-0">
           <Bot className="w-5 h-5 text-agent" />
         </div>
@@ -928,11 +929,17 @@ export default function AgentBuilder() {
       </div>
 
       <div className="flex-1 flex min-h-0">
-        {/* ---- builder chat ---- */}
+        {/* ---- builder chat (deprecated: creation moved to /agents/new wizard) ---- */}
         <div className={cn(
           'w-full lg:w-[420px] xl:w-[460px] border-r border-border flex-col min-h-0',
           mobilePane === 'chat' ? 'flex' : 'hidden lg:flex',
         )}>
+          <div className="px-4 pt-3">
+            <p className="text-xs text-muted-foreground border border-border rounded p-2 bg-muted">
+              New agents are created in the <Link to="/agents/new" className="underline font-semibold">creation wizard</Link> —
+              questions, proposal, approval, then a starter eval. This pane is edit-only history.
+            </p>
+          </div>
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="pt-4">
@@ -1245,7 +1252,7 @@ export default function AgentBuilder() {
                 ['mcp', 'MCP servers (Plugins)', 'The tools from your connected plugins (MCP servers), using your connectors.'],
                 ['voice', 'Transcribe and speak', 'Transcripts from recordings; audio files from text. Needs file access.'],
                 ['esign', 'E-signatures', 'Send documents out for signature. Pauses before anything goes out.'],
-                ['talk', 'Messaging', 'Read, draft and send on Slack, WhatsApp, Teams and SMS.'],
+                ['talk', 'Messaging', 'Read, draft and send on Slack, WhatsApp, Teams, SMS and Telegram.'],
                 ['data', 'Databases', 'Query SQL databases; write only where allowed.'],
                 ['api', 'API calls', 'Call HTTP APIs through one generic caller.'],
                 ['compute', 'Compute', 'Run commands and long jobs on your workspace machine.'],

@@ -67,7 +67,7 @@ export default function OfficePreview({ doc: given, className }: { doc: Document
     return (
       <div className={cn('p-4', className)}>
         <p className="mb-3 text-xs text-muted-foreground">
-          Text extracted from this file. Download it to see the original layout.
+          Text extracted from this file. Use Export to take the original layout with you.
         </p>
         {text ? (
           <pre className="m-0 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">
@@ -120,8 +120,8 @@ function DeckPreview({ spec }: { spec: DeckSpec }) {
   return (
     <div className="space-y-4 p-4">
       <p className="text-xs text-muted-foreground">
-        {spec.slides.length} {spec.slides.length === 1 ? 'slide' : 'slides'} · {t.name} theme · a preview —
-        download for the PowerPoint file, where charts are editable.
+        {spec.slides.length} {spec.slides.length === 1 ? 'slide' : 'slides'} · {t.name} theme · in-browser preview —
+        Export for the PowerPoint file, where charts stay editable.
       </p>
       {spec.slides.map((slide, i) => (
         <figure key={i} className="m-0">

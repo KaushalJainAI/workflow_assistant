@@ -20,26 +20,27 @@ interface Props {
  * as a fallback for external consumers, but the UI never uses it.
  */
 export function AuthenticatedMediaPreview({ doc, className }: Props) {
-  const isImage = doc.file_type.includes('image');
-  const isPdf = doc.file_type.includes('pdf');
-  const type = isImage ? 'image' : isPdf ? 'pdf' : 'link';
+  const ft = doc.file_type;
+  const isImage = ft.includes('image');
+  const isPdf = ft.includes('pdf');
+  const isVideo = ft.includes('video');
+  const isAudio = ft.includes('audio');
+  const isPreviewable = isImage || isPdf || isVideo || isAudio;
+  const type = isImage ? 'image' : isPdf ? 'pdf' : isVideo ? 'video' : 'link';
 
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isImage) return;
+    if (!isPreviewable) return;
     let objectUrl: string | null = null;
     let cancelled = false;
 
     documentsService
-      .download(doc.id)
+      .download(doc.id, { inline: true })
       .then((blob) => {
         if (cancelled) return;
-        // Only use blob if it looks like an image; otherwise keep placeholder.
-        if (!blob.type || blob.type.startsWith('image/') || isImage) {
-          objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
-        }
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
       })
       .catch(() => {
         // Keep placeholder on 401/404 — the download will have already 401'd
@@ -50,7 +51,25 @@ export function AuthenticatedMediaPreview({ doc, className }: Props) {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [doc.id, isImage]);
+  }, [doc.id, isPreviewable]);
+
+  // Inline viewers: images, PDFs, video and audio all play in-browser from
+  // the authenticated blob. Anything else falls back to the link card.
+  if (isPdf && blobUrl) {
+    return (
+      <iframe src={blobUrl} title={doc.title} className={className ?? 'block h-[65vh] w-full rounded-md border border-border/60 bg-white'} />
+    );
+  }
+  if (isVideo && blobUrl) {
+    return (
+      <video src={blobUrl} controls className={className ?? 'block max-h-[65vh] w-full rounded-md bg-black'} />
+    );
+  }
+  if (isAudio && blobUrl) {
+    return (
+      <audio src={blobUrl} controls className={className ?? 'w-full'} />
+    );
+  }
 
   // For images we wait for the authenticated blob; for others we render icon.
   const url = isImage ? blobUrl ?? '' : '';

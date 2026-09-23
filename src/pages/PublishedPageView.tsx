@@ -125,7 +125,24 @@ function FilePage({ page, isPublic }: { page: PublishedPage; isPublic: boolean }
       toast.error('Could not download that file.');
     }
   };
+  const { data: previewUrl } = useQuery({
+    queryKey: ['published-page-preview', page.slug, isPublic],
+    queryFn: () => pagesService.previewBlobUrl(page.slug, isPublic),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const name = (page.file_name || '').toLowerCase();
+  const isPdf = name.endsWith('.pdf');
+  const isImage = /\.(png|jpe?g|gif|webp|svg)$/.test(name);
   return (
+    <div className="space-y-3">
+      {page.has_file && previewUrl && (isPdf || isImage) && (
+        isPdf ? (
+          <iframe src={previewUrl} title={page.file_name || 'File'} className="block h-[70vh] w-full rounded-md border border-border/60 bg-white" />
+        ) : (
+          <img src={previewUrl} alt={page.file_name || 'File'} className="max-h-[70vh] w-full rounded-md border border-border/60 object-contain bg-white" />
+        )
+      )}
     <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-card p-4">
       <FileText className="h-6 w-6 shrink-0 text-primary/80" />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{page.file_name || 'File'}</span>
@@ -135,6 +152,7 @@ function FilePage({ page, isPublic }: { page: PublishedPage; isPublic: boolean }
           <Download className="h-3.5 w-3.5" /> Download
         </button>
       )}
+    </div>
     </div>
   );
 }

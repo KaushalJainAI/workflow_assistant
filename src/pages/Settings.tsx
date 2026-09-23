@@ -38,6 +38,7 @@ import {
 } from '../hooks/useEffortSelection';
 import { DEFAULT_PROVIDER, DEFAULT_MODEL } from '../hooks/useChatModelSelection';
 import { allZones, localZone } from '../lib/cron';
+import SidebarMenuButton from '../components/layout/SidebarMenuButton';
 import { toast } from 'sonner';
 
 /** Languages the backend accepts (`core/preferences.py::LANGUAGES`), by code.
@@ -925,12 +926,13 @@ export default function Settings() {
 
   return (
     <div className="h-full flex flex-col md:flex-row">
-      {/* Settings Sidebar */}
-      {/* pl-12 on mobile: this rail is the topmost element on a phone, so the
-          Sidebar's fixed hamburger would land on the first tab. */}
-      <div className="w-full md:w-64 border-b md:border-r md:border-b-0 border-border bg-card p-2 pl-12 md:p-4 shrink-0 overflow-x-auto scrollbar-none">
+      {/* Settings Sidebar — menu button is in-flow at the rail start on
+          phones, same 40px slot as every title bar. */}
+      <div className="w-full md:w-64 border-b md:border-r md:border-b-0 border-border bg-card p-2 md:p-4 shrink-0 overflow-x-auto scrollbar-none">
         <h2 className="text-lg font-semibold mb-2 md:mb-4 px-2 hidden md:block">Settings</h2>
-        <nav className="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-1 min-w-max md:min-w-0 pb-1 md:pb-0">
+        <div className="flex items-center gap-1 min-h-10">
+          <SidebarMenuButton className="md:hidden self-center" />
+          <nav className="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-1 min-w-max md:min-w-0 pb-1 md:pb-0 flex-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -954,7 +956,8 @@ export default function Settings() {
               }`} />
             </button>
           ))}
-        </nav>
+          </nav>
+        </div>
       </div>
 
       {/* Settings Content */}

@@ -38,8 +38,11 @@ const lazyPage = <T extends { default: React.ComponentType }>(
 ) => lazy(load);
 
 const AIChat = lazyPage(() => import('./pages/AIChat'));
+const Apps = lazyPage(() => import('./pages/Apps'));
+const Dashboards = lazyPage(() => import('./pages/Dashboards'));
 const Legal = lazy(() => import('./pages/Legal'));
 const AgentBuilder = lazyPage(() => import('./pages/AgentBuilder'));
+const AgentCreateWizard = lazyPage(() => import('./pages/AgentCreateWizard'));
 const AgentHistory = lazyPage(() => import('./pages/AgentHistory'));
 const Agents = lazyPage(() => import('./pages/Agents'));
 const Connections = lazyPage(() => import('./pages/Connections'));
@@ -175,6 +178,8 @@ const AppContent = () => {
               <Route path="/workflows/new" element={<Navigate to="/agents" replace />} />
               <Route path="/documents" element={<Documents />} />
               <Route path="/pages" element={<Pages />} />
+              <Route path="/dashboards" element={<Dashboards />} />
+              <Route path="/apps" element={<Apps />} />
               {/* Connections merges the former "Data sources" (/connectors) and
                   "Tools" (/mcp-servers), which were two views of the same two
                   tables. Both paths redirect so existing links keep working. */}
@@ -204,9 +209,9 @@ const AppContent = () => {
               <Route path="/inbox" element={<Navigate to="/runs" replace />} />
               <Route path="/runs" element={<Runs />} />
               <Route path="/schedules" element={<Schedules />} />
-              {/* Build */}
+              {/* Build — creation is the orchestrator wizard; the builder is edit-only */}
               <Route path="/agents" element={<Agents />} />
-              <Route path="/agents/new" element={<AgentBuilder />} />
+              <Route path="/agents/new" element={<AgentCreateWizard />} />
               {/* Templates sit beside the agent list rather than inside it:
                   installing one is how most people get their first agent, so
                   it needs a link you can send someone. */}

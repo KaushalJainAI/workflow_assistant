@@ -22,6 +22,7 @@ import apiClient from '../api/client';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { IconButton } from '../components/ui/IconButton';
+import SidebarMenuButton from '../components/layout/SidebarMenuButton';
 
 interface Skill {
     id: string;
@@ -158,8 +159,8 @@ export default function Skills() {
             {/* Header — spacing follows PageHeader (px-4 py-6 md:px-8 md:py-8). */}
             <header className="px-4 py-6 md:px-8 md:py-8 bg-card sticky top-0 z-20 border-b border-border">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                    {/* pl-12 on mobile clears the Sidebar's fixed hamburger. */}
-                    <div className="flex items-center gap-3 md:gap-4 pl-12 md:pl-0 min-w-0">
+                    <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                        <SidebarMenuButton />
                         <div className="p-2.5 md:p-3 bg-primary/10 rounded-lg shrink-0">
                             <GraduationCap className="w-5 h-5 md:w-6 md:h-6 text-primary" />
                         </div>

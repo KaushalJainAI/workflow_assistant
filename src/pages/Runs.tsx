@@ -16,7 +16,7 @@
  * at each step, which configuration revision it ran under, and — for a
  * delegated run — who asked for it and why.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -511,6 +511,31 @@ export default function Runs() {
       return next;
     }, { replace: true });
   };
+
+  // The selected approval lives in the URL (`?request=<id>`) next to `?run=`:
+  // a notification's "Open" selects the request it is about instead of
+  // dropping the user on the queue top. Adopted and published with `replace`
+  // so following a link never spams history — and stable when equal, so the
+  // two effects below cannot chase each other.
+  useEffect(() => {
+    const r = params.get('request');
+    if (r && r !== selectedId) setSelectedId(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+  useEffect(() => {
+    const r = params.get('request');
+    if (selectedId ? r === selectedId : !r) return;
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (selectedId) next.set('request', selectedId);
+        else next.delete('request');
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   // One agent's runs, from `?agent=<id>` — the builder and Insights link here
   // with it. `?status=` / `?failure_category=` arrive the same way from the

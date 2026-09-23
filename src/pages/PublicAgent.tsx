@@ -56,7 +56,7 @@ const GRANT_COPY: Record<string, string> = {
   mcp: 'Use your connections',
   voice: 'Transcribe audio and speak text',
   esign: 'Send documents for e-signature',
-  talk: 'Message on Slack, WhatsApp, Teams and SMS',
+  talk: 'Message on Slack, WhatsApp, Teams, SMS and Telegram',
   data: 'Query databases',
   api: 'Call HTTP APIs',
   subAgents: 'Delegate to your other agents',
