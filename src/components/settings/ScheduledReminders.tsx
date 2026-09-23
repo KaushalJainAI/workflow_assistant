@@ -7,7 +7,6 @@ import {
   type ScheduledReminder,
 } from '../../api/notifications';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { cn } from '../../lib/utils';
 
 const REPEAT_LABEL: Record<ScheduledReminder['repeat'], string> = {
   none: 'Once',
