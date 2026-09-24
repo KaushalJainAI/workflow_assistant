@@ -178,15 +178,23 @@ export function StatusDonut({ byStatus }: { byStatus: Record<string, number> }) 
   const total = entries.reduce((a, [, n]) => a + n, 0);
   const R = 44;
   const C = 2 * Math.PI * R;
-  let offset = 0;
+  /* Slice start offsets, computed before the return: accumulating in a
+     running variable reassigns during render, which the immutability rule
+     forbids — each start is a pure function of its index instead. */
+  const fracs = entries.map(([, n]) => (total ? n / total : 0));
+  const slices = entries.map(([status, n], i) => ({
+    status,
+    n,
+    start: fracs.slice(0, i).reduce((a, f) => a + f, 0),
+  }));
   return (
     <div className="flex items-center gap-4">
       <svg viewBox="0 0 120 120" className="w-28 h-28 shrink-0" role="img" aria-label="Runs by status">
         <circle cx="60" cy="60" r={R} fill="none" stroke="#9ca3af" strokeOpacity="0.25" strokeWidth="16" />
-        {entries.map(([status, n]) => {
+        {slices.map(({ status, n, start }) => {
           if (!total) return null;
           const frac = n / total;
-          const el = (
+          return (
             <circle
               key={status}
               cx="60"
@@ -196,14 +204,12 @@ export function StatusDonut({ byStatus }: { byStatus: Record<string, number> }) 
               stroke={statusStroke(status)}
               strokeWidth="16"
               strokeDasharray={`${frac * C} ${C}`}
-              strokeDashoffset={-offset * C}
+              strokeDashoffset={-start * C}
               transform="rotate(-90 60 60)"
             >
               <title>{`${status}: ${n} runs`}</title>
             </circle>
           );
-          offset += frac;
-          return el;
         })}
         <text x="60" y="58" textAnchor="middle" fontSize="20" fontWeight="700" fill="currentColor">
           {total.toLocaleString()}

@@ -8,6 +8,9 @@ lives in [`AIAAS_Backend`](https://github.com/KaushalJainAI/AIAAS_Backend).
 
 React 19 · TypeScript · Vite · Tailwind · TanStack Query · Zustand
 
+**New here?** Read [BEGINNER_GUIDE.md](BEGINNER_GUIDE.md): every page, the
+folder layout, and the pattern to copy when adding a screen.
+
 ## Screens
 
 | Route | What it's for |
@@ -15,8 +18,7 @@ React 19 · TypeScript · Vite · Tailwind · TanStack Query · Zustand
 | `/ai-chat` | Streaming chat with live tool calls, a plan (todo) panel, charts, approvals inline, and **steering**: type while the agent works to redirect it |
 | `/agents`, `/agents/:id` | Automations list (searchable, grouped by category with Scheduled vs On demand inside) and agent builder: prompt, model and reasoning effort, granted tools, connector scopes, autonomy level, spend cap, schedules |
 | `/templates` | Explore: curated agents grouped by pack (plus standalone and community sections); requirements are matched to *your* knowledge bases and connections, never someone else's ids. Installed entries show an Installed mark with Open and Uninstall |
-| `/overview` | Inbox of runs waiting for a human decision |
-| `/runs` | Run history: each model turn with its reasoning, each tool call, cost |
+| `/runs` | Activity: runs waiting for your decision, and run history (each model turn with its reasoning, each tool call, cost) |
 | `/schedules` | Cron schedules with a live plain-English reading ("Every weekday at 9:00") |
 | `/connections` | Gmail, Drive, Calendar and MCP servers |
 | `/documents` | File system and knowledge bases |

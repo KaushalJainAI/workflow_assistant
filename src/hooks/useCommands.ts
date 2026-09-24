@@ -55,16 +55,16 @@ export function useCommandCompletion(
     { id?: number | string; value: string; label: string; description?: string }[]
   >([]);
   const [isLoading, setIsLoading] = useState(false);
+  /* No command or argument means no completion: derived at return, not
+     mirrored into state by an effect. Stale rows linger in state unseen
+     until the next live query overwrites them. */
+  const active = Boolean(command && arg) && options?.enabled !== false;
 
   useEffect(() => {
-    if (!options?.enabled && options?.enabled === false) return;
-    if (!command || !arg) {
-      setCandidates([]);
-      return;
-    }
+    if (!active || !command || !arg) return;
     let cancelled = false;
-    setIsLoading(true);
     const timer = setTimeout(() => {
+      setIsLoading(true);
       commandsService
         .complete(command, arg, q)
         .then((rows) => {
@@ -81,9 +81,9 @@ export function useCommandCompletion(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [command, arg, q, options?.enabled]);
+  }, [active, command, arg, q]);
 
-  return { candidates, isLoading };
+  return { candidates: active ? candidates : [], isLoading: active && isLoading };
 }
 
 export type { CommandDef };

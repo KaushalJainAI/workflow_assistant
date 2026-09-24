@@ -14,20 +14,14 @@ import { usePersistedState } from '../../hooks/usePersistedState';
 import { clearChatDraft, useChatDraft } from '../../hooks/useChatDraft';
 import ThinkingTimer from './ThinkingTimer';
 import { 
-  Copy,
-  Check,
   Loader2,
-  Plus,
-  History,
   X,
   Search,
   Image as ImageIcon,
   Video,
   File as FileIcon,
   Mic,
-  MessageSquare,
   Shield,
-  Coins,
   ChevronDown,
   BrainCircuit,
   Settings2,
@@ -35,29 +29,20 @@ import {
   Zap,
   Wand2,
   Globe2,
-  Trash2,
-  RotateCcw,
-  ArrowUpFromLine,
-  Pencil,
   Code,
   Mail,
   FolderSearch,
   LifeBuoy,
   FileText,
-  ChevronRight,
   Slash,
   Bot,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatService, type StandaloneChatMessage as ChatMessage, type ChatSession } from '../../api';
-import {
-  costQualifier, describeConversationCost, describeCost, formatCost,
-} from '../../lib/cost';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 import { TextSelectionMenu } from './TextSelectionMenu';
-import { CollapsiblePanel } from './CollapsiblePanel';
 import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
 import ChartArtifact from './ChartArtifact';
@@ -68,7 +53,7 @@ import FilePreviewProvider from '../files/FilePreviewProvider';
 import MarkdownMessage from './MarkdownMessage';
 import TranscriptSkeleton from './TranscriptSkeleton';
 import { forgetTranscript, readTranscript, writeTranscript } from '../../lib/transcriptCache';
-import type { ChartSpec, TodoItem, HtmlArtifact as HtmlArtifactData, ChatSessionSummary } from '../../api/chat';
+import type { ChatSessionSummary } from '../../api/chat';
 
 import { useAIModels } from '../../hooks/useAIModels';
 import { useChatStream, type StreamEvent } from '../../hooks/useChatStream';
@@ -83,8 +68,11 @@ import { prettyModel } from '../../lib/modelNames';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/authState';
 import GuestBanner from './GuestBanner';
-import SidebarMenuButton from '../layout/SidebarMenuButton';
-import FeedbackControl from '../runs/FeedbackControl';
+import ChatHistorySidebar from './ChatHistorySidebar';
+import ChatHeader from './ChatHeader';
+import ChatMessageItem from './ChatMessageItem';
+import ChatSettingsDialog from './ChatSettingsDialog';
+import ToolApprovalCard from './ToolApprovalCard';
 import { SendButton } from '../ui/SendButton';
 import { apiErrorMessage } from '../../lib/apiError';
 import { nextChatMode, toChatMode } from '../../lib/chatMode';
@@ -100,14 +88,6 @@ import {
   type CommandChip as CommandChipData,
   type CommandDef,
 } from '../../lib/commands';
-
-/** Rough size hint for a reasoning trace, so the toggle says what it will cost to open. */
-function formatWordCount(text: string): string {
-  const words = (text || '').trim().split(/\s+/).filter(Boolean).length;
-  if (words === 0) return '';
-  if (words < 1000) return `${words} words`;
-  return `${(words / 1000).toFixed(1)}k words`;
-}
 
 /**
  * What the composer is set to do with the next message. Named because it is the
@@ -1424,337 +1404,44 @@ export default function StandaloneChat() {
           own in-flow menu button, so banner + header read as one top bar. */}
       {isGuest && <GuestBanner model={llmModel} />}
 
-      {/* 1. History Sidebar — overlay drawer on mobile, in-flow on desktop */}
-      {showHistory && (
-        <div
-          className="md:hidden fixed inset-0 z-30 bg-black/50 animate-in fade-in duration-200"
-          onClick={() => setShowHistory(false)}
-        />
-      )}
-      <div
-        className={cn(
-          "h-full bg-card border-r border-border transition-colors duration-300 ease-in-out flex flex-col overflow-hidden",
-          // Mobile: fixed overlay drawer (own backdrop, own close button).
-          // Title-bar menu buttons are in-flow, so nothing floats over this
-          // header while it is open.
-          "fixed md:relative left-0 top-0 z-[70] md:z-30 md:flex-shrink-0",
-          showHistory
-            ? "w-[85vw] max-w-[320px] md:w-[300px] translate-x-0"
-            : "w-0 -translate-x-full md:translate-x-0 md:w-0 md:opacity-0 md:border-none"
-        )}
-      >
-        <div className="w-[85vw] max-w-[320px] md:w-[300px] flex flex-col h-full">
-          <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
-            <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-muted-foreground" />
-              <h2 className="text-[13px] font-semibold tracking-tight">
-                Conversations
-              </h2>
-            </div>
-            <button
-              onClick={() => setShowHistory(false)}
-              aria-label="Close conversation history"
-              className="p-1.5 hover:bg-secondary rounded-md transition text-muted-foreground"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="p-3 shrink-0">
-            <button
-              onClick={() => {
-                startNewConversation();
-                setShowHistory(false);
-              }}
-              className="w-full h-9 flex items-center gap-2 px-3 rounded-lg bg-muted/60 hover:bg-accent text-[13px] font-medium transition"
-            >
-              <Plus className="w-4 h-4 text-muted-foreground" />
-              New conversation
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5 custom-scrollbar">
-            {Array.isArray(conversations) && conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className={cn(
-                  "w-full px-3 py-2 rounded-lg text-left transition flex items-center gap-2.5 group relative cursor-pointer border",
-                  conversationId === conv.id
-                    ? "bg-primary-subtle border-primary-line"
-                    : "border-transparent hover:bg-secondary"
-                )}
-                // `loadConversation`, not a second copy of it. This handler
-                // used to inline the same fetch, minus `setCurrentSession` and
-                // plus the same misuse of `isLoading` — so picking a thread
-                // from history claimed the agent was thinking, and the session
-                // settings panel opened against the previous conversation.
-                onClick={() => {
-                  setShowHistory(false);
-                  loadConversation(conv.id);
-                }}
-              >
-                <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                  {/* A conversation still streaming in the background says so
-                      here — otherwise leaving it looks like cancelling it. */}
-                  {runningKeys.includes(conv.id) ? (
-                    <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-primary" />
-                  ) : (
-                    <MessageSquare className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  )}
-                  <span
-                    className="truncate flex-1 text-[13px] font-normal text-foreground"
-                    title={conv.title || conv.id.slice(0, 18)}
-                  >
-                    {conv.title || conv.id.slice(0, 18)}
-                  </span>
-                  {runningKeys.includes(conv.id) && conversationId !== conv.id && (
-                    <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary">
-                      working
-                    </span>
-                  )}
-                  {/* Only where there is a real figure. An unpriced or
-                      unanswered conversation shows nothing rather than a dash,
-                      because a column of dashes in a sidebar is clutter that
-                      tells the reader less than blank space does. */}
-                  {conv.cost_source && conv.cost_source !== 'unpriced' && (
-                    <span
-                      className="shrink-0 text-[11px] text-muted-foreground tabular-nums"
-                      title={describeCost(conv.total_cost_usd, conv.cost_source)}
-                    >
-                      {formatCost(conv.total_cost_usd, conv.cost_source)}
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={(e) => handleDeleteConversation(e, conv.id)}
-                  aria-label="Delete conversation"
-                  className="p-1 hover:bg-destructive-subtle hover:text-destructive rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-colors shrink-0 text-muted-foreground"
-                  title="Delete conversation"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* 1. History sidebar: an overlay drawer on phones, a column on desktop */}
+      <ChatHistorySidebar
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        conversations={conversations}
+        activeId={conversationId}
+        runningKeys={runningKeys}
+        onNewConversation={startNewConversation}
+        onOpenConversation={loadConversation}
+        onDeleteConversation={handleDeleteConversation}
+      />
 
       {/* 2. Main Chat Area */}
       <div className="flex-1 flex flex-col h-full relative min-w-0 z-10 transition-colors duration-300">
-        
-        {/* Header — menu button is in-flow at the row start (authed users);
-            guests get theirs in the banner band above. */}
-        <header className={cn(
-          "h-16 shrink-0 flex items-center px-4 md:px-6 justify-between border-b border-border/40 bg-background/50",
-          // Guest: the banner band overlays the top — push the header below
-          // it instead of stretching it.
-          isGuest && "mt-14 md:mt-10"
-        )}>
-          <div className="flex items-center gap-3 min-w-0">
-            {!isGuest && <SidebarMenuButton />}
-            {!showHistory && (
-              <button
-                onClick={() => setShowHistory(true)}
-                className="p-2.5 md:p-3 bg-card/40 border border-border/60 hover:bg-card/60 rounded-lg transition-colors text-muted-foreground group shrink-0"
-                aria-label="Conversation history"
-              >
-                <History className="w-5 h-5 group-hover:text-primary transition-colors" />
-              </button>
-            )}
-            <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded border border-border bg-secondary">
-               <div className="w-1.5 h-1.5 rounded-full bg-success" />
-               <span className="text-[11px] font-semibold text-muted-foreground">Assistant online</span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
-             {/* Memory state is shown in the header, not buried in the panel:
-                 with it off the assistant behaves very differently, and a user
-                 who forgot they switched it off reads that as the model being
-                 broken. */}
-             {!isGuest && currentSession && !currentSession.memory_enabled && (
-               <button
-                 onClick={() => setShowSessionSettings(true)}
-                 title="Memory is off for this chat — click to change"
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-500/40
-                             bg-warning-subtle text-[11px] font-semibold text-amber-500
-                             transition-colors duration-200 hover:bg-amber-500/20
-                             animate-in fade-in slide-in-from-right-2 shrink-0"
-               >
-                 <BrainCircuit className="w-3.5 h-3.5" />
-                 Memory off
-               </button>
-             )}
-             {/* What this conversation has cost so far. Shown in the header
-                 rather than in the settings panel because the point of the
-                 number is to be noticed while the conversation is still
-                 growing — inside a panel nobody opens, it is an audit trail
-                 rather than a signal. Hidden entirely until there is a figure
-                 to show: a chip reading "—" on every new chat would be noise. */}
-             {currentSession && currentSession.cost_source
-               && currentSession.cost_source !== 'unpriced' && (
-                <div
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums shrink-0"
-                  title={describeConversationCost(
-                    currentSession.total_cost_usd, currentSession.cost_source,
-                    currentSession.total_tokens_used ?? 0,
-                    currentSession.paid_by ?? '',
-                  )}
-                >
-                  <Coins className="w-3.5 h-3.5" />
-                  {formatCost(currentSession.total_cost_usd, currentSession.cost_source)}
-                  {/* Never a bare figure: whether it was charged or estimated
-                      is half of what the number means. The qualifier hides on
-                      phones where the header is crowded; the icon + figure —
-                      the part that moves — always shows. */}
-                  <span className="hidden sm:inline font-normal opacity-80">
-                    {costQualifier(currentSession.cost_source)}
-                  </span>
-                </div>
-             )}
-             <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                <Shield className="w-3.5 h-3.5" />
-                Encrypted
-             </div>
-             {currentSession && (
-               <button
-                 onClick={() => {
-                   setSystemPromptDraft(currentSession.system_prompt || '');
-                   setShowSessionSettings(true);
-                 }}
-                 title="Chat settings"
-                 className="p-1.5 rounded-lg text-muted-foreground transition-colors duration-200
-                            hover:bg-muted hover:text-foreground active:scale-95"
-               >
-                 <Settings2 className="w-4 h-4" />
-               </button>
-             )}
-          </div>
-        </header>
+        <ChatHeader
+          isGuest={isGuest}
+          historyOpen={showHistory}
+          onOpenHistory={() => setShowHistory(true)}
+          session={currentSession}
+          onShowSettings={() => setShowSessionSettings(true)}
+          onEditSettings={() => {
+            setSystemPromptDraft(currentSession?.system_prompt || '');
+            setShowSessionSettings(true);
+          }}
+        />
 
         {/* Per-chat settings: system prompt + memory. */}
         {showSessionSettings && currentSession && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm
-                       animate-in fade-in duration-200"
-            onClick={() => setShowSessionSettings(false)}
-          >
-            <div
-              className="w-full max-w-lg mx-4 rounded-lg border border-border bg-card shadow-lg
-                         animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300 ease-out"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-                <h2 className="text-sm font-bold text-foreground">Chat settings</h2>
-                <button
-                  onClick={() => setShowSessionSettings(false)}
-                  className="p-1 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-5 px-5 py-5">
-                <div>
-                  <label htmlFor="system-prompt" className="block text-xs font-bold text-foreground">
-                    System prompt
-                  </label>
-                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                    Standing instructions for this conversation. Applies to every message,
-                    including ones already sent.
-                  </p>
-                  <textarea
-                    id="system-prompt"
-                    value={systemPromptDraft}
-                    onChange={e => setSystemPromptDraft(e.target.value)}
-                    rows={5}
-                    placeholder="e.g. Answer concisely. Prefer tables over prose. Always cite sources."
-                    className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2
-                               text-xs leading-relaxed text-foreground outline-none
-                               transition-colors duration-200 placeholder:text-muted-foreground/50
-                               focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-
-                {!isGuest ? (
-                  <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/20 p-3.5">
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-foreground">Memory</div>
-                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                        {currentSession.memory_enabled
-                          ? 'The assistant sees recent turns and can search the rest of this conversation.'
-                          : 'The assistant answers from your current message alone. Nothing is deleted – turning this back on restores the full history.'}
-                      </p>
-                    </div>
-                    <button
-                      role="switch"
-                      aria-checked={currentSession.memory_enabled}
-                      aria-label="Toggle memory"
-                      disabled={isSavingSettings}
-                      onClick={() => handleSaveSessionSettings({ memory_enabled: !currentSession.memory_enabled })}
-                      className={cn(
-                        "mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5",
-                        "transition-colors duration-300 ease-out",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-                        "focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                        "disabled:opacity-50",
-                        currentSession.memory_enabled ? "bg-primary" : "bg-muted-foreground/30"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-5 w-5 shrink-0 rounded-full bg-white shadow-sm transition-transform duration-300 ease-out",
-                          currentSession.memory_enabled ? "translate-x-5" : "translate-x-0"
-                        )}
-                      />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-warning-subtle p-3.5">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                        <span>Memory</span>
-                        <span className="rounded border border-border bg-card px-1.5 py-0.5 micro-label">Login required</span>
-                      </div>
-                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                        Conversation memory is only available to logged-in users. Log in to let the assistant remember previous turns.
-                      </p>
-                    </div>
-                    <button
-                      role="switch"
-                      aria-checked={false}
-                      aria-label="Memory requires login"
-                      disabled
-                      title="Log in to use memory"
-                      className="mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 bg-muted-foreground/20 opacity-50 cursor-not-allowed"
-                    >
-                      <span className="h-5 w-5 shrink-0 rounded-full bg-white shadow-sm translate-x-0" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2 border-t border-border px-5 py-3.5">
-                <button
-                  onClick={() => setShowSessionSettings(false)}
-                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-muted-foreground
-                             transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  disabled={isSavingSettings}
-                  onClick={() => handleSaveSessionSettings({ system_prompt: systemPromptDraft })}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold
-                             text-primary-foreground transition-colors duration-200
-                             hover:brightness-110 active:scale-95 disabled:opacity-50"
-                >
-                  {isSavingSettings && <Loader2 className="w-3 h-3 animate-spin" />}
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
+          <ChatSettingsDialog
+            session={currentSession}
+            isGuest={isGuest}
+            promptDraft={systemPromptDraft}
+            onPromptDraftChange={setSystemPromptDraft}
+            saving={isSavingSettings}
+            onSave={handleSaveSessionSettings}
+            onClose={() => setShowSessionSettings(false)}
+          />
         )}
 
         {/* Transcript + plan rail: the panel sits beside the scroll area on
@@ -1841,584 +1528,34 @@ export default function StandaloneChat() {
               // and the next question, which read as separate pages.
               <div className="space-y-6 md:space-y-8">
                 {messages.map((message, index) => (
-                  /* Perplexity turn: the question is a heading, the answer is
-                     the page under it. No avatars, no bubbles, no alternating
-                     sides — an answer you are meant to read is not a chat
-                     bubble. The rule between turns is what separates them. */
-                  <div
+                  <ChatMessageItem
                     /* Keyed by id, not index: rewind, edit and delete all
                        splice `messages`, and index keys re-mount the whole tail
                        — replaying the entrance animation on messages nobody
                        touched. Optimistic rows fall back to the index until
                        the `status` frame hands them their database id. */
                     key={String(message.id ?? `pending-${index}`)}
-                    data-message-id={message.id}
-                    className={cn(
-                      "group",
-                      message.id !== settledId && "animate-in fade-in slide-in-from-bottom-2 duration-300",
-                      // The rule is the separator; the padding is breathing
-                      // room for it. 20px on phones, 24px on desktop — the old
-                      // 40px stacked with the list rhythm into the ~88px gap.
-                      message.role === 'user' && index > 0 && "border-t border-border/70 pt-5 md:pt-6"
-                    )}
-                  >
-                    {/* Section label. Violet for the agent, per the token rule
-                        that colour encodes agency; the user's own question does
-                        not need one because it reads as the heading. */}
-                    {message.role === 'assistant' && (
-                      <div className="flex items-center gap-2 mb-3">
-                        <BrainCircuit className="w-4 h-4 text-agent" />
-                        <span className="text-[13px] font-semibold text-foreground">Answer</span>
-                      </div>
-                    )}
-
-                    <div className="w-full min-w-0 space-y-3">
-
-                      {/* A resolved command: the chip, not expanded text. */}
-                      {(message.metadata as { command?: { name?: string; args?: Record<string, unknown> } })?.command?.name && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="inline-flex min-h-[28px] items-center rounded-md bg-primary/10 px-2 py-1 font-mono text-[12px] font-bold text-primary">
-                            /{String((message.metadata as { command?: { name?: string } }).command!.name)}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Query as heading / answer as body. break-words so a
-                          long URL or token wraps instead of pushing the column
-                          past the viewport on a phone. */}
-                      <div className={cn(
-                        "prose prose-base dark:prose-invert max-w-none ai-chat-prose break-words min-w-0",
-                        message.role === 'user'
-                          ? "text-[17px] md:text-[19px] leading-[1.45] font-semibold tracking-[-0.01em] text-foreground"
-                          : message.role === 'system'
-                          ? "w-full"
-                          : "text-[16px] leading-[1.75] text-foreground"
-                      )}>
-
-                        {message.role === 'system' ? (
-                          <div className="bg-muted p-4 rounded-lg shadow-sm border border-border inline-flex flex-col gap-3 min-w-0 w-full max-w-sm sm:min-w-[300px]">
-                            <div className="flex items-start gap-3">
-                               <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center shrink-0">
-                                  {message.metadata?.file_type === 'image' ? <ImageIcon className="w-5 h-5 text-success" /> :
-                                   message.metadata?.file_type === 'pdf' ? <FileIcon className="w-5 h-5 text-destructive" /> :
-                                   message.metadata?.file_type === 'pptx' ? <FileIcon className="w-5 h-5 text-warning" /> :
-                                   <FileIcon className="w-5 h-5 text-primary" />}
-                               </div>
-                               <div className="flex-1 min-w-0 pr-8 relative">
-                                  <p className="text-sm font-semibold text-foreground truncate max-w-[90%]">
-                                    {message.content.match(/\*\*([^*]+)\*\*/)?.[1] || "Uploaded File"}
-                                  </p>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <span className="micro-label bg-card px-1.5 py-0.5 rounded border border-border">
-                                      {message.metadata?.file_type || 'File'}
-                                    </span>
-                                    {message.metadata?.has_extracted_text && (
-                                       <span className="text-[11px] font-semibold text-success bg-success-subtle px-1.5 py-0.5 rounded border border-border">
-                                         Parsed
-                                       </span>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => handleDeleteMessage(message.id as number)}
-                                    disabled={deletingMsgId === message.id}
-                                    className="absolute right-0 top-0 p-1.5 text-muted-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
-                                    title="Delete file"
-                                  >
-                                    {deletingMsgId === message.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-                                    ) : (
-                                      <Trash2 className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                  <button
-                                    onClick={() => handleRewriteMessage(message.id as number)}
-                                    disabled={deletingMsgId === message.id}
-                                    className="absolute right-8 top-0 p-1.5 text-muted-foreground/40 hover:text-amber-500 hover:bg-warning-subtle rounded-lg transition-colors disabled:opacity-50"
-                                    title="Rewind conversation from here (deletes this and following)"
-                                  >
-                                    <RotateCcw className="w-4 h-4" />
-                                  </button>
-                               </div>
-                            </div>
-                            {/* Hide the raw extracted text preview from the user to keep UI clean, but keep the success indication */}
-                            <div className="text-xs font-medium text-muted-foreground bg-background/50 p-2 rounded-lg border border-border/30">
-                              Added to conversation context
-                            </div>
-                          </div>
-                        ) : (
-                          <MarkdownMessage
-                            content={message.content}
-                            sources={message.metadata?.sources}
-                          />
-                        )}
-                      </div>
-                      {/* Quick Summary, Reasoning & Activity Row. Two columns on
-                          phones (a 140px minimum in a flex row made the third
-                          chip stretch and collide), a wrapping row on desktop. */}
-                      {message.role === 'assistant' && (message.metadata?.summary || message.metadata?.thinking || (message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0) || message.metadata?.has_code_execution) && (
-                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-4 mb-2">
-                          {message.metadata?.summary && (
-                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/summary animate-in fade-in slide-in-from-top-2 duration-500">
-                              <button
-                                onClick={() => togglePanel('summary', message.id as number)}
-                                className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
-                                  isPanelOpen('summary', message.id)
-                                    ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
-                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
-                                )}
-                              >
-                                <FileText className={cn("w-4 h-4", isPanelOpen('summary', message.id) ? "text-primary" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold">Summary</span>
-                                <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('summary', message.id) && "rotate-180")} />
-                              </button>
-                            </div>
-                          )}
-
-                          {message.metadata?.thinking && (
-                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/thinking animate-in fade-in slide-in-from-top-2 duration-500">
-                              <button
-                                onClick={() => togglePanel('thinking', message.id as number)}
-                                className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
-                                  isPanelOpen('thinking', message.id)
-                                    ? "bg-primary/10 border-primary/30 text-primary shadow-sm" 
-                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
-                                )}
-                              >
-                                <BrainCircuit className={cn("w-4 h-4", isPanelOpen('thinking', message.id) ? "text-primary" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold">Reasoning</span>
-                                {/* Length hint: without it there is no way to
-                                    tell a one-line thought from six paragraphs
-                                    before committing to opening it. */}
-                                <span className="text-[10px] font-medium tabular-nums opacity-50">
-                                  {formatWordCount(message.metadata.thinking)}
-                                </span>
-                                <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('thinking', message.id) && "rotate-180")} />
-                              </button>
-                            </div>
-                          )}
-                          {message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0 && (
-                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/activity animate-in fade-in slide-in-from-top-2 duration-500">
-                              <button
-                                onClick={() => togglePanel('activity', message.id as number)}
-                                className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
-                                  isPanelOpen('activity', message.id)
-                                    ? "bg-warning-subtle border-border text-amber-600 shadow-sm" 
-                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
-                                )}
-                              >
-                                <Zap className={cn("w-4 h-4", isPanelOpen('activity', message.id) ? "text-amber-600" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold">Activity</span>
-                                <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('activity', message.id) && "rotate-180")} />
-                              </button>
-                            </div>
-                          )}
-
-                          {message.metadata?.has_code_execution && message.metadata?.code_executions && (message.metadata?.code_executions?.length ?? 0) > 0 && (
-                            <div className="min-w-0 sm:flex-1 sm:min-w-[140px] group/code animate-in fade-in slide-in-from-top-2 duration-500">
-                              <button
-                                onClick={() => togglePanel('code', message.id as number)}
-                                className={cn(
-                                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border w-full",
-                                  isPanelOpen('code', message.id)
-                                    ? "bg-success-subtle border-emerald-500/30 text-emerald-600 shadow-sm" 
-                                    : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50 hover:border-border/60 hover:text-foreground"
-                                )}
-                              >
-                                <Code className={cn("w-4 h-4", isPanelOpen('code', message.id) ? "text-emerald-600" : "text-muted-foreground/70")} />
-                                <span className="text-[12px] font-bold">Code</span>
-                                <div className="flex-1" />
-                                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-300", isPanelOpen('code', message.id) && "rotate-180")} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Expanded Summary Content */}
-                      {message.role === 'assistant' && message.metadata?.summary && (
-                        <CollapsiblePanel open={isPanelOpen('summary', message.id)}>
-                        <div className="mt-2 p-4 bg-card border border-border rounded-lg shadow-sm relative overflow-hidden">
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
-                          {/* Model-written summary — markdown via the shared renderer. */}
-                          <div className="text-[14px] text-foreground leading-relaxed italic">
-                            <MarkdownMessage content={message.metadata.summary} variant="compact" />
-                          </div>
-                        </div>
-                        </CollapsiblePanel>
-                      )}
-
-                      {/* Expanded Thinking Content */}
-                      {message.role === 'assistant' && message.metadata?.thinking && (
-                        <CollapsiblePanel open={isPanelOpen('thinking', message.id)}>
-                        <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card">
-                          <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2">
-                            <BrainCircuit className="h-3 w-3 text-muted-foreground" />
-                            <span className="micro-label">
-                              How the assistant got here
-                            </span>
-                          </div>
-                          {/* Capped and scrollable: an unbounded trace can run
-                              longer than the answer it explains, pushing the
-                              actual reply off screen. */}
-                          <div className="max-h-[420px] overflow-y-auto p-4">
-                            <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed text-muted-foreground italic select-text">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {message.metadata.thinking}
-                              </ReactMarkdown>
-                            </div>
-                          </div>
-                        </div>
-                        </CollapsiblePanel>
-                      )}
-
-                      {/* No placeholder when reasoning is absent. A greeting has
-                          no chain of thought to show, so a dashed "not fully
-                          captured" box was reporting a fault on every trivial
-                          reply and taking up a row under it. Reasoning that does
-                          arrive gets its own toggle above; silence here is the
-                          honest rendering of nothing to report. */}
-
-                      {/* Tool Activity Trace — shows which tools the agent called */}
-                      {message.role === 'assistant' && message.metadata?.tool_trace && (message.metadata?.tool_trace?.length ?? 0) > 0 && (
-                        <CollapsiblePanel open={isPanelOpen('activity', message.id)}>
-                        <div className="mt-2 p-4 bg-warning-subtle border border-border rounded-lg">
-                          <div className="flex items-center gap-3 px-1 mb-3">
-                            <Zap className="w-3.5 h-3.5 text-warning" />
-                            <span className="micro-label">Agent activity log</span>
-                            <div className="h-px flex-1 bg-border" />
-                          </div>
-                          <div className="space-y-1">
-                            {(message.metadata?.tool_trace ?? []).map((trace, i) => (
-                              <div
-                                key={i}
-                                className="flex flex-col gap-1.5 py-2 border-b border-border last:border-0"
-                              >
-                                <div className="flex items-center gap-3 text-[14px] text-muted-foreground">
-                                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-muted text-[11px] font-semibold text-muted-foreground shrink-0 border border-border">
-                                    {trace.iteration || i + 1}
-                                  </span>
-                                  <span className="font-mono font-semibold text-foreground text-[13px]">{trace.tool}</span>
-                                  {(trace.args?.query || trace.args?.question) && (
-                                    <span className="truncate max-w-[40vw] sm:max-w-[360px] text-foreground/60 italic text-[13px] pl-1">"{stripXmlTags(trace.args.query || trace.args.question)}"</span>
-                                  )}
-                                  {trace.summary && !trace.args?.query && !trace.args?.question && (
-                                    <span className="truncate max-w-[40vw] sm:max-w-[360px] text-foreground/50 italic text-[12px] pl-1">{stripXmlTags(trace.summary)}</span>
-                                  )}
-                                </div>
-                                {trace.thought && (
-                                  <div className="pl-[38px] flex flex-col gap-1">
-                                     <div className="text-[13px] text-muted-foreground italic leading-relaxed border-l-2 border-border pl-3 pb-1">
-                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                          {trace.thought}
-                                        </ReactMarkdown>
-                                     </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        </CollapsiblePanel>
-                      )}
-
-                      {/* Code Execution Log — shows sandbox results */}
-                      {message.role === 'assistant' && message.metadata?.code_executions && (message.metadata?.code_executions?.length ?? 0) > 0 && (
-                        <CollapsiblePanel open={isPanelOpen('code', message.id)}>
-                        <div className="mt-2 p-4 bg-card border border-border rounded-lg">
-                          <div className="flex items-center gap-3 px-1 mb-3">
-                            <Code className="w-3.5 h-3.5 text-success" />
-                            <span className="micro-label">Secure sandbox code</span>
-                            <div className="h-px flex-1 bg-border" />
-                          </div>
-                          <div className="space-y-4">
-                            {(message.metadata?.code_executions ?? []).map((exec, i) => (
-                              <div key={i} className="space-y-2 border-b border-border last:border-0 pb-4 last:pb-0">
-                                <div className="flex items-center gap-2">
-                                   <span className="micro-label">Execution #{exec.iteration || i+1}</span>
-                                   <div className="h-px flex-1 bg-border" />
-                                </div>
-                                <div className="rounded-lg overflow-hidden border border-border bg-muted shadow-sm">
-                                   <div className="px-3 py-1.5 bg-muted flex items-center justify-between border-b border-border">
-                                      <span className="micro-label">Input code</span>
-                                   </div>
-                                   <pre className="p-4 text-[13px] overflow-x-auto text-zinc-300 font-mono leading-relaxed bg-zinc-950">
-                                      <code>{exec.code}</code>
-                                   </pre>
-                                </div>
-                                {(exec.output || exec.result) && (
-                                   <div className="rounded-lg overflow-hidden border border-border bg-card shadow-sm">
-                                      <div className="px-3 py-1.5 bg-zinc-900/50 flex items-center justify-between border-b border-white/5">
-                                         <span className="text-[9px] font-bold text-zinc-500 ">Execution output</span>
-                                      </div>
-                                      <pre className="p-4 text-[12px] overflow-x-auto text-blue-400/90 font-mono leading-relaxed whitespace-pre-wrap bg-zinc-950/20">
-                                         <code>{exec.output || exec.result}</code>
-                                      </pre>
-                                   </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        </CollapsiblePanel>
-                      )}
-
-
-                      {/* Discovered Media Row (Sources, Images, Videos on one line) */}
-                      {message.role === 'assistant' && ((message.metadata?.sources?.length ?? 0) > 0 || (message.metadata?.images?.length ?? 0) > 0 || (message.metadata?.videos?.length ?? 0) > 0) && (
-                        <div className="mt-4 md:mt-5 flex flex-wrap gap-2">
-                          {(message.metadata?.sources?.length ?? 0) > 0 && (
-                            <button
-                              onClick={() => togglePanel('sources', message.id as number)}
-                              className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
-                                isPanelOpen('sources', message.id) ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-                              )}
-                            >
-                              <Globe2 className="w-3.5 h-3.5" />
-                              <span className="text-[12px] font-medium">{(message.metadata?.sources?.length ?? 0)} Sources</span>
-                            </button>
-                          )}
-
-                          {(message.metadata?.images?.length ?? 0) > 0 && (
-                            <button
-                              onClick={() => togglePanel('images', message.id as number)}
-                              className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
-                                isPanelOpen('images', message.id) ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-                              )}
-                            >
-                              <ImageIcon className="w-3.5 h-3.5" />
-                              <span className="text-[12px] font-medium">{(message.metadata?.images?.length ?? 0)} Images</span>
-                            </button>
-                          )}
-
-                          {(message.metadata?.videos?.length ?? 0) > 0 && (
-                            <button
-                              onClick={() => togglePanel('videos', message.id as number)}
-                              className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border group",
-                                isPanelOpen('videos', message.id) ? "bg-primary-subtle border-primary-line text-primary" : "bg-secondary border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-                              )}
-                            >
-                              <Video className="w-3.5 h-3.5" />
-                              <span className="text-[12px] font-medium">{(message.metadata?.videos?.length ?? 0)} Videos</span>
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Content areas below the row triggers */}
-                      {message.role === 'assistant' && (message.metadata?.sources?.length ?? 0) > 0 && (
-                        <CollapsiblePanel open={isPanelOpen('sources', message.id)}>
-                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 md:px-1">
-                          {(message.metadata?.sources ?? []).map((item, i) => (
-                            <MediaPreview 
-                              key={i}
-                              url={item.url}
-                              type="link"
-                              title={item.title}
-                              source={item.publisher || item.source}
-                              thumbnail={item.thumbnail}
-                              className="animate-in fade-in zoom-in-95 duration-500"
-                            />
-                          ))}
-                        </div>
-                        </CollapsiblePanel>
-                      )}
-
-                      {message.role === 'assistant' && (message.metadata?.images?.length ?? 0) > 0 && (
-                        <CollapsiblePanel open={isPanelOpen('images', message.id)}>
-                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 md:px-1">
-                          {(message.metadata?.images ?? []).flatMap((item, i) => {
-                            // No url, no tile. `any` used to let `undefined`
-                            // through to MediaPreview's required `url` prop.
-                            const url = item.image || item.url;
-                            return url ? [(
-                              <MediaPreview
-                                key={i}
-                                url={url}
-                                type="image"
-                                title={item.title}
-                                source={item.source}
-                                className="animate-in fade-in zoom-in-95 duration-500"
-                              />
-                            )] : [];
-                          })}
-                        </div>
-                        </CollapsiblePanel>
-                      )}
-
-                      {message.role === 'assistant' && (message.metadata?.videos?.length ?? 0) > 0 && (
-                        <CollapsiblePanel open={isPanelOpen('videos', message.id)}>
-                        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 animate-in fade-in slide-in-from-top-2 duration-300 md:px-1">
-                          {(message.metadata?.videos ?? []).flatMap((item, i) => (
-                            item.url ? [(
-                              <MediaPreview
-                                key={i}
-                                url={item.url}
-                                type="video"
-                                title={item.title}
-                                source={item.publisher || item.source}
-                                className="animate-in fade-in zoom-in-95 duration-500"
-                              />
-                            )] : []
-                          ))}
-                        </div>
-                        </CollapsiblePanel>
-                      )}
-
-
-                      {/* The plan the turn worked to, kept as a record of what
-                          it set out to do and what it could not finish. */}
-                      {Array.isArray(message.metadata?.todos) &&
-                        (message.metadata?.todos ?? []).length > 0 && (
-                          <TodoPanel todos={message.metadata?.todos as TodoItem[]} />
-                        )}
-
-                      {/* Files the turn saved, linked by id rather than by
-                          whatever path the prose happened to mention. */}
-                      <FileCards files={message.metadata?.files} />
-
-                      {/* Rendered HTML artifacts, replayed from stored history. */}
-                      {Array.isArray(message.metadata?.html_artifacts) &&
-                        (message.metadata?.html_artifacts ?? []).map((art: HtmlArtifactData, i: number) => (
-                          <HtmlArtifact key={`${message.id}-art-${i}`} artifact={art} />
-                        ))}
-
-                      {/* Charts, redrawn from the stored spec rather than from
-                          a stored picture — so a reopened conversation gets
-                          today's palette and today's accessibility fixes. */}
-                      {Array.isArray(message.metadata?.charts) &&
-                        (message.metadata?.charts ?? []).map((chart: ChartSpec, i: number) => (
-                          <ChartArtifact key={`${message.id}-chart-${i}`} chart={chart} />
-                        ))}
-
-                      {/* Command cards: mission, status, cost, memory,
-                          findings, confirm sheets. Stored on the message so
-                          a reopened conversation replays them. */}
-                      {(message.metadata as { command_card?: { type?: string } & Record<string, unknown> })?.command_card?.type && (
-                        <CommandCard
-                          card={(message.metadata as { command_card: { type: string } & Record<string, unknown> }).command_card}
-                          busy={confirmBusy}
-                          onConfirm={(confirm) => {
-                            const cmd = (message.metadata as { command?: { name?: string; args?: Record<string, unknown> } }).command;
-                            if (cmd?.name) void runCommandConfirm(cmd.name, cmd.args ?? {}, confirm);
-                          }}
-                          onNavigate={(path) => { window.location.href = path; }}
-                        />
-                      )}
-
-                      {/* The delegated run's card, persisted on the message. */}
-                      {(message.metadata as { agent_run?: { agent_name?: string; execution_id?: string; status?: string } })?.agent_run?.execution_id && (
-                        <CommandCard
-                          card={{
-                            type: 'agent_run',
-                            agent_name: (message.metadata as { agent_run?: { agent_name?: string } }).agent_run?.agent_name ?? 'Agent',
-                            execution_id: (message.metadata as { agent_run?: { execution_id?: string } }).agent_run?.execution_id ?? '',
-                            status: (message.metadata as { agent_run?: { status?: string } }).agent_run?.status ?? 'running',
-                          }}
-                          onNavigate={(path) => { window.location.href = path; }}
-                        />
-                      )}
-
-                      
-                      {/* Both roles now start at the same left edge, so the
-                          actions do too. The old `justify-end` belonged to the
-                          right-aligned user bubble and would strand these
-                          controls on the far side of the column. */}
-                      {message.role !== 'system' && (
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-1 -ml-1.5">
-                        {/* Always visible on touch (no hover there); larger
-                            hit targets on phones. Without this the row was an
-                            invisible strip of touch targets beside the model
-                            label on mobile. */}
-                        <div className="flex items-center gap-1 sm:gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity duration-300">
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(message.content);
-                              setCopiedId(`msg-${index}`);
-                              setTimeout(() => setCopiedId(null), 2000);
-                            }}
-                            className="text-muted-foreground hover:text-primary transition-colors p-2 md:p-1.5 hover:bg-primary/5 rounded-lg"
-                            title="Copy message"
-                          >
-                            {copiedId === `msg-${index}` ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                          </button>
-                          {message.role !== 'user' && (
-                            <button
-                              onClick={() => handleRewriteMessage(message.id as number)}
-                              disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-amber-500 transition-colors p-2 md:p-1.5 hover:bg-warning-subtle rounded-lg disabled:opacity-50"
-                              title="Rewrite prompt (regenerates response without subsequent context)"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          )}
-                          {message.role === 'assistant' && typeof message.id === 'number' && (
-                            <FeedbackControl
-                              target="message"
-                              id={message.id}
-                              initial={(message as { feedback?: { rating: number; reason: string; comment: string } | null }).feedback ?? null}
-                            />
-                          )}
-                          {message.role === 'user' && (
-                            <button
-                              onClick={() => handleRewindAfterMessage(message.id as number)}
-                              disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-emerald-500 transition-colors p-2 md:p-1.5 hover:bg-success-subtle rounded-lg disabled:opacity-50"
-                              title="Reverse context (keep this message, delete answers)"
-                            >
-                              <ArrowUpFromLine className="w-4 h-4" />
-                            </button>
-                          )}
-                          {message.role === 'user' && (
-                            <button
-                              onClick={() => handleEditMessage(message.id as number, message.content)}
-                              disabled={deletingMsgId === message.id}
-                              className="text-muted-foreground hover:text-blue-500 transition-colors p-2 md:p-1.5 hover:bg-blue-500/10 rounded-lg disabled:opacity-50"
-                              title="Edit and resend message"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDeleteMessage(message.id as number)}
-                            disabled={deletingMsgId === message.id}
-                            className="text-muted-foreground hover:text-red-500 transition-colors p-2 md:p-1.5 hover:bg-red-500/10 rounded-lg disabled:opacity-50"
-                            title="Delete message"
-                          >
-                            {deletingMsgId === message.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-                            ) : (
-                              <Trash2 className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                        {/* Which model wrote this answer. Attribution belongs to
-                            the answer, not to the picker in the composer: the
-                            model can be switched mid-thread, so reading it off
-                            the current selection would relabel old answers.
-                            Always visible — unlike the actions, this is
-                            information, and hiding it until hover means nobody
-                            finds it. */}
-                        {message.role === 'assistant' && message.metadata?.model && (
-                          <span className="ml-auto min-w-0 max-w-[50vw] sm:max-w-none truncate text-[11px] text-muted-foreground/70 whitespace-nowrap">
-                            Prepared with{' '}
-                            <span className="text-muted-foreground">
-                              {prettyModel(message.metadata.model)}
-                            </span>
-                          </span>
-                        )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    message={message}
+                    index={index}
+                    animate={message.id !== settledId}
+                    deleting={deletingMsgId === message.id}
+                    copied={copiedId === `msg-${index}`}
+                    isPanelOpen={isPanelOpen}
+                    togglePanel={togglePanel}
+                    confirmBusy={confirmBusy}
+                    onCopy={() => {
+                      navigator.clipboard.writeText(message.content);
+                      setCopiedId(`msg-${index}`);
+                      setTimeout(() => setCopiedId(null), 2000);
+                    }}
+                    onDelete={handleDeleteMessage}
+                    onRewrite={handleRewriteMessage}
+                    onRewind={handleRewindAfterMessage}
+                    onEdit={handleEditMessage}
+                    onCommandConfirm={(name: string, args: Record<string, unknown>, confirm: Record<string, unknown>) => {
+                      void runCommandConfirm(name, args, confirm);
+                    }}
+                  />
                 ))}
 
                 {isLoading && (() => {
@@ -2850,105 +1987,13 @@ export default function StandaloneChat() {
               </div>
             )}
 
-            {/* Approval UI */}
+            {/* Approval: the assistant wants to run a tool that needs your OK */}
             {pendingToolCall && (
-              <div className="flex gap-3 md:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center shrink-0 border border-border shadow-lg shadow-amber-500/20">
-                  <Shield className="w-6 h-6 text-white" />
-                </div>
-                <div className="min-w-0 flex-1 space-y-4 max-w-[92%] md:max-w-[85%]">
-                  <div className="bg-card/60 p-6 rounded-lg rounded-tl-none shadow-sm border border-border space-y-4">
-                    {/* The heading is what is about to happen, not the word
-                        "Permission". A card that leads with the demand and
-                        buries the act behind `JSON.stringify` teaches people
-                        to approve without reading, which is the one outcome
-                        an approval screen must not produce. */}
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-semibold text-foreground">
-                        {pendingToolCall.detail?.title ?? 'Permission required'}
-                      </h3>
-                      <p className="text-muted-foreground text-sm">
-                        {pendingToolCall.detail?.sentence
-                          ?? `The assistant wants to run ${pendingToolCall.tool}.`}
-                        {' '}Nothing has happened yet.
-                      </p>
-                    </div>
-
-                    {pendingToolCall.detail?.fields?.length ? (
-                      <dl className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/40">
-                        {pendingToolCall.detail.fields.map((field) => (
-                          <div key={field.label} className="flex gap-3 px-4 py-2.5 bg-muted/20">
-                            <dt className="text-[12px] font-medium text-muted-foreground w-24 shrink-0">
-                              {field.label}
-                            </dt>
-                            {/* Third-party text: rendered as a plain string,
-                                never as markdown. */}
-                            <dd className="text-[13px] text-foreground min-w-0 break-words">
-                              {field.value}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    ) : null}
-
-                    {/* Kept, and closed. The raw view is what an engineer
-                        needs when the sentence above is wrong; it is not what
-                        the person deciding needs to read first. */}
-                    <details className="group/raw">
-                      <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors list-none flex items-center gap-1.5">
-                        <ChevronRight className="w-3 h-3 transition-transform group-open/raw:rotate-90" />
-                        Show raw arguments
-                      </summary>
-                      <div className="mt-2 bg-muted/30 p-3 rounded-lg border border-border/40 space-y-2 overflow-hidden">
-                        <div className="font-mono text-[11px] text-muted-foreground break-all">
-                          {pendingToolCall.tool}
-                        </div>
-                        <pre className="text-[11px] font-mono text-muted-foreground/80 overflow-x-auto custom-scrollbar">
-                          {JSON.stringify(pendingToolCall.args, null, 2)}
-                        </pre>
-                      </div>
-                    </details>
-
-                    <div className="space-y-2">
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handleApproveTool(pendingToolCall.call_id, 'once')}
-                          className="flex-1 h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:shadow-lg transition-colors flex items-center justify-center gap-2 group"
-                        >
-                          <Check className="w-4 h-4" />
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleDenyTool(pendingToolCall.call_id)}
-                          className="flex-1 h-11 bg-muted text-muted-foreground font-semibold rounded-lg hover:bg-muted/80 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <X className="w-4 h-4" />
-                          Deny
-                        </button>
-                      </div>
-                      {/* Three answers, quieter as they get longer-lived. The
-                          middle rung is the one people actually want: without
-                          it, someone who just wants to stop being asked for
-                          the rest of the afternoon says "always" and grants a
-                          standing allowance over their own mailbox. */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleApproveTool(pendingToolCall.call_id, 'session')}
-                          className="flex-1 h-9 text-xs font-medium text-muted-foreground rounded-lg border border-border/50 hover:bg-muted/50 hover:text-foreground transition-colors"
-                        >
-                          Allow for this chat
-                        </button>
-                        <button
-                          onClick={() => handleApproveTool(pendingToolCall.call_id, 'always')}
-                          className="flex-1 h-9 text-xs font-medium text-muted-foreground/70 rounded-lg border border-border/40 hover:bg-muted/50 hover:text-foreground transition-colors"
-                        >
-                          Always allow
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <ToolApprovalCard
+                call={pendingToolCall}
+                onApprove={handleApproveTool}
+                onDeny={handleDenyTool}
+              />
             )}
 
             <div ref={messagesEndRef} />

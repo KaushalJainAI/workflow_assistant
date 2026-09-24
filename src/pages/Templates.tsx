@@ -26,6 +26,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  AlertTriangle,
   BookOpen,
   Bot,
   CalendarClock,
@@ -68,6 +69,7 @@ import {
   type Autonomy,
   type FileAccess,
 } from '../types/agentConfig';
+import { isUnavailable, packAvailability } from '../lib/packs';
 
 /* Icons are keyed off the template's stable `icon` slug, never its name — the
    same rule the connector catalogue follows, and for the same reason: copy
@@ -101,13 +103,13 @@ const PACKS: { slug: string; title: string; blurb: string; icon: LucideIcon }[] 
   { slug: 'data', title: 'Data pack — Extractor, SQL analyst, Dashboards', icon: Table2,
     blurb: 'Numbers into files: pull rows out of files, query databases, save dashboards. One click, no setup.' },
   { slug: 'web', title: 'Web pack — Browser scout, API runner', icon: Globe,
-    blurb: 'The live web: pages a scraper cannot render, and your own APIs. One click, no setup.' },
+    blurb: 'The live web: pages a scraper cannot render, and your own APIs. The browser scout needs a browser engine on the server.' },
   { slug: 'team', title: 'Team pack — Standup digest, Support drafts', icon: User,
     blurb: 'The team loop: a scheduled morning digest plus drafts that never send themselves. One click, no setup.' },
   { slug: 'paperwork', title: 'Paperwork pack — Signatures, Minutes', icon: PenLine,
-    blurb: 'Paperwork: signatures tracked home, recordings turned into minutes. One click, no setup.' },
+    blurb: 'Paperwork: signatures tracked home, recordings turned into minutes. Needs an e-signature provider and a speech engine on the server.' },
   { slug: 'code', title: 'Code pack — Repo assistant, Reviewer, Team + Lead', icon: Radar,
-    blurb: 'The coding team: a single assistant, a reviewer that never edits, six specialists, and the lead that orchestrates them.' },
+    blurb: 'The coding team: a single assistant, a reviewer that never edits, six specialists, and the lead that orchestrates them. Needs a workspace engine on the server.' },
   { slug: 'money', title: 'Money pack — Reconciler, Invoice chaser', icon: Coins,
     blurb: 'Money: reconcile the month, then chase what is still unpaid. One click, no setup.' },
   { slug: 'marketing', title: 'Marketing pack — SEO brief, Ad copy, Outreach', icon: Target,
@@ -188,6 +190,12 @@ function TemplateCard({
   const autonomy = (template.config.autonomy ?? 'ask') as Autonomy;
   const chips = granted(template);
   const isInstalled = installed.length > 0;
+  /* Server-computed: the entry holds a grant whose engine is `none` here.
+     Installing it would write an agent that can only talk, so the card says
+     so and stops offering itself. Absent on older servers: available. */
+  const unavailable = isUnavailable(template);
+  const unavailableReason =
+    template.unavailable_reason ?? 'This template cannot run on this server.';
 
   return (
     <div
@@ -234,6 +242,16 @@ function TemplateCard({
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-agent-line bg-agent-subtle text-agent text-[11px] font-semibold">
                   <Check className="w-3 h-3" />
                   {installed.length === 1 ? 'Installed' : `Installed × ${installed.length}`}
+                </span>
+              )}
+              {/* The engine badge: an entry whose grants cannot run here. */}
+              {unavailable && (
+                <span
+                  title={unavailableReason}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-semibold"
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  Not available on this server
                 </span>
               )}
             </div>
@@ -295,6 +313,14 @@ function TemplateCard({
             Uninstall
           </button>
         </div>
+      ) : unavailable ? (
+        <div
+          title={unavailableReason}
+          className="flex items-center justify-center gap-1.5 border-t border-border px-3 py-2 text-[12px] font-semibold text-muted-foreground/60 cursor-not-allowed"
+        >
+          <AlertTriangle className="w-3 h-3" />
+          Not available on this server
+        </div>
       ) : (
         <button
           type="button"
@@ -342,6 +368,12 @@ function PackSection({
   ).length;
   const allInstalled = installedCount === members.length;
   const installedAgents = members.flatMap((m) => installedBySlug.get(m.slug) ?? []);
+  /* Pack availability derives from the members' server-computed flags: the
+     pack is down only when every member is (the code pack with no workspace
+     engine). A partially blocked pack still installs what can run. */
+  const packDown = packAvailability(members);
+  const packUnavailableReason =
+    packDown.reasons[0] ?? 'This pack cannot run on this server.';
 
   return (
     <section className="mb-8">
@@ -357,6 +389,15 @@ function PackSection({
             </span>
           </div>
           <p className="text-[13px] text-muted-foreground leading-relaxed mt-1">{blurb}</p>
+          {!packDown.available && (
+            <p
+              title={packUnavailableReason}
+              className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-600 dark:text-amber-400 leading-relaxed mt-1.5"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              Not available on this server — {packUnavailableReason}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {installedAgents.length > 0 && (
@@ -371,9 +412,15 @@ function PackSection({
           )}
           <button
             type="button"
-            disabled={packBusy || allInstalled}
+            disabled={packBusy || allInstalled || !packDown.available}
             onClick={onInstallPack}
-            title={allInstalled ? 'Every member of this pack is installed' : undefined}
+            title={
+              !packDown.available
+                ? packUnavailableReason
+                : allInstalled
+                  ? 'Every member of this pack is installed'
+                  : undefined
+            }
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-[12px] font-semibold hover:bg-primary/90 disabled:opacity-50"
           >
             {packBusy ? (
@@ -631,7 +678,10 @@ function InstallDialog({
 
         <div className="flex items-center justify-between gap-3 p-5 border-t border-border">
           <p className="text-[12px] text-muted-foreground">
-            You can change any of this afterwards.
+            {isUnavailable(template)
+              ? (template.unavailable_reason ??
+                'This template cannot run on this server.')
+              : 'You can change any of this afterwards.'}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -643,7 +693,18 @@ function InstallDialog({
             </button>
             <button
               type="button"
-              disabled={install.isPending || missing.length > 0 || !name.trim()}
+              disabled={
+                install.isPending ||
+                missing.length > 0 ||
+                !name.trim() ||
+                isUnavailable(template)
+              }
+              title={
+                isUnavailable(template)
+                  ? (template.unavailable_reason ??
+                    'This template cannot run on this server.')
+                  : undefined
+              }
               onClick={() => install.mutate()}
               className="px-4 py-2 bg-primary text-primary-foreground rounded font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 inline-flex items-center gap-2"
             >
@@ -737,10 +798,22 @@ export default function Templates() {
             `${needsSetup.map((s) => s.slug).join(', ')} need setup — open them to finish installing.`,
           );
         }
+        const engineBlocked = result.skipped.filter((s) =>
+          s.reason.startsWith('engine unavailable'),
+        );
+        if (engineBlocked.length > 0) {
+          toast.error(
+            `${engineBlocked.map((s) => s.slug).join(', ')} need an engine this server has not configured.`,
+          );
+        }
       }
     },
-    onError: () => {
-      toast.error('Could not install that pack.');
+    onError: (error: unknown) => {
+      /* A 409 names the missing engine — that sentence is the whole point of
+         refusing, so it is what the toast shows rather than a generic line. */
+      const detail = (error as { response?: { data?: { error?: string } } })
+        ?.response?.data?.error;
+      toast.error(detail || 'Could not install that pack.');
     },
   });
 

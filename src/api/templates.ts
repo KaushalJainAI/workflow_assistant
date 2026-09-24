@@ -2,7 +2,7 @@
  * Explore — everything installable, and publishing into it.
  *
  * Two sources, one shape. A **curated** entry is code on the backend
- * (`agents/gallery.py`); a **community** entry is an agent another user
+ * (`agents/gallery/`); a **community** entry is an agent another user
  * published. They differ in provenance and in nothing the installer cares
  * about, so this file has one type for both and `source` says which it is.
  *
@@ -105,6 +105,16 @@ export interface AgentTemplate {
   requirements: TemplateRequirement[];
   /** The configuration this installs, and what the permissions screen shows. */
   config: Partial<AgentConfig>;
+  /**
+   * Whether this entry can run on this server. False when it holds a grant
+   * whose engine is `none` (workspace, browser, e-sign…) — installing it
+   * would write an agent that can only talk, so Explore badges it and the
+   * install endpoints refuse it with 409. Absent on older servers: read as
+   * available.
+   */
+  available?: boolean;
+  /** Why not, when `available` is false. The tooltip and the 409 body. */
+  unavailable_reason?: string;
 }
 
 /**

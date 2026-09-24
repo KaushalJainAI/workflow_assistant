@@ -1,95 +1,263 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { usePersistedState } from '../hooks/usePersistedState';
-import {
-  FileText,
-  Upload,
-  File,
-  Image,
-  FileJson,
-  FileCode,
-  Trash2,
-  X,
-  Loader2,
-  AlertCircle,
-  Globe,
-  Download,
-  BookOpen,
-  FolderPlus,
-  FolderInput,
-  RotateCcw,
-} from 'lucide-react';
-import {
-  documentsService,
-  foldersService,
-  type Document,
-  type Folder,
-} from '../api';
-
-import { toast } from '../lib/toastStore';
+/**
+ * `/documents` — the file browser, shaped like Windows Explorer.
+ *
+ * A navigation pane (quick access, the folder tree, the places that are not
+ * folders), an address row (back / forward / up, a clickable path, search),
+ * a command bar, the items in Details / Tiles / List, an optional preview
+ * pane, and a status bar. Everything a desktop user reaches for without
+ * thinking works here too: multi-select with Ctrl and Shift, right-click
+ * menus, cut/copy/paste, F2 to rename, Delete, drag to a folder (in the
+ * list, the tree or the address bar), and dropping files from the desktop to
+ * upload.
+ *
+ * Three rules carried over from the page this replaced, still load-bearing:
+ * the API is id-addressed (the path shown is for reading, never sent back);
+ * a delete goes to the recycle bin; and a folder that is empty is *not* the
+ * same as an account with no files — "upload your first file" is shown only
+ * when the user has no files anywhere, because agent-written files live in
+ * `/Chat/` and `/Agents/` and an empty root does not mean an empty library.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { cn } from '../lib/utils';
-import PageHeader from '../components/layout/PageHeader';
-import SearchInput from '../components/ui/SearchInput';
-import { Button } from '../components/ui/Button';
-import { Spinner } from '../components/ui/Loading';
-import { useAssistant } from '../contexts/assistantState';
-import { DocumentGridCard } from '../components/documents/DocumentGridCard';
+import {
+  AlertCircle, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, ClipboardPaste,
+  Clock, Copy, Download, Eye, ExternalLink, FilePlus2, Folder as FolderIcon, FolderInput, FolderPlus, Globe,
+  Home, Info, LayoutGrid, List as ListIcon, Loader2, PanelLeft, PanelRight, Pencil, RefreshCw, RotateCcw,
+  ScanText, Scissors, Search, Table as TableIcon, Trash2, Upload, X,
+} from 'lucide-react';
+
+import { documentsService, foldersService, type Document, type Folder } from '../api';
+import NameDialog from '../components/apps/NameDialog';
 import { DocumentPreviewModal } from '../components/documents/DocumentPreviewModal';
-import ExtractionPanel from '../components/extraction/ExtractionPanel';
-import Breadcrumbs from '../components/documents/Breadcrumbs';
 import FolderPickerModal from '../components/documents/FolderPickerModal';
-import FolderTile from '../components/documents/FolderTile';
+import ContextMenu, { type MenuEntry } from '../components/explorer/ContextMenu';
+import ItemsView, { type ViewMode } from '../components/explorer/ItemsView';
+import NavPane from '../components/explorer/NavPane';
+import PropertiesDialog from '../components/explorer/PropertiesDialog';
+import ExtractionPanel from '../components/extraction/ExtractionPanel';
+import FileIcon from '../components/files/FileIcon';
+import FilePreview from '../components/files/FilePreview';
+import SidebarMenuButton from '../components/layout/SidebarMenuButton';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { apiErrorMessage } from '../lib/apiError';
+import { appsForDoc, defaultAppFor, openInAppPath, type NewFileOption } from '../lib/apps';
+import {
+  clickSelect, emptySelection, keyOf, nextSort, sameLocation, sortItems, stepSelect,
+  type Item, type Location, type Selection, type Sort,
+} from '../lib/explorer';
+import { fileIcon, fileTint, formatDate, formatDateTime, formatSize, locationOf, typeName } from '../lib/fileDisplay';
+import { toast } from '../lib/toastStore';
+import { cn } from '../lib/utils';
 import { resolvePath } from '../lib/vfsPath';
 
-type DocumentsTab = 'personal' | 'public' | 'extraction' | 'trash';
+const PAGE = 100;
+/** How many pages "search everywhere" reads before saying the results may be partial. */
+const SEARCH_PAGES = 5;
 
-/** What is being dragged, so a drop knows what to move. */
-type DragPayload =
-  | { kind: 'folder'; id: number }
-  | { kind: 'document'; id: number }
-  | null;
+const NEW_FILES: NewFileOption[] = [
+  { ext: 'txt', label: 'Text document' },
+  { ext: 'md', label: 'Markdown document', content: '# Untitled\n' },
+  { ext: 'docx', label: 'Word document' },
+  { ext: 'xlsx', label: 'Excel workbook' },
+  { ext: 'csv', label: 'CSV table', content: 'Name,Value\n' },
+  { ext: 'pptx', label: 'PowerPoint presentation' },
+  { ext: 'html', label: 'Web page', content: '<!DOCTYPE html>\n<html>\n  <body>\n    <h1>Hello</h1>\n  </body>\n</html>\n' },
+];
+
+const LOCATION_KINDS = ['folder', 'recent', 'public', 'extraction', 'trash'];
+const isLocation = (v: unknown): v is Location =>
+  typeof v === 'object' && v !== null && LOCATION_KINDS.includes((v as { kind?: string }).kind ?? '');
+
+type Clipboard = { mode: 'cut' | 'copy'; items: Item[] } | null;
 
 export default function Documents() {
-  const [searchQuery, setSearchQuery] = usePersistedState('documents.search', '', { storage: 'session' });
-  const [activeTab, setActiveTab] = usePersistedState<DocumentsTab>('documents.tab', 'personal');
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  /** The document whose preview is open, or null. */
-  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
-  const [viewMode, setViewMode] = usePersistedState<'grid' | 'list'>('documents.view', 'grid');
-  const [localUploadingDocs, setLocalUploadingDocs] = useState<Document[]>([]);
-  // Where the user is standing in their tree. `null` is the root — the server
-  // has no root row, so null is the location rather than "unset". Persisted so
-  // a reload puts you back where you were, like the tab and view mode.
-  const [folderId, setFolderId] = usePersistedState<number | null>('documents.folder', null);
-  const [dragging, setDragging] = useState<DragPayload>(null);
-  const [movePicker, setMovePicker] = useState<{ open: boolean; payload: DragPayload }>({
-    open: false,
-    payload: null,
-  });
-  const [isMoving, setIsMoving] = useState(false);
-  const [isDropTarget, setIsDropTarget] = useState(false);
-  const { isAssistantOpen } = useAssistant();
-  const queryClient = useQueryClient();
-
-  // `?path=/Chat/evals/a.py` is how a file named in a chat answer lands here
-  // (`lib/vfsPath.ts`). Go to its folder and open it; when the walk stops
-  // short, stay at the deepest folder it reached so the user is at least
-  // standing next to where the file was meant to be.
-  //
-  // `?doc=<id>` is the same thing for a file card, which already holds the id
-  // and so never needs the walk.
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // ---- Where we are, and how we got here ---------------------------------
+  const [loc, setLocState] = usePersistedState<Location>('documents.location', { kind: 'folder', id: null }, { validate: isLocation });
+  const [history, setHistory] = useState<{ stack: Location[]; index: number }>(() => ({ stack: [loc], index: 0 }));
+  const [view, setView] = usePersistedState<ViewMode>('documents.layout', 'details', {
+    validate: (v): v is ViewMode => v === 'details' || v === 'tiles' || v === 'list',
+  });
+  const [sort, setSort] = usePersistedState<Sort>('documents.sort', { key: 'name', dir: 'asc' });
+  const [showPreview, setShowPreview] = usePersistedState('documents.previewPane', true);
+  const [navOpen, setNavOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [searchAll, setSearchAll] = useState(false);
+
+  // ---- Selection and the things done to it ---------------------------------
+  const [selection, setSelection] = useState<Selection>(emptySelection);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<Clipboard>(null);
+  const [dragging, setDragging] = useState<Item[] | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
+  const [naming, setNaming] = useState<{ kind: 'folder' } | { kind: 'file'; opt: NewFileOption } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Item[] | null>(null);
+  const [movePicker, setMovePicker] = useState<Item[] | null>(null);
+  const [properties, setProperties] = useState<Item | null>(null);
+  const [shareDoc, setShareDoc] = useState<Document | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [uploads, setUploads] = useState<Document[]>([]);
+  const [osDrop, setOsDrop] = useState(false);
+  const [viewMenu, setViewMenu] = useState(false);
+  const uploadInput = useRef<HTMLInputElement>(null);
+  const pane = useRef<HTMLDivElement>(null);
+  const pickFiles = useCallback(() => uploadInput.current?.click(), []);
+
+  const folderId = loc.kind === 'folder' ? loc.id : null;
+  const inFolder = loc.kind === 'folder';
+  const mine = loc.kind === 'folder' || loc.kind === 'recent';
+
+  const go = useCallback(
+    (next: Location, { push = true }: { push?: boolean } = {}) => {
+      setLocState(next);
+      setSelection(emptySelection());
+      setRenaming(null);
+      setQuery('');
+      setSearchAll(false);
+      setNavOpen(false);
+      if (push) {
+        setHistory((h) => {
+          if (sameLocation(h.stack[h.index], next)) return h;
+          const stack = [...h.stack.slice(0, h.index + 1), next].slice(-50);
+          return { stack, index: stack.length - 1 };
+        });
+      }
+    },
+    [setLocState],
+  );
+  const back = () => {
+    if (history.index <= 0) return;
+    const index = history.index - 1;
+    setHistory({ ...history, index });
+    go(history.stack[index], { push: false });
+  };
+  const forward = () => {
+    if (history.index >= history.stack.length - 1) return;
+    const index = history.index + 1;
+    setHistory({ ...history, index });
+    go(history.stack[index], { push: false });
+  };
+
+  // ---- Data ------------------------------------------------------------------
+  const { data: folderPage } = useQuery({
+    queryKey: ['folders', folderId],
+    // A remembered folder that has since been deleted sends the user home,
+    // rather than showing an error for a place they did not choose this visit.
+    queryFn: () =>
+      foldersService.list(folderId).catch((err) => {
+        if (folderId !== null && (err as { response?: { status?: number } })?.response?.status === 404) {
+          go({ kind: 'folder', id: null }, { push: false });
+        }
+        throw err;
+      }),
+    enabled: inFolder,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const docsKey = loc.kind === 'folder' ? `folder:${loc.id ?? 'root'}` : loc.kind;
+  const docs = useInfiniteQuery({
+    queryKey: ['documents', 'explorer', docsKey],
+    initialPageParam: null as string | null,
+    enabled: loc.kind === 'folder' || loc.kind === 'recent' || loc.kind === 'public',
+    queryFn: ({ pageParam }) =>
+      documentsService.list({
+        limit: PAGE,
+        cursor: pageParam,
+        scope: loc.kind === 'public' ? 'public' : 'personal',
+        ...(loc.kind === 'folder' ? { folder_id: loc.id ?? ('root' as const) } : {}),
+      }),
+    getNextPageParam: (last) => (last.has_more ? last.next_cursor : undefined),
+    refetchInterval: (q) => {
+      const rows = q.state.data?.pages.flatMap((p) => p.my_documents) ?? [];
+      return rows.some((d) => d.status === 'pending' || d.status === 'processing') ? 5000 : false;
+    },
+    staleTime: 60_000,
+  });
+
+  const searching = query.trim().length > 0;
+  const everywhere = useInfiniteQuery({
+    queryKey: ['documents', 'explorer', 'all'],
+    initialPageParam: null as string | null,
+    enabled: searchAll && searching,
+    queryFn: ({ pageParam }) => documentsService.list({ limit: PAGE, cursor: pageParam, scope: 'personal' }),
+    getNextPageParam: (last) => (last.has_more ? last.next_cursor : undefined),
+    staleTime: 60_000,
+  });
+  useEffect(() => {
+    const pages = everywhere.data?.pages.length ?? 0;
+    if (searchAll && searching && everywhere.hasNextPage && !everywhere.isFetchingNextPage && pages < SEARCH_PAGES) {
+      void everywhere.fetchNextPage();
+    }
+  }, [searchAll, searching, everywhere]);
+
+  // Whether the user owns any file at all — the only thing that earns the
+  // first-run "upload your first file" screen.
+  const { data: anyPage } = useQuery({
+    queryKey: ['documents', 'has-any'],
+    queryFn: () => documentsService.list({ limit: 1, scope: 'personal' }),
+    staleTime: 60_000,
+  });
+  const hasAnyFile = (anyPage?.my_documents.length ?? 0) > 0;
+
+  const { data: trashPage, isLoading: trashLoading } = useQuery({
+    queryKey: ['trash'],
+    queryFn: () => foldersService.trash.list(),
+    enabled: loc.kind === 'trash',
+  });
+
+  const refresh = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['documents'] });
+    qc.invalidateQueries({ queryKey: ['folders'] });
+    qc.invalidateQueries({ queryKey: ['trash'] });
+    qc.invalidateQueries({ queryKey: ['app-files'] });
+  }, [qc]);
+
+  const breadcrumbs = useMemo(() => folderPage?.breadcrumbs ?? [], [folderPage]);
+  const currentFolder: Folder | null = folderPage?.folder ?? null;
+  const trail = useMemo(
+    () => [...breadcrumbs.map((b) => b.id), ...(currentFolder ? [currentFolder.id] : [])],
+    [breadcrumbs, currentFolder],
+  );
+  const parentId = currentFolder ? (breadcrumbs[breadcrumbs.length - 1]?.id ?? null) : null;
+
+  // ---- The items on screen -----------------------------------------------------
+  const items: Item[] = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const match = (name: string) => !needle || name.toLowerCase().includes(needle);
+    if (searchAll && needle) {
+      const all = everywhere.data?.pages.flatMap((p) => p.my_documents) ?? [];
+      return sortItems(all.filter((d) => match(d.filename)).map((doc) => ({ kind: 'doc', doc })), sort);
+    }
+    const pages = docs.data?.pages ?? [];
+    const rows = loc.kind === 'public' ? pages.flatMap((p) => p.public_documents) : pages.flatMap((p) => p.my_documents);
+    const folders: Item[] = loc.kind === 'folder'
+      ? (folderPage?.folders ?? []).filter((f) => match(f.name)).map((folder) => ({ kind: 'folder', folder }))
+      : [];
+    const pending: Item[] = loc.kind === 'folder' ? uploads.map((doc) => ({ kind: 'doc', doc })) : [];
+    const files: Item[] = rows.filter((d) => match(d.filename)).map((doc) => ({ kind: 'doc', doc }));
+    const effective: Sort = loc.kind === 'recent' && sort.key === 'name' ? { key: 'modified', dir: 'desc' } : sort;
+    return [...pending, ...sortItems([...folders, ...files], effective)];
+  }, [query, searchAll, everywhere.data, docs.data, loc.kind, folderPage, uploads, sort]);
+
+  const order = useMemo(() => items.map(keyOf), [items]);
+  const selectedItems = useMemo(() => items.filter((i) => selection.keys.has(keyOf(i))), [items, selection]);
+  const selectedDocs = selectedItems.flatMap((i) => (i.kind === 'doc' ? [i.doc] : []));
+  const single = selectedItems.length === 1 ? selectedItems[0] : null;
+  const cutKeys = useMemo(
+    () => new Set(clipboard?.mode === 'cut' ? clipboard.items.map(keyOf) : []),
+    [clipboard],
+  );
+
+  // ---- Deep links: ?doc=<id> (a file card) and ?path=/Chat/a.md (prose) ----------
   const linkedPath = searchParams.get('path');
   const linkedDoc = Number(searchParams.get('doc')) || null;
-  // `?kind=md,docx` narrows the listing to those file types (Apps launcher).
-  // Kept in the URL so the filter survives reloads and shares.
-  const kindParam = searchParams.get('kind');
-  const kindFilter = useMemo(
-    () => new Set((kindParam ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)),
-    [kindParam],
-  );
   useEffect(() => {
     if (!linkedPath && !linkedDoc) return;
     let cancelled = false;
@@ -100,944 +268,1047 @@ export default function Documents() {
     lookup
       .then(({ folderId: target, doc, found }) => {
         if (cancelled) return;
-        setActiveTab('personal');
-        setFolderId(target);
-        if (doc) setPreviewDoc(doc);
-        else if (!found) toast.error(`${label} is not in your files. It may have been moved or deleted.`);
+        go({ kind: 'folder', id: target });
+        if (doc) {
+          setSelection({ keys: new Set([`d:${doc.id}`]), anchor: `d:${doc.id}` });
+          setPreviewDoc(doc);
+        } else if (!found) toast.error(`${label} is not in your files. It may have been moved or deleted.`);
       })
-      .catch((err) => {
-        if (!cancelled) toast.error(apiErrorMessage(err, `Could not open ${label.toLowerCase()}`));
-      })
+      .catch((err) => !cancelled && toast.error(apiErrorMessage(err, `Could not open ${label.toLowerCase()}`)))
       .finally(() => {
-        // Drop the parameters so a reload or a folder change is not undone
-        // by the link that brought the user here.
-        if (!cancelled) setSearchParams((prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete('path');
-          next.delete('doc');
-          return next;
-        }, { replace: true });
+        if (!cancelled) {
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('path');
+            next.delete('doc');
+            next.delete('kind');
+            return next;
+          }, { replace: true });
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [linkedPath, linkedDoc, setActiveTab, setFolderId, setSearchParams]);
+  }, [linkedPath, linkedDoc, go, setSearchParams]);
 
-  // Folders live in their own query: they come back capped rather than
-  // cursored (folder rows are tiny), so mixing them into the document
-  // infinite query would mean two pagination schemes in one list.
-  const inTree = activeTab === 'personal';
-  const { data: folderPage } = useQuery({
-    queryKey: ['folders', folderId],
-    queryFn: () => foldersService.list(folderId),
-    enabled: inTree,
-    staleTime: 60 * 1000,
-  });
-
-  const { data: trashPage, isLoading: trashLoading } = useQuery({
-    queryKey: ['trash'],
-    queryFn: () => foldersService.trash.list(),
-    enabled: activeTab === 'trash',
-  });
-
-  const refreshTree = () => {
-    queryClient.invalidateQueries({ queryKey: ['documents'] });
-    queryClient.invalidateQueries({ queryKey: ['folders'] });
-    queryClient.invalidateQueries({ queryKey: ['trash'] });
+  // ---- Actions -------------------------------------------------------------------
+  const openItem = (item: Item) => {
+    if (item.kind === 'folder') return go({ kind: 'folder', id: item.folder.id });
+    const path = loc.kind === 'public' ? null : openInAppPath(item.doc);
+    if (path) navigate(path);
+    else setPreviewDoc(item.doc);
   };
 
-  const { data: documentsData, isLoading, error: queryError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['documents', activeTab, activeTab === 'personal' ? folderId : null],
-    initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => documentsService.list({
-      limit: 50,
-      cursor: pageParam,
-      // The extraction and trash tabs are not the doc stream — keep the
-      // personal scope warm so the tab switch never re-fetches a new scope.
-      scope: activeTab === 'personal' ? 'personal' : activeTab === 'public' ? 'public' : 'personal',
-      // Only the personal tab is a tree. The Public Library is a flat
-      // platform-wide list and is never narrowed by folder.
-      ...(activeTab === 'personal' ? { folder_id: folderId ?? ('root' as const) } : {}),
-    }),
-    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
-    // Poll every 5 seconds if any doc is pending or processing
-    refetchInterval: (query) => {
-      const myDocs = query.state.data?.pages.flatMap(page => page.my_documents) || [];
-      const hasPending = myDocs.some(d => d.status === 'pending' || d.status === 'processing');
-      return hasPending ? 5000 : false;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const myDocuments = [
-    // Keep locally tracked uploading documents first
-    ...localUploadingDocs,
-    ...(documentsData?.pages.flatMap(page => page.my_documents) || [])
-  ];
-  const publicDocuments = documentsData?.pages.flatMap(page => page.public_documents) || [];
-  const error = queryError ? (queryError instanceof Error ? queryError.message : 'Failed to load documents') : null;
-
-  const allDocuments = activeTab === 'personal' ? myDocuments : publicDocuments;
-
-  const filteredDocuments = allDocuments.filter(doc =>
-    (doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.filename.toLowerCase().includes(searchQuery.toLowerCase())) &&
-    (kindFilter.size === 0 || kindFilter.has((doc.file_type || '').toLowerCase()))
-  );
-
-  const handleUpload = async (files: FileList) => {
-    setShowUploadModal(false);
-    
-    const newFiles = Array.from(files);
-    let successCount = 0;
-
-    const optimisticDocs: Document[] = newFiles.map((file, i) => ({
-      id: -Date.now() - i,
-      title: file.name,
-      filename: file.name,
-      file_type: file.name.split('.').pop() || 'unknown',
-      file_size: file.size,
-      chunk_count: 0,
-      is_shared: false,
-      shared_at: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      status: 'uploading'
-    }));
-
-    setLocalUploadingDocs(prev => [...optimisticDocs, ...prev]);
-
-    const uploadPromises = newFiles.map(async (file, index) => {
-      const tempId = optimisticDocs[index].id;
-      try {
-        await documentsService.upload(file, folderId);
-        successCount++;
-      } catch (err) {
-        console.error('Failed to upload ${file.name}', err);
-        toast.error(`Failed to upload ${file.name}`);
-      } finally {
-        setLocalUploadingDocs(prev => prev.filter(d => d.id !== tempId));
-      }
-    });
-
-    await Promise.allSettled(uploadPromises);
-    if (successCount > 0) {
-      toast.success('Upload initiated', `${successCount} files are being processed.`);
-      refreshTree();
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (id < 0) {
-      setLocalUploadingDocs(prev => prev.filter(d => d.id !== id));
-      return;
-    }
-
-    if (!window.confirm('Move this document to Trash? You can restore it later.')) return;
-
+  const download = async (doc: Document) => {
     try {
-      const result = await documentsService.delete(id);
-      refreshTree();
-      toast.success(
-        'Moved to Trash',
-        `You can restore it for ${result.purges_after_days} days.`
-      );
+      const blob = await documentsService.download(doc.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error('Delete failed', err instanceof Error ? err.message : 'Failed to delete document');
+      toast.error('Download failed', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
-  // ---- Folder operations ---------------------------------------------------
-
-  const breadcrumbs = folderPage?.breadcrumbs ?? [];
-  const currentFolder = folderPage?.folder ?? null;
-
-  // The `inTree` conditional lives inside the memo rather than above it. As a
-  // separate `const folders = ...` it minted a fresh array literal on every
-  // render, so it was never equal to itself and the memo below recomputed each
-  // time — a `useMemo` whose dependency changes every render is just overhead.
-  const filteredFolders = useMemo(() => {
-    const folders = inTree ? folderPage?.folders ?? [] : [];
-    const query = searchQuery.toLowerCase();
-    return folders.filter((f) => f.name.toLowerCase().includes(query));
-  }, [inTree, folderPage?.folders, searchQuery]);
-
-  const handleCreateFolder = async () => {
-    const name = window.prompt('Folder name');
-    if (!name?.trim()) return;
+  const rename = async (item: Item, name: string) => {
+    setRenaming(null);
     try {
-      await foldersService.create(name.trim(), folderId);
-      refreshTree();
-      toast.success('Folder created');
-    } catch (err: unknown) {
-      toast.error('Could not create folder', apiErrorMessage(err, 'Please try again.'));
-    }
-  };
-
-  const handleRenameFolder = async (folder: Folder) => {
-    const name = window.prompt('Rename folder', folder.name);
-    if (!name?.trim() || name.trim() === folder.name) return;
-    try {
-      await foldersService.update(folder.id, { name: name.trim() });
-      refreshTree();
-    } catch (err: unknown) {
+      if (item.kind === 'folder') await foldersService.update(item.folder.id, { name });
+      else await documentsService.rename(item.doc.id, name);
+      refresh();
+    } catch (err) {
       toast.error('Could not rename', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
-  const handleDeleteFolder = async (folder: Folder) => {
-    if (!window.confirm(`Move “${folder.name}” and everything in it to Trash?`)) return;
+  const move = async (moving: Item[], target: number | null) => {
+    const folderIds = moving.flatMap((i) => (i.kind === 'folder' ? [i.folder.id] : []));
+    const documentIds = moving.flatMap((i) => (i.kind === 'doc' && i.doc.id > 0 ? [i.doc.id] : []));
+    if (target !== null && folderIds.includes(target)) return;
+    if (!folderIds.length && !documentIds.length) return;
+    setBusy(true);
     try {
-      const result = await foldersService.remove(folder.id);
-      refreshTree();
-      toast.success(
-        'Moved to Trash',
-        `You can restore it for ${result.purges_after_days} days.`
-      );
-    } catch (err: unknown) {
-      toast.error('Could not delete', apiErrorMessage(err, 'Please try again.'));
-    }
-  };
-
-  /** The one path every move goes through, whether dragged or picked. */
-  const performMove = async (payload: DragPayload, targetFolderId: number | null) => {
-    if (!payload) return;
-    if (payload.kind === 'folder' && payload.id === targetFolderId) return;
-
-    setIsMoving(true);
-    try {
-      await foldersService.move({
-        folder_ids: payload.kind === 'folder' ? [payload.id] : [],
-        document_ids: payload.kind === 'document' ? [payload.id] : [],
-        target_folder_id: targetFolderId,
-      });
-      refreshTree();
-      toast.success('Moved');
-    } catch (err: unknown) {
-      // The server refuses cycles and foreign ids; surface its wording rather
-      // than inventing our own.
+      const r = await foldersService.move({ folder_ids: folderIds, document_ids: documentIds, target_folder_id: target });
+      toast.success(`Moved ${r.moved_folders + r.moved_documents} item${r.moved_folders + r.moved_documents === 1 ? '' : 's'}`);
+      refresh();
+    } catch (err) {
       toast.error('Could not move', apiErrorMessage(err, 'Please try again.'));
     } finally {
-      setIsMoving(false);
+      setBusy(false);
       setDragging(null);
-      setMovePicker({ open: false, payload: null });
+      setMovePicker(null);
     }
   };
 
-  const handleRestore = async (payload: { folder_ids?: number[]; document_ids?: number[] }) => {
+  const paste = async (target: number | null) => {
+    if (!clipboard) return;
+    if (clipboard.mode === 'cut') {
+      await move(clipboard.items, target);
+      setClipboard(null);
+      return;
+    }
+    const docsToCopy = clipboard.items.flatMap((i) => (i.kind === 'doc' ? [i.doc] : []));
+    setBusy(true);
+    let copied = 0;
+    for (const d of docsToCopy) {
+      try {
+        await documentsService.copy(d.id, target);
+        copied += 1;
+      } catch (err) {
+        toast.error(`Could not copy ${d.filename}`, apiErrorMessage(err, 'Please try again.'));
+      }
+    }
+    setBusy(false);
+    if (copied) toast.success(`Copied ${copied} file${copied === 1 ? '' : 's'}`);
+    refresh();
+  };
+
+  const remove = async (list: Item[]) => {
+    setBusy(true);
+    let days = 30;
+    let failed = 0;
+    for (const item of list) {
+      try {
+        if (item.kind === 'doc' && item.doc.id < 0) {
+          setUploads((u) => u.filter((d) => d.id !== item.doc.id));
+          continue;
+        }
+        const r = item.kind === 'folder' ? await foldersService.remove(item.folder.id) : await documentsService.delete(item.doc.id);
+        days = r.purges_after_days ?? days;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBusy(false);
+    setConfirmDelete(null);
+    setSelection(emptySelection());
+    if (failed) toast.error(`${failed} item${failed === 1 ? '' : 's'} could not be deleted`);
+    else toast.success('Moved to Trash', `You can restore ${list.length === 1 ? 'it' : 'them'} for ${days} days.`);
+    refresh();
+  };
+
+  const upload = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (!list.length) return;
+    const target = inFolder ? folderId : null;
+    const optimistic: Document[] = list.map((f, i) => ({
+      id: -Date.now() - i, title: f.name, filename: f.name, file_type: f.name.split('.').pop() || 'other',
+      file_size: f.size, chunk_count: 0, is_shared: false, shared_at: null, status: 'uploading',
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }));
+    setUploads((u) => [...optimistic, ...u]);
+    let ok = 0;
+    await Promise.allSettled(
+      list.map(async (f, i) => {
+        try {
+          await documentsService.upload(f, target);
+          ok += 1;
+        } catch (err) {
+          toast.error(`Could not upload ${f.name}`, apiErrorMessage(err, 'Please try again.'));
+        } finally {
+          setUploads((u) => u.filter((d) => d.id !== optimistic[i].id));
+        }
+      }),
+    );
+    if (ok) {
+      toast.success(`Uploaded ${ok} file${ok === 1 ? '' : 's'}`);
+      refresh();
+    }
+  };
+
+  const create = async (name: string) => {
+    if (!naming) return;
+    setBusy(true);
     try {
-      const result = await foldersService.trash.restore(payload);
-      refreshTree();
-      const refused = result.refused[0];
+      if (naming.kind === 'folder') {
+        const f = await foldersService.create(name, folderId);
+        setSelection({ keys: new Set([`f:${f.id}`]), anchor: `f:${f.id}` });
+      } else {
+        const ext = naming.opt.ext;
+        const full = name.toLowerCase().endsWith(`.${ext}`) ? name : `${name}.${ext}`;
+        const d = await documentsService.create(full, folderId, naming.opt.content);
+        setSelection({ keys: new Set([`d:${d.id}`]), anchor: `d:${d.id}` });
+      }
+      setNaming(null);
+      refresh();
+    } catch (err) {
+      toast.error('Could not create', apiErrorMessage(err, 'Please try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleShare = async (doc: Document, confirmed = false) => {
+    if (!doc.is_shared && !confirmed) return setShareDoc(doc);
+    try {
+      const r = await documentsService.toggleSharing(doc.id);
+      toast.success(r.is_shared ? 'Shared to the public library' : 'Removed from the public library');
+      refresh();
+    } catch (err) {
+      toast.error('Could not update sharing', apiErrorMessage(err, 'Please try again.'));
+    } finally {
+      setShareDoc(null);
+    }
+  };
+
+  const restore = async (payload: { folder_ids?: number[]; document_ids?: number[] }) => {
+    try {
+      const r = await foldersService.trash.restore(payload);
+      const refused = r.refused[0];
       if (refused?.reason === 'parent_still_trashed') {
         toast.error('Restore the folder first', 'This item lives inside a folder that is also in Trash.');
       } else {
-        const renamed = result.restored.find((r) => r.renamed_to);
-        toast.success(
-          'Restored',
-          renamed ? `A name was taken, so it came back as “${renamed.renamed_to}”.` : undefined
-        );
+        const renamed = r.restored.find((x) => x.renamed_to);
+        toast.success('Restored', renamed ? `A name was taken, so it came back as “${renamed.renamed_to}”.` : undefined);
       }
-    } catch (err: unknown) {
+      refresh();
+    } catch (err) {
       toast.error('Could not restore', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
-  const handleEmptyTrash = async () => {
+  const emptyTrash = async () => {
     if (!window.confirm('Permanently delete everything in Trash? This cannot be undone.')) return;
     try {
-      const result = await foldersService.trash.empty();
-      refreshTree();
-      toast.success(
-        'Trash emptied',
-        `${result.purged_documents} file(s) and ${result.purged_folders} folder(s) removed.`
-      );
-    } catch (err: unknown) {
+      const r = await foldersService.trash.empty();
+      toast.success('Trash emptied', `${r.purged_documents} file(s) and ${r.purged_folders} folder(s) removed.`);
+      refresh();
+    } catch (err) {
       toast.error('Could not empty Trash', apiErrorMessage(err, 'Please try again.'));
     }
   };
 
-  // ... (handleShare and helpers remain mostly same, simplified for brevity)
-  const [shareConfirmation, setShareConfirmation] = useState<{ isOpen: boolean; doc: Document | null }>({ isOpen: false, doc: null });
+  // ---- Menus -------------------------------------------------------------------------
+  const icon = (I: typeof Eye) => <I className="h-4 w-4" />;
 
-  const confirmShare = async () => {
-    const doc = shareConfirmation.doc;
-    if (!doc) return;
+  const newSubmenu: MenuEntry[] = [
+    { label: 'Folder', icon: icon(FolderPlus), onSelect: () => setNaming({ kind: 'folder' }) },
+    'separator',
+    ...NEW_FILES.map((opt) => ({
+      label: opt.label,
+      icon: icon(fileIcon({ filename: `x.${opt.ext}`, file_type: opt.ext })),
+      onSelect: () => setNaming({ kind: 'file', opt }),
+    })),
+  ];
 
-    try {
-      const result = await documentsService.toggleSharing(doc.id);
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
-      
-      const action = result.is_shared ? 'shared with' : 'unshared from';
-      toast.success('Sharing updated', `Document ${action} platform knowledge base`);
-    } catch (err) {
-      toast.error('Update failed', err instanceof Error ? err.message : 'Failed to update sharing settings');
-    } finally {
-      setShareConfirmation({ isOpen: false, doc: null });
+  const itemMenu = (list: Item[]): MenuEntry[] => {
+    const one = list.length === 1 ? list[0] : null;
+    const docsIn = list.flatMap((i) => (i.kind === 'doc' ? [i.doc] : []));
+    const editable = mine && list.every((i) => i.kind === 'folder' || i.doc.id > 0);
+    const entries: MenuEntry[] = [];
+    if (one?.kind === 'folder') {
+      entries.push({ label: 'Open', icon: icon(FolderIcon), onSelect: () => openItem(one) });
+    } else if (one?.kind === 'doc') {
+      const apps = loc.kind === 'public' ? [] : appsForDoc(one.doc);
+      const primary = apps[0];
+      entries.push({
+        label: primary ? `Open in ${primary.title}` : 'Preview',
+        icon: icon(primary ? primary.icon : Eye),
+        shortcut: 'Enter',
+        onSelect: () => openItem(one),
+      });
+      if (apps.length > 1) {
+        entries.push({
+          label: 'Open with',
+          icon: icon(ExternalLink),
+          submenu: apps.map((a) => ({ label: a.title, icon: icon(a.icon), onSelect: () => navigate(openInAppPath(one.doc, a)!) })),
+        });
+      }
+      if (primary) entries.push({ label: 'Preview', icon: icon(Eye), shortcut: 'Space', onSelect: () => setPreviewDoc(one.doc) });
+    }
+    if (docsIn.length) {
+      entries.push({ label: docsIn.length > 1 ? `Download ${docsIn.length} files` : 'Download', icon: icon(Download), onSelect: () => docsIn.forEach((d) => void download(d)) });
+    }
+    if (editable) {
+      entries.push(
+        'separator',
+        { label: 'Cut', icon: icon(Scissors), shortcut: 'Ctrl+X', onSelect: () => setClipboard({ mode: 'cut', items: list }) },
+        {
+          label: 'Copy', icon: icon(Copy), shortcut: 'Ctrl+C',
+          disabled: !docsIn.length,
+          onSelect: () => setClipboard({ mode: 'copy', items: list.filter((i) => i.kind === 'doc') }),
+        },
+      );
+      if (one?.kind === 'folder' && clipboard) {
+        entries.push({ label: 'Paste into folder', icon: icon(ClipboardPaste), onSelect: () => void paste(one.folder.id) });
+      }
+      entries.push('separator');
+      if (one) entries.push({ label: 'Rename', icon: icon(Pencil), shortcut: 'F2', onSelect: () => setRenaming(keyOf(one)) });
+      entries.push({ label: 'Move to…', icon: icon(FolderInput), onSelect: () => setMovePicker(list) });
+      if (one?.kind === 'doc') {
+        entries.push({
+          label: one.doc.is_shared ? 'Remove from public library' : 'Share to public library',
+          icon: icon(Globe),
+          disabled: one.doc.status === 'uploading',
+          onSelect: () => void toggleShare(one.doc),
+        });
+      }
+      entries.push({ label: 'Delete', icon: icon(Trash2), shortcut: 'Del', danger: true, onSelect: () => setConfirmDelete(list) });
+    }
+    if (one) entries.push('separator', { label: 'Properties', icon: icon(Info), onSelect: () => setProperties(one) });
+    return entries;
+  };
+
+  const backgroundMenu = (): MenuEntry[] => [
+    ...(inFolder
+      ? ([
+          { label: 'New', icon: icon(FilePlus2), submenu: newSubmenu },
+          { label: 'Upload files…', icon: icon(Upload), onSelect: () => uploadInput.current?.click() },
+          { label: 'Paste', icon: icon(ClipboardPaste), shortcut: 'Ctrl+V', disabled: !clipboard, onSelect: () => void paste(folderId) },
+          'separator',
+        ] as MenuEntry[])
+      : []),
+    {
+      label: 'View', icon: icon(LayoutGrid), submenu: [
+        { label: 'Details', icon: view === 'details' ? icon(Check) : undefined, onSelect: () => setView('details') },
+        { label: 'Tiles', icon: view === 'tiles' ? icon(Check) : undefined, onSelect: () => setView('tiles') },
+        { label: 'List', icon: view === 'list' ? icon(Check) : undefined, onSelect: () => setView('list') },
+      ],
+    },
+    { label: 'Select all', shortcut: 'Ctrl+A', onSelect: () => setSelection({ keys: new Set(order), anchor: order[0] ?? null }) },
+    { label: 'Refresh', icon: icon(RefreshCw), onSelect: refresh },
+  ];
+
+  const openMenu = (e: { clientX: number; clientY: number }, entries: MenuEntry[]) =>
+    setMenu({ x: e.clientX, y: e.clientY, items: entries });
+
+  // ---- Pointer and keyboard ----------------------------------------------------------------
+  const onItemClick = (item: Item, e: MouseEvent) => {
+    pane.current?.focus({ preventScroll: true });
+    setSelection((s) => clickSelect(s, order, keyOf(item), { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }));
+  };
+
+  const onItemMenu = (item: Item, e: MouseEvent) => {
+    const key = keyOf(item);
+    const list = selection.keys.has(key) ? selectedItems : [item];
+    if (!selection.keys.has(key)) setSelection({ keys: new Set([key]), anchor: key });
+    openMenu(e, itemMenu(list));
+  };
+
+  const onDragStart = (item: Item, e: DragEvent) => {
+    const key = keyOf(item);
+    const list = selection.keys.has(key) ? selectedItems : [item];
+    if (!selection.keys.has(key)) setSelection({ keys: new Set([key]), anchor: key });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', list.map(keyOf).join(','));
+    setDragging(mine ? list : null);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest('input, textarea, select')) return;
+    const ctrl = e.ctrlKey || e.metaKey;
+    const k = e.key;
+    const cols = view === 'details' ? 1 : Math.max(1, Math.floor((pane.current?.clientWidth ?? 600) / (view === 'tiles' ? 128 : 240)));
+    if (k === 'ArrowDown' || k === 'ArrowUp' || (view !== 'details' && (k === 'ArrowLeft' || k === 'ArrowRight'))) {
+      if (k === 'ArrowLeft' && e.altKey) return;
+      e.preventDefault();
+      const delta = k === 'ArrowDown' ? cols : k === 'ArrowUp' ? -cols : k === 'ArrowRight' ? 1 : -1;
+      setSelection((s) => stepSelect(s, order, delta, e.shiftKey));
+    } else if (k === 'Enter' && single) {
+      e.preventDefault();
+      openItem(single);
+    } else if (k === ' ' && single?.kind === 'doc') {
+      e.preventDefault();
+      setPreviewDoc(single.doc);
+    } else if ((k === 'Delete') && selectedItems.length && mine) {
+      e.preventDefault();
+      setConfirmDelete(selectedItems);
+    } else if (k === 'F2' && single && mine) {
+      e.preventDefault();
+      setRenaming(keyOf(single));
+    } else if (ctrl && k.toLowerCase() === 'a') {
+      e.preventDefault();
+      setSelection({ keys: new Set(order), anchor: order[0] ?? null });
+    } else if (ctrl && k.toLowerCase() === 'x' && selectedItems.length && mine) {
+      setClipboard({ mode: 'cut', items: selectedItems });
+    } else if (ctrl && k.toLowerCase() === 'c' && selectedDocs.length && mine) {
+      setClipboard({ mode: 'copy', items: selectedItems.filter((i) => i.kind === 'doc') });
+    } else if (ctrl && k.toLowerCase() === 'v' && clipboard && inFolder) {
+      e.preventDefault();
+      void paste(folderId);
+    } else if ((k === 'Backspace' || (e.altKey && k === 'ArrowUp')) && inFolder && currentFolder) {
+      e.preventDefault();
+      go({ kind: 'folder', id: parentId });
+    } else if (e.altKey && k === 'ArrowLeft') {
+      e.preventDefault();
+      back();
+    } else if (e.altKey && k === 'ArrowRight') {
+      e.preventDefault();
+      forward();
+    } else if (k === 'Escape') {
+      setSelection(emptySelection());
+      if (clipboard?.mode === 'cut') setClipboard(null);
     }
   };
 
-  const handleShare = async (doc: Document) => {
-      // If already shared, we can unshare immediately (or add a simple confirm if desired)
-      if (doc.is_shared) {
-          try {
-            await documentsService.toggleSharing(doc.id);
-            queryClient.invalidateQueries({ queryKey: ['documents'] });
-            toast.success('Sharing updated', 'Document unshared from platform knowledge base');
-          } catch (err) {
-            toast.error('Update failed', err instanceof Error ? err.message : 'Failed to update sharing settings');
-          }
-      } else {
-          // Open confirmation modal for making it global
-          setShareConfirmation({ isOpen: true, doc });
-      }
-    };
+  // Keep the keyboard-selected item in view.
+  useEffect(() => {
+    const last = [...selection.keys].pop();
+    if (!last) return;
+    pane.current?.querySelector<HTMLElement>(`[data-key="${last}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [selection]);
 
-    const handleDownload = async (doc: Document) => {
-      try {
-        const blob = await documentsService.download(doc.id);
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', doc.filename || doc.title);
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode?.removeChild(link);
-      } catch (err) {
-        toast.error('Download failed', err instanceof Error ? err.message : 'Failed to download document');
-      }
-    };
-  
-    const getDocIcon = (fileType: string) => {
-      const iconClass = "w-8 h-8";
-      if (fileType.includes('pdf')) return <FileText className={`${iconClass} text-red-500`} />;
-      if (fileType.includes('json')) return <FileJson className={`${iconClass} text-green-500`} />;
-      if (fileType.includes('image')) return <Image className={`${iconClass} text-pink-500`} />;
-      if (fileType.includes('python') || fileType.includes('javascript')) 
-        return <FileCode className={`${iconClass} text-purple-500`} />;
-      return <File className={`${iconClass} text-gray-500`} />;
-    };
-  
-    const formatSize = (bytes: number) => {
-      if (bytes < 1024) return `${bytes} B`;
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    };
-  
-    const formatDate = (dateStr: string) => {
-      return new Date(dateStr).toLocaleDateString();
-    };
+  // ---- Rendering helpers ---------------------------------------------------------------------
+  const title =
+    loc.kind === 'folder' ? (currentFolder?.name ?? 'Home')
+      : loc.kind === 'recent' ? 'Recent'
+        : loc.kind === 'public' ? 'Public library'
+          : loc.kind === 'extraction' ? 'Extraction' : 'Trash';
 
-    const getStatusParams = (status: Document['status']) => {
-        switch(status) {
-            case 'uploading': return { color: 'text-primary', icon: <Loader2 className="w-4 h-4 animate-spin text-primary" />, label: 'Uploading...' };
-            case 'pending': return { color: 'text-warning', icon: <Loader2 className="w-4 h-4 animate-spin text-warning" />, label: 'Queued' };
-            case 'processing': return { color: 'text-warning', icon: <Loader2 className="w-4 h-4 animate-spin text-warning" />, label: 'Indexing...' };
-            case 'stored': return { color: 'text-success', icon: <BookOpen className="w-4 h-4 text-success" />, label: 'Stored' };
-            case 'failed': return { color: 'text-destructive', icon: <AlertCircle className="w-4 h-4 text-destructive" />, label: 'Failed' };
-            default: return null;
-        }
-    };
+  const listing = loc.kind === 'folder' || loc.kind === 'recent' || loc.kind === 'public';
+  const loading = listing && (docs.isLoading || (inFolder && !folderPage)) && items.length === 0;
+  const selectedSize = selectedDocs.reduce((n, d) => n + (d.file_size || 0), 0);
+
+  const cmd = (label: string, I: typeof Eye, onClick: () => void, disabled = false) => (
+    <Cmd label={label} icon={I} onClick={onClick} disabled={disabled} />
+  );
 
   return (
-    // `h-full`, not `h-screen`. The shell is `100dvh`; `h-screen` is `100vh`,
-    // which on mobile includes the area behind the collapsing URL bar, so the
-    // bottom of this page was pushed out of an `overflow-hidden` parent.
-    <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-200">
-      {/* Header */}
-      <PageHeader 
-        title="Documents"
-        subtitle={
-          activeTab === 'extraction'
-            ? "Extraction schemas and the rows they produce"
-            : "Manage your knowledge base assets and RAG sources"
-        }
-        icon={FileText}
-        actions={
-          activeTab === 'trash' ? (
-            <button
-              onClick={handleEmptyTrash}
-              className="flex items-center gap-2 px-6 py-2.5 bg-destructive/10 text-destructive rounded-lg font-semibold transition-colors hover:bg-destructive/20"
-            >
-              <Trash2 className="w-4 h-4" />
-              Empty Trash
-            </button>
-          ) : activeTab !== 'extraction' ? (
-          <div className="flex items-center gap-2">
-            {activeTab === 'personal' && (
-              <button
-                onClick={handleCreateFolder}
-                className="flex items-center gap-2 px-4 py-2.5 border border-border/60 rounded-lg font-semibold transition-colors hover:bg-muted"
-              >
-                <FolderPlus className="w-4 h-4" />
-                New folder
-              </button>
-            )}
-            <Button 
-              onClick={() => setShowUploadModal(true)}
-            >
-              <Upload className="w-4 h-4" />
-              Upload files
-            </Button>
-          </div>
-          ) : null
-        }
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          {/* Scrolls rather than clips: four tabs at gap-8 are wider than a
-              phone, and the shell is overflow-hidden, so the last tab used to
-              be simply unreachable. `-mx-4 px-4` lets the row bleed to the
-              header's own edges so the last tab can scroll fully into view. */}
-          <div className="flex items-center gap-5 md:gap-8 overflow-x-auto scrollbar-none -mx-4 px-4 md:mx-0 md:px-0">
-            <button
-              onClick={() => setActiveTab('personal')}
-              className={cn(
-                "pb-3 text-sm font-semibold transition-colors relative",
-                activeTab === 'personal' ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              My Documents ({myDocuments.length})
-              {activeTab === 'personal' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
-            </button>
-            <button
-              onClick={() => setActiveTab('public')}
-              className={cn(
-                "pb-3 text-sm font-semibold transition-colors relative",
-                activeTab === 'public' ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Public Library ({publicDocuments.length})
-              {activeTab === 'public' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
-            </button>
-            <button
-              onClick={() => setActiveTab('extraction')}
-              className={cn(
-                "pb-3 text-sm font-semibold transition-colors relative",
-                activeTab === 'extraction' ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Extraction
-              {activeTab === 'extraction' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
-            </button>
-            <button
-              onClick={() => setActiveTab('trash')}
-              className={cn(
-                "pb-3 text-sm font-semibold transition-colors relative flex items-center gap-1.5",
-                activeTab === 'trash' ? "text-primary" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Trash
-              {activeTab === 'trash' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
-            </button>
-          </div>
+    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      {/* Address row */}
+      <div className="flex shrink-0 items-center gap-1 border-b border-border bg-card px-2 py-2 md:px-3">
+        <SidebarMenuButton />
+        <button type="button" onClick={() => setNavOpen((o) => !o)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted lg:hidden" aria-label="Show folders">
+          <PanelLeft className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={back} disabled={history.index <= 0} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Back (Alt+Left)" title="Back (Alt+Left)">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={forward} disabled={history.index >= history.stack.length - 1} className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30 sm:block" aria-label="Forward (Alt+Right)" title="Forward (Alt+Right)">
+          <ArrowRight className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={() => go({ kind: 'folder', id: parentId })} disabled={!inFolder || !currentFolder} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30" aria-label="Up (Alt+Up)" title="Up (Alt+Up)">
+          <ArrowUp className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={refresh} className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-muted sm:block" aria-label="Refresh" title="Refresh">
+          <RefreshCw className={cn('h-4 w-4', docs.isFetching && 'animate-spin')} />
+        </button>
 
-          {activeTab !== 'extraction' && activeTab !== 'trash' && (
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="relative w-full md:w-[400px] group">
-              <SearchInput
-                placeholder="Search documents..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-1 bg-background/50 border border-border/60 rounded-lg p-1">
-              <button 
-                onClick={() => setViewMode('grid')}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                  viewMode === 'grid' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Grid
-              </button>
-              <button 
-                onClick={() => setViewMode('list')}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                  viewMode === 'list' ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                List
-              </button>
-            </div>
-          </div>
-          )}
-        </div>
-
-        {/* Location trail. Personal tab only — the Public Library is a flat
-            platform-wide list, not a place in anyone's tree. */}
-        {inTree && (
-          <div className="pt-1">
-            <Breadcrumbs
-              trail={breadcrumbs}
-              current={currentFolder}
-              onNavigate={setFolderId}
-              onDropOn={(target) => performMove(dragging, target)}
+        <nav aria-label="Address" className="mx-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden rounded-md border border-border/60 bg-background px-1.5 py-1 text-[13px]">
+          {loc.kind === 'folder' ? (
+            <>
+              <Crumb label="Home" icon={<Home className="h-3.5 w-3.5" />} onClick={() => go({ kind: 'folder', id: null })} onDrop={dragging ? () => void move(dragging, null) : undefined} current={!currentFolder} />
+              {breadcrumbs.map((b) => (
+                <Crumb key={b.id} label={b.name} onClick={() => go({ kind: 'folder', id: b.id })} onDrop={dragging ? () => void move(dragging, b.id) : undefined} />
+              ))}
+              {currentFolder && <Crumb label={currentFolder.name} current />}
+            </>
+          ) : (
+            <Crumb
+              label={title}
+              current
+              icon={
+                loc.kind === 'recent' ? <Clock className="h-3.5 w-3.5" /> : loc.kind === 'public' ? <BookOpen className="h-3.5 w-3.5" />
+                  : loc.kind === 'extraction' ? <ScanText className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />
+              }
             />
-          </div>
-        )}
-        {kindFilter.size > 0 && (
-          <div className="flex items-center gap-2 pt-2 text-[12px] text-muted-foreground">
-            <span>Showing {Array.from(kindFilter).join(', ')} files (from Apps).</span>
-            <button
-              type="button"
-              onClick={() => setSearchParams((prev) => {
-                const next = new URLSearchParams(prev);
-                next.delete('kind');
-                return next;
-              }, { replace: true })}
-              className="font-medium text-primary hover:underline"
-            >
-              Show all
-            </button>
-          </div>
-        )}
-      </PageHeader>
+          )}
+        </nav>
 
-      <div className={cn(
-        "flex-1 overflow-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-white/5 z-10",
-        isAssistantOpen && "xl:p-6"
-      )}>
-        {activeTab === 'extraction' ? (
-          <ExtractionPanel mode="manage" />
-        ) : activeTab === 'trash' ? (
-          <div className="max-w-4xl mx-auto">
-            <p className="text-sm text-muted-foreground mb-6">
-              Items here are removed permanently after{' '}
-              {trashPage?.purges_after_days ?? 30} days.
-            </p>
-
-            {trashLoading ? (
-              <div className="flex justify-center py-16 text-muted-foreground">
-                <Spinner size="lg" />
-              </div>
-            ) : (trashPage?.folders.length ?? 0) + (trashPage?.documents.length ?? 0) === 0 ? (
-              <div className="text-center py-20">
-                <Trash2 className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-muted-foreground">Trash is empty.</p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-border/60 rounded-lg border border-border/60 overflow-hidden">
-                {trashPage?.folders.map((f) => (
-                  <li key={`folder-${f.id}`} className="flex items-center gap-3 px-4 py-3 bg-card">
-                    <FolderInput className="w-5 h-5 text-amber-500 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium truncate">{f.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Folder · deleted {f.deleted_at ? new Date(f.deleted_at).toLocaleDateString() : ''}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleRestore({ folder_ids: [f.id] })}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:bg-muted"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" /> Restore
-                    </button>
-                  </li>
-                ))}
-                {trashPage?.documents.map((d) => (
-                  <li key={`doc-${d.id}`} className="flex items-center gap-3 px-4 py-3 bg-card">
-                    <File className="w-5 h-5 text-muted-foreground shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium truncate">{d.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        File · deleted {d.deleted_at ? new Date(d.deleted_at).toLocaleDateString() : ''}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleRestore({ document_ids: [d.id] })}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:bg-muted"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" /> Restore
-                    </button>
-                  </li>
-                ))}
-              </ul>
+        {listing && (
+          <div className="hidden w-56 items-center gap-1.5 rounded-md border border-border/60 bg-background px-2 py-1 md:flex lg:w-72">
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${title}`}
+              aria-label="Search"
+              className="w-full min-w-0 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="text-muted-foreground hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
+              </button>
             )}
           </div>
-        ) : (
-        <>
-        {/* Folders sit above the files, in whichever layout is active. */}
-        {inTree && filteredFolders.length > 0 && (
-          <div className={cn(
-            'mb-6',
-            viewMode === 'grid'
-              ? cn('grid gap-4',
-                  isAssistantOpen
-                    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-                    : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6')
-              : 'rounded-lg border border-border/60 overflow-hidden bg-card'
-          )}>
-            {filteredFolders.map((folder) => (
-              <FolderTile
-                key={folder.id}
-                folder={folder}
-                viewMode={viewMode}
-                onOpen={(f) => setFolderId(f.id)}
-                onRename={handleRenameFolder}
-                onDelete={handleDeleteFolder}
-                onDropInto={(f) => performMove(dragging, f.id)}
-                onDragStartFolder={(f) => setDragging({ kind: 'folder', id: f.id })}
-              />
-            ))}
-          </div>
-        )}
-        {folderPage?.truncated && (
-          <p className="text-xs text-muted-foreground mb-4">
-            Showing the first {folderPage.count} folders in this location.
-          </p>
-        )}
-        {isLoading && allDocuments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            <p className="text-muted-foreground text-sm">Loading documents...</p>
-          </div>
-        ) : error && allDocuments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 bg-destructive-subtle rounded-lg border border-border max-w-2xl mx-auto px-6 text-center">
-            <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-            <h3 className="text-lg font-bold text-foreground mb-2">Failed to load documents</h3>
-            <p className="text-muted-foreground text-sm">{error}</p>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className={cn(
-            "grid gap-4 md:gap-5 stagger-children",
-            isAssistantOpen 
-              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" 
-              : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-          )}>
-            {filteredDocuments.map((doc) => (
-              <DocumentGridCard
-                key={doc.id}
-                doc={doc}
-                onOpen={setPreviewDoc}
-                onDownload={handleDownload}
-                onShare={handleShare}
-                onDelete={handleDelete}
-                draggable={inTree && doc.id > 0}
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', `document:${doc.id}`);
-                  setDragging({ kind: 'document', id: doc.id });
-                }}
-                onDragEnd={() => setDragging(null)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-3 max-w-6xl mx-auto">
-            {filteredDocuments.map((doc) => {
-                const status = getStatusParams(doc.status);
-                return (
-              <div
-                key={doc.id}
-                className={cn(
-                    "flex items-center gap-6 p-4 bg-card border border-border rounded-lg card-hover",
-                    doc.is_shared && "border-primary/30 bg-primary/5"
-                )}
-              >
-                <div className="p-2 bg-muted rounded-lg border border-border">
-                    {getDocIcon(doc.file_type)}
-                </div>
-                {/* The name column opens the preview, in both views. Grid-only
-                    would mean the same file is readable or not depending on a
-                    layout toggle. It is deliberately not the whole row: the row
-                    ends in Download / Move / Delete buttons. */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setPreviewDoc(doc)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setPreviewDoc(doc);
-                    }
-                  }}
-                  aria-label={`Preview ${doc.title}`}
-                  className="flex-1 min-w-0 cursor-pointer rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                >
-                  <div className="flex items-center gap-3 mb-0.5">
-                    <p className="font-bold text-foreground tracking-tight truncate">{doc.title}</p>
-                    {doc.is_shared && activeTab === 'personal' && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-primary/20 text-primary rounded border border-primary/30 ">
-                        Shared
-                      </span>
-                    )}
-                    {activeTab === 'public' && doc.author_name && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-muted text-muted-foreground rounded border border-border/60 uppercase">
-                        By {doc.author_name}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs font-medium text-muted-foreground truncate">{doc.filename}</p>
-                  {/* The size/chunks/date columns beside this only render from
-                      md up, so phones get the same facts as a second line here
-                      rather than not at all. */}
-                  <p className="text-[11px] text-muted-foreground/80 truncate md:hidden">
-                    {formatSize(doc.file_size)} · {doc.chunk_count} chunks · {formatDate(doc.created_at)}
-                  </p>
-                </div>
-                
-                {status ? (
-                    <div className={cn(
-                        "text-[10px] font-bold  flex items-center gap-2 px-3 py-1.5 bg-background rounded-lg",
-                        status.color
-                    )}>
-                        {status.icon}
-                        {status.label}
-                    </div>
-                ) : (
-                    <div className="hidden md:flex items-center gap-8">
-                        <div className="text-[11px] text-muted-foreground w-20">
-                          {formatSize(doc.file_size)}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground w-24">
-                          {doc.chunk_count} chunks
-                        </div>
-                        <div className="text-[11px] text-muted-foreground w-24">
-                          {formatDate(doc.created_at)}
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex items-center gap-1">
-                  <button 
-                    className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
-                    onClick={() => handleDownload(doc)}
-                    title="Download"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                  {activeTab === 'personal' && (
-                    <>
-                      {/* The menu is the contract for moving; dragging the card
-                          is the accelerator. Drag-only would be untestable and
-                          unusable on touch. */}
-                      <button
-                        className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
-                        onClick={() => setMovePicker({ open: true, payload: { kind: 'document', id: doc.id } })}
-                        title="Move to…"
-                        disabled={doc.id < 0}
-                      >
-                        <FolderInput className="w-4 h-4" />
-                      </button>
-                      <button 
-                        className={cn(
-                            "p-2 rounded-lg transition-colors",
-                            doc.is_shared ? "text-primary bg-primary/20" : "text-muted-foreground hover:text-primary hover:bg-muted"
-                        )}
-                        onClick={() => handleShare(doc)}
-                        title={doc.is_shared ? "Unshare" : "Share"}
-                        disabled={!!status}
-                      >
-                        <Globe className="w-4 h-4" />
-                      </button>
-                      <button 
-                        className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-colors"
-                        onClick={() => handleDelete(doc.id)}
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )})}
-          </div>
-        )}
-
-        {!isLoading && !error && filteredDocuments.length === 0 && filteredFolders.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-center max-w-sm mx-auto">
-            <div className="p-6 bg-muted rounded-full mb-6">
-              <FileText className="w-12 h-12 text-muted-foreground/40" />
-            </div>
-            <h3 className="text-xl font-bold text-foreground mb-2">
-              {searchQuery ? 'No matches found' : 'No documents found'}
-            </h3>
-            <p className="text-muted-foreground text-sm mb-8">
-              {searchQuery
-                ? `Nothing matches “${searchQuery}” in this location.`
-                : activeTab === 'personal'
-                  ? "You haven't uploaded any documents yet. Start by uploading files to build your knowledge base."
-                  : "The public library is currently empty."}
-            </p>
-            {activeTab === 'personal' && (
-              <Button 
-                onClick={() => setShowUploadModal(true)}
-              >
-                <Upload className="w-4 h-4" />
-                Upload your first file
-              </Button>
-            )}
-          </div>
-        )}
-        {hasNextPage && !searchQuery && (
-          <div className="flex justify-center mt-8">
-            <Button
-              variant="secondary"
-              onClick={() => fetchNextPage()}
-              disabled={isFetchingNextPage}
-              loading={isFetchingNextPage}
-            >
-              {isFetchingNextPage ? 'Loading...' : 'Load more'}
-            </Button>
-          </div>
-        )}
-        </>
         )}
       </div>
 
-      <FolderPickerModal
-        isOpen={movePicker.open}
-        excludeFolderIds={
-          movePicker.payload?.kind === 'folder' ? [movePicker.payload.id] : []
-        }
-        isBusy={isMoving}
-        onCancel={() => setMovePicker({ open: false, payload: null })}
-        onConfirm={(target) => performMove(movePicker.payload, target)}
+      {/* Command bar */}
+      {loc.kind !== 'extraction' && (
+        <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border/60 bg-card px-2 py-1 scrollbar-none md:px-3">
+          {loc.kind === 'trash' ? (
+            <button type="button" onClick={() => void emptyTrash()} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-destructive hover:bg-destructive/10">
+              <Trash2 className="h-4 w-4" /> Empty Trash
+            </button>
+          ) : (
+            <>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setMenu({ x: r.left, y: r.bottom + 4, items: newSubmenu });
+                  }}
+                  disabled={!inFolder}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                >
+                  <FilePlus2 className="h-4 w-4" /> New <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <Cmd label="Upload" icon={Upload} onClick={pickFiles} disabled={!inFolder} wide />
+              <span className="mx-1 h-5 w-px shrink-0 bg-border/70" />
+              {cmd('Cut', Scissors, () => setClipboard({ mode: 'cut', items: selectedItems }), !mine || !selectedItems.length)}
+              {cmd('Copy', Copy, () => setClipboard({ mode: 'copy', items: selectedItems.filter((i) => i.kind === 'doc') }), !mine || !selectedDocs.length)}
+              {cmd('Paste', ClipboardPaste, () => void paste(folderId), !inFolder || !clipboard)}
+              {cmd('Rename', Pencil, () => single && setRenaming(keyOf(single)), !mine || !single)}
+              {cmd('Share', Globe, () => single?.kind === 'doc' && void toggleShare(single.doc), !mine || single?.kind !== 'doc')}
+              {cmd('Delete', Trash2, () => setConfirmDelete(selectedItems), !mine || !selectedItems.length)}
+              {cmd('Download', Download, () => selectedDocs.forEach((d) => void download(d)), !selectedDocs.length)}
+              <span className="ml-auto" />
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setViewMenu((o) => !o)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-foreground/80 hover:bg-muted"
+                  aria-label="Change layout"
+                >
+                  {view === 'details' ? <TableIcon className="h-4 w-4" /> : view === 'tiles' ? <LayoutGrid className="h-4 w-4" /> : <ListIcon className="h-4 w-4" />}
+                  <span className="hidden sm:inline">View</span>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {viewMenu && (
+                  <div className="absolute right-0 top-full z-40 mt-1 w-40 rounded-lg border border-border/70 bg-popover p-1 shadow-xl" onMouseLeave={() => setViewMenu(false)}>
+                    {([['details', 'Details', TableIcon], ['tiles', 'Tiles', LayoutGrid], ['list', 'List', ListIcon]] as const).map(([v, label, I]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                          setView(v);
+                          setViewMenu(false);
+                        }}
+                        className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-muted', view === v && 'font-medium')}
+                      >
+                        <I className="h-4 w-4" /> {label}
+                        {view === v && <Check className="ml-auto h-3.5 w-3.5" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPreview((p) => !p)}
+                aria-pressed={showPreview}
+                className={cn('hidden h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] hover:bg-muted lg:inline-flex', showPreview ? 'text-foreground' : 'text-foreground/60')}
+                title="Preview pane"
+              >
+                <PanelRight className="h-4 w-4" /> <span className="hidden xl:inline">Preview pane</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Mobile search */}
+      {listing && (
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-border/60 bg-card px-3 py-1.5 md:hidden">
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${title}`} aria-label="Search"
+            className="w-full bg-transparent text-[13px] outline-none placeholder:text-muted-foreground" />
+        </div>
+      )}
+
+      <div className="relative flex min-h-0 flex-1">
+        {/* Navigation pane */}
+        {navOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setNavOpen(false)} />}
+        <aside
+          className={cn(
+            'z-40 w-60 shrink-0 flex-col border-r border-border/60 bg-card',
+            navOpen ? 'fixed inset-y-0 left-0 flex shadow-xl' : 'hidden lg:flex',
+          )}
+        >
+          <NavPane
+            location={loc}
+            trail={trail}
+            onNavigate={(l) => go(l)}
+            onDropOn={(id) => dragging && void move(dragging, id)}
+            canDrop={!!dragging}
+          />
+        </aside>
+
+        {/* Content */}
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {loc.kind === 'extraction' ? (
+            <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+              <ExtractionPanel mode="manage" />
+            </div>
+          ) : loc.kind === 'trash' ? (
+            <TrashView
+              loading={trashLoading}
+              folders={trashPage?.folders ?? []}
+              docs={trashPage?.documents ?? []}
+              days={trashPage?.purges_after_days ?? 30}
+              onRestore={(p) => void restore(p)}
+            />
+          ) : (
+            <div
+              ref={pane}
+              tabIndex={0}
+              onKeyDown={onKeyDown}
+              onClick={() => setSelection(emptySelection())}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setSelection(emptySelection());
+                openMenu(e, backgroundMenu());
+              }}
+              onDragOver={(e) => {
+                if (!inFolder || !e.dataTransfer.types.includes('Files')) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                setOsDrop(true);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setOsDrop(false);
+              }}
+              onDrop={(e) => {
+                setOsDrop(false);
+                if (e.dataTransfer.files?.length && inFolder) {
+                  e.preventDefault();
+                  void upload(e.dataTransfer.files);
+                }
+              }}
+              className={cn('relative min-h-0 flex-1 overflow-auto outline-none', osDrop && 'bg-primary/5 ring-2 ring-inset ring-primary')}
+              aria-label={`${title} contents`}
+            >
+              {searching && listing && loc.kind !== 'public' && (
+                <div className="flex items-center gap-2 border-b border-border/40 px-4 py-1.5 text-[12px] text-muted-foreground">
+                  {searchAll ? (
+                    <>
+                      Searching all your files{everywhere.isFetching ? '…' : ''}
+                      {!everywhere.isFetching && everywhere.hasNextPage && ` (the ${SEARCH_PAGES * PAGE} most recent)`}
+                      <button type="button" onClick={() => setSearchAll(false)} className="text-primary hover:underline">Only {title}</button>
+                    </>
+                  ) : (
+                    <>
+                      Searching {title}.
+                      <button type="button" onClick={() => setSearchAll(true)} className="text-primary hover:underline">Search all files</button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {loading ? (
+                <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                </div>
+              ) : docs.isError && items.length === 0 ? (
+                <div className="mx-auto mt-16 flex max-w-md flex-col items-center gap-2 px-6 text-center">
+                  <AlertCircle className="h-8 w-8 text-destructive" />
+                  <p className="font-medium">Could not load your files</p>
+                  <p className="text-sm text-muted-foreground">{apiErrorMessage(docs.error, 'Please try again.')}</p>
+                </div>
+              ) : items.length === 0 ? (
+                <EmptyState
+                  searching={searching}
+                  query={query}
+                  loc={loc}
+                  firstRun={!hasAnyFile && loc.kind === 'folder' && loc.id === null && !folderPage?.folders.length && !!anyPage}
+                  onUpload={() => uploadInput.current?.click()}
+                  onNew={() => setNaming({ kind: 'file', opt: NEW_FILES[1] })}
+                  onNewFolder={() => setNaming({ kind: 'folder' })}
+                />
+              ) : (
+                <ItemsView
+                  items={items}
+                  view={view}
+                  sort={sort}
+                  onSort={(k) => setSort((s) => nextSort(s, k))}
+                  selected={selection.keys}
+                  cut={cutKeys}
+                  renaming={renaming}
+                  showLocation={loc.kind === 'public' ? 'author' : loc.kind !== 'folder' || (searchAll && searching) ? 'path' : undefined}
+                  onItemClick={onItemClick}
+                  onItemOpen={openItem}
+                  onItemMenu={onItemMenu}
+                  onRename={(item, name) => void rename(item, name)}
+                  onRenameCancel={() => setRenaming(null)}
+                  onDragStart={onDragStart}
+                  onDragEnd={() => setDragging(null)}
+                  onDropOnFolder={(id) => dragging && void move(dragging, id)}
+                  canDrop={!!dragging}
+                />
+              )}
+
+              {docs.hasNextPage && !searchAll && (
+                <div className="flex justify-center py-4">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void docs.fetchNextPage();
+                    }}
+                    disabled={docs.isFetchingNextPage}
+                    className="rounded-md border border-border/60 px-3 py-1.5 text-[12.5px] hover:bg-muted"
+                  >
+                    {docs.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  </button>
+                </div>
+              )}
+              {folderPage?.truncated && inFolder && (
+                <p className="px-4 pb-3 text-[12px] text-muted-foreground">Showing the first {folderPage.count} folders here.</p>
+              )}
+              {osDrop && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <span className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg">
+                    Drop to upload to {title}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Status bar */}
+          {listing && (
+            <div className="flex shrink-0 items-center gap-3 border-t border-border/60 bg-card px-3 py-1 text-[11.5px] text-muted-foreground">
+              <span>{items.length.toLocaleString()} item{items.length === 1 ? '' : 's'}{docs.hasNextPage ? '+' : ''}</span>
+              {selectedItems.length > 0 && (
+                <span>
+                  {selectedItems.length} selected{selectedDocs.length ? ` · ${formatSize(selectedSize)}` : ''}
+                </span>
+              )}
+              {clipboard && (
+                <span className="truncate">
+                  {clipboard.items.length} {clipboard.mode === 'cut' ? 'cut' : 'copied'} — paste into a folder
+                </span>
+              )}
+              {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+            </div>
+          )}
+        </section>
+
+        {/* Preview pane */}
+        {listing && showPreview && (
+          <aside className="hidden w-80 shrink-0 flex-col border-l border-border/60 bg-card lg:flex xl:w-96">
+            <PreviewPane
+              item={single}
+              count={selectedItems.length}
+              publicView={loc.kind === 'public'}
+              onOpen={(i) => openItem(i)}
+              onPreview={(d) => setPreviewDoc(d)}
+              onDownload={(d) => void download(d)}
+            />
+          </aside>
+        )}
+      </div>
+
+      <input
+        ref={uploadInput}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) void upload(e.target.files);
+          e.target.value = '';
+        }}
       />
 
-      {previewDoc && (
-        <DocumentPreviewModal
-          // Keyed so opening a second document remounts rather than reusing
-          // the first one's loaded text while the new one is still fetching.
-          key={previewDoc.id}
-          doc={previewDoc}
-          onClose={() => setPreviewDoc(null)}
-          onDownload={handleDownload}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+
+      {naming && (
+        <NameDialog
+          title={naming.kind === 'folder' ? 'New folder' : `New ${naming.opt.label.toLowerCase()}`}
+          initial={naming.kind === 'folder' ? 'New folder' : `Untitled.${naming.opt.ext}`}
+          busy={busy}
+          onSubmit={(name) => void create(name)}
+          onCancel={() => setNaming(null)}
         />
       )}
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6 entrance-overlay">
-          <div className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-lg overflow-hidden entrance-modal">
-            <div className="p-6 border-b border-border/60 flex items-center justify-between">
-              <div>
-                  <h2 className="text-xl font-bold text-foreground">Upload documents</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Add files to your private registry</p>
-              </div>
-              <button 
-                onClick={() => setShowUploadModal(false)} 
-                className="p-2 hover:bg-muted rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-8">
-              {/* The copy has always said "drag files here"; until now this was
-                  a bare <label> with no drop handler, so dragging did nothing. */}
-              <label
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'copy';
-                  setIsDropTarget(true);
-                }}
-                onDragLeave={() => setIsDropTarget(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDropTarget(false);
-                  if (e.dataTransfer.files?.length) handleUpload(e.dataTransfer.files);
-                }}
-                className={cn(
-                  "group border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer block",
-                  isDropTarget
-                    ? "border-primary bg-primary/10"
-                    : "border-border/60 hover:border-primary/50 bg-background/50 hover:bg-primary/5"
-                )}
-              >
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => e.target.files && handleUpload(e.target.files)}
-                />
-               
-                <div className="p-4 bg-card rounded-lg border border-border w-fit mx-auto mb-6">
-                    <Upload className="w-10 h-10 text-muted-foreground group-hover:text-primary" />
-                </div>
-                
-                <p className="text-base font-bold text-foreground mb-1 group-hover:text-primary transition-colors">
-                  Click or drag files here
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  PDF, JSON, CSV, TXT, or Markdown
-                </p>
-                {currentFolder && (
-                  <p className="text-xs text-primary mt-2">
-                    Uploading into “{currentFolder.name}”
-                  </p>
-                )}
-              </label>
-            </div>
-          </div>
-        </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          title={confirmDelete.length === 1 ? 'Move to Trash?' : `Move ${confirmDelete.length} items to Trash?`}
+          body={
+            confirmDelete.length === 1
+              ? `“${confirmDelete[0].kind === 'folder' ? `${confirmDelete[0].folder.name}” and everything in it` : `${confirmDelete[0].doc.filename}”`} will be moved to Trash. You can restore it later.`
+              : 'They will be moved to Trash, folders with everything in them. You can restore them later.'
+          }
+          confirmLabel="Move to Trash"
+          busy={busy}
+          onConfirm={() => void remove(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
 
-      {/* Share Confirmation Modal */}
-      {shareConfirmation.isOpen && shareConfirmation.doc && (
-        <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-6 animate-in fade-in duration-200"
-          onClick={() => setShareConfirmation({ isOpen: false, doc: null })}
-        >
-          <div 
-            className="bg-card border border-border/60 rounded-lg shadow-lg w-full max-w-md overflow-hidden entrance-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6 border-b border-border/60 flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Globe className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-foreground">Share document</h2>
-                <p className="text-xs text-muted-foreground mt-1">Make this file available to everyone</p>
-              </div>
-            </div>
-            
-            <div className="p-6 space-y-6">
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 flex gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
-                <p className="text-sm text-foreground/80 leading-relaxed">
-                    Sharing <strong>{shareConfirmation.doc.title}</strong> will make it visible to all users in the public library.
-                </p>
-              </div>
+      <FolderPickerModal
+        isOpen={!!movePicker}
+        excludeFolderIds={(movePicker ?? []).flatMap((i) => (i.kind === 'folder' ? [i.folder.id] : []))}
+        isBusy={busy}
+        onCancel={() => setMovePicker(null)}
+        onConfirm={(target) => movePicker && void move(movePicker, target)}
+      />
 
-              <div className="space-y-3">
-                <p className="text-xs font-bold text-muted-foreground ">Before you share:</p>
-                <ul className="space-y-2">
-                  {[
-                      "Ensure the file contains no sensitive data",
-                      "Confirm you have rights to share this content",
-                      "Verify file content is correct"
-                  ].map((item, i) => (
-                      <li key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <div className="w-1 h-1 rounded-full bg-primary" />
-                          {item}
-                      </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+      {properties && (
+        <PropertiesDialog
+          item={properties}
+          location={loc.kind === 'folder' ? ['Home', ...breadcrumbs.map((b) => b.name), ...(currentFolder ? [currentFolder.name] : [])].join(' / ') : title}
+          onClose={() => setProperties(null)}
+        />
+      )}
 
-            <div className="p-6 border-t border-border/60 flex justify-end gap-3 bg-background/50">
-              <button 
-                onClick={() => setShareConfirmation({ isOpen: false, doc: null })}
-                className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmShare}
-                className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm transition-colors hover:bg-primary/90 flex items-center gap-2"
-              >
-                <Globe className="w-4 h-4" />
-                Share document
-              </button>
-            </div>
+      {shareDoc && (
+        <ConfirmDialog
+          title="Share to the public library?"
+          body={`Everyone on the platform will be able to find and read “${shareDoc.filename}”. Make sure it has no private or sensitive information and that you have the right to share it.`}
+          confirmLabel="Share"
+          danger={false}
+          onConfirm={() => void toggleShare(shareDoc, true)}
+          onCancel={() => setShareDoc(null)}
+        />
+      )}
+
+      {previewDoc && (
+        <DocumentPreviewModal key={previewDoc.id} doc={previewDoc} onClose={() => setPreviewDoc(null)} onDownload={(d) => void download(d)} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+
+function Cmd({
+  label, icon: I, onClick, disabled, wide,
+}: { label: string; icon: typeof Eye; onClick: () => void; disabled?: boolean; wide?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-foreground/80 hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+    >
+      <I className="h-4 w-4" />
+      <span className={cn(wide ? 'hidden md:inline' : 'hidden xl:inline')}>{label}</span>
+    </button>
+  );
+}
+
+function Crumb({
+  label, icon, onClick, onDrop, current,
+}: { label: string; icon?: React.ReactNode; onClick?: () => void; onDrop?: () => void; current?: boolean }) {
+  const [over, setOver] = useState(false);
+  return (
+    <span className="flex min-w-0 items-center">
+      {!icon && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />}
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!onClick}
+        onDragOver={(e) => {
+          if (!onDrop) return;
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          onDrop?.();
+        }}
+        aria-current={current ? 'page' : undefined}
+        className={cn(
+          'flex min-w-0 items-center gap-1 truncate rounded px-1.5 py-0.5',
+          current ? 'font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          !onClick && 'cursor-default hover:bg-transparent',
+          over && 'bg-primary/20 ring-1 ring-primary',
+        )}
+        title={label}
+      >
+        {icon}
+        <span className="truncate">{label}</span>
+      </button>
+    </span>
+  );
+}
+
+function EmptyState({
+  searching, query, loc, firstRun, onUpload, onNew, onNewFolder,
+}: {
+  searching: boolean;
+  query: string;
+  loc: Location;
+  firstRun: boolean;
+  onUpload: () => void;
+  onNew: () => void;
+  onNewFolder: () => void;
+}) {
+  if (searching) {
+    return (
+      <div className="px-6 py-20 text-center">
+        <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
+        <p className="font-medium">No matches for “{query}”</p>
+        <p className="mt-1 text-sm text-muted-foreground">Try a different name, or search all your files.</p>
+      </div>
+    );
+  }
+  if (loc.kind === 'public') {
+    return <p className="px-6 py-20 text-center text-sm text-muted-foreground">Nobody has shared a file to the public library yet.</p>;
+  }
+  if (loc.kind === 'recent') {
+    return <p className="px-6 py-20 text-center text-sm text-muted-foreground">No files yet — anything you upload, create, or ask an agent to make shows up here.</p>;
+  }
+  if (firstRun) {
+    return (
+      <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-20 text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 rounded-full bg-muted p-5">
+          <FolderIcon className="h-10 w-10 text-muted-foreground/50" />
+        </div>
+        <h3 className="mb-1 text-lg font-semibold">Your files live here</h3>
+        <p className="mb-6 text-sm text-muted-foreground">
+          Upload documents, create new ones, or ask the assistant to make one — files agents write appear here too.
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button type="button" onClick={onUpload} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">
+            <Upload className="h-4 w-4" /> Upload files
+          </button>
+          <button type="button" onClick={onNew} className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted">
+            <FilePlus2 className="h-4 w-4" /> New document
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="px-6 py-20 text-center" onClick={(e) => e.stopPropagation()}>
+      <p className="text-sm text-muted-foreground">This folder is empty.</p>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        Drop files here,{' '}
+        <button type="button" onClick={onUpload} className="text-primary hover:underline">upload</button>,{' '}
+        <button type="button" onClick={onNew} className="text-primary hover:underline">create a document</button>, or{' '}
+        <button type="button" onClick={onNewFolder} className="text-primary hover:underline">add a folder</button>.
+      </p>
+    </div>
+  );
+}
+
+function PreviewPane({
+  item, count, publicView, onOpen, onPreview, onDownload,
+}: {
+  item: Item | null;
+  count: number;
+  publicView: boolean;
+  onOpen: (i: Item) => void;
+  onPreview: (d: Document) => void;
+  onDownload: (d: Document) => void;
+}) {
+  if (!item) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        <Eye className="mb-2 h-6 w-6 opacity-40" />
+        {count > 1 ? `${count} items selected` : 'Select a file to preview it here.'}
+      </div>
+    );
+  }
+  if (item.kind === 'folder') {
+    const f = item.folder;
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+        <FolderIcon className="h-14 w-14 fill-amber-400/80 text-amber-500" />
+        <p className="font-medium">{f.name}</p>
+        <p className="text-[12.5px] text-muted-foreground">{f.document_count} files · {f.child_count} folders</p>
+        <button type="button" onClick={() => onOpen(item)} className="mt-2 rounded-md border border-border/60 px-3 py-1.5 text-[13px] hover:bg-muted">
+          Open folder
+        </button>
+      </div>
+    );
+  }
+  const d = item.doc;
+  const app = publicView ? undefined : defaultAppFor(d);
+  if (d.id < 0) {
+    return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</div>;
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-border/60 p-3">
+        <div className="flex items-start gap-2">
+          <FileIcon doc={d} className="mt-0.5 h-5 w-5" />
+          <div className="min-w-0">
+            <p className="break-words text-[13.5px] font-medium">{d.filename}</p>
+            <p className="text-[11.5px] text-muted-foreground">
+              {typeName(d)} · {formatSize(d.file_size)} · {formatDate(d.updated_at)}
+            </p>
           </div>
         </div>
-      )}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {app && (
+            <button type="button" onClick={() => onOpen(item)} className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground">
+              <app.icon className="h-3.5 w-3.5" /> Open in {app.title}
+            </button>
+          )}
+          <button type="button" onClick={() => onPreview(d)} className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-[12px] hover:bg-muted">
+            <Eye className="h-3.5 w-3.5" /> Full preview
+          </button>
+          <button type="button" onClick={() => onDownload(d)} className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-[12px] hover:bg-muted">
+            <Download className="h-3.5 w-3.5" /> Download
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground" title={formatDateTime(d.updated_at)}>
+          {locationOf(d)}
+        </p>
+      </div>
+      <FilePreview key={d.id} doc={d} className="min-h-0 flex-1 overflow-auto" />
+    </div>
+  );
+}
+
+function TrashView({
+  loading, folders, docs, days, onRestore,
+}: {
+  loading: boolean;
+  folders: Folder[];
+  docs: Document[];
+  days: number;
+  onRestore: (p: { folder_ids?: number[]; document_ids?: number[] }) => void;
+}) {
+  if (loading) {
+    return <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
+  }
+  if (!folders.length && !docs.length) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <Trash2 className="mb-3 h-10 w-10 text-muted-foreground/30" />
+        <p className="text-sm text-muted-foreground">Trash is empty.</p>
+      </div>
+    );
+  }
+  const row = (key: string, name: string, kind: string, deleted: string | null | undefined, onClick: () => void, I: typeof Eye, tint: string) => (
+    <tr key={key} className="hover:bg-muted/60">
+      <td className="py-1.5 pl-4 pr-2">
+        <span className="flex min-w-0 items-center gap-2"><I className={cn('h-4 w-4 shrink-0', tint)} /><span className="truncate">{name}</span></span>
+      </td>
+      <td className="hidden px-3 text-muted-foreground sm:table-cell">{kind}</td>
+      <td className="px-3 text-muted-foreground">{formatDate(deleted)}</td>
+      <td className="pr-3 text-right">
+        <button type="button" onClick={onClick} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12.5px] hover:bg-muted">
+          <RotateCcw className="h-3.5 w-3.5" /> Restore
+        </button>
+      </td>
+    </tr>
+  );
+  return (
+    <div className="min-h-0 flex-1 overflow-auto">
+      <p className="px-4 py-2 text-[12.5px] text-muted-foreground">Items here are removed permanently after {days} days.</p>
+      <table className="w-full table-fixed text-[13px]">
+        <colgroup><col /><col className="hidden w-40 sm:table-column" /><col className="w-32" /><col className="w-28" /></colgroup>
+        <thead className="text-[12px] text-muted-foreground">
+          <tr>
+            <th className="py-1.5 pl-4 text-left font-medium">Name</th>
+            <th className="hidden px-3 text-left font-medium sm:table-cell">Type</th>
+            <th className="px-3 text-left font-medium">Deleted</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {folders.map((f) => row(`f${f.id}`, f.name, 'File folder', f.deleted_at, () => onRestore({ folder_ids: [f.id] }), FolderIcon, 'text-amber-500'))}
+          {docs.map((d) => row(`d${d.id}`, d.filename || d.title, typeName(d), d.deleted_at, () => onRestore({ document_ids: [d.id] }), fileIcon(d), fileTint(d)))}
+        </tbody>
+      </table>
     </div>
   );
 }

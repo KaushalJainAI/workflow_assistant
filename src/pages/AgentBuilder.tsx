@@ -1,12 +1,13 @@
 /**
- * Agent builder — the knob board, plus the agent that dials it for you.
+ * Agent builder — the knob board, plus the agent that edits it for you.
  *
  * Two panes on purpose. The right side is the whole configuration, always
- * visible, always editable by hand. The left side is the "agent of creating
- * agents": you describe the job, it adjusts the settings and explains why, and every change
+ * visible, always editable by hand. The left side proposes edits: you describe
+ * the change, it adjusts the settings and explains why, and every change
  * it makes lights up on the right so nothing happens behind your back.
+ * Creation lives in the wizard at /agents/new; this pane never creates.
  *
- * Generating a config you cannot see or override would be the wrong trade —
+ * Proposing a config you cannot see or override would be the wrong trade —
  * the point of the board is that the agent's choices stay inspectable.
  */
 import { useMemo, useRef, useState, useEffect } from 'react';
@@ -62,13 +63,6 @@ import { useAuth } from '../contexts/authState';
 import SidebarMenuButton from '../components/layout/SidebarMenuButton';
 
 type Msg = { role: 'user' | 'agent'; text: string; changes?: Change[] };
-
-const STARTERS = [
-  'Read invoices from Gmail every Monday and chase anything overdue by 30 days',
-  'Watch Drive for files nobody has opened in 3 years and propose what to archive',
-  'Classify support tickets and draft a first reply, but never send without asking',
-  'Answer questions about our uploaded spreadsheets by writing Python',
-];
 
 /* ---------- small building blocks ---------- */
 
@@ -923,13 +917,13 @@ export default function AgentBuilder() {
                 : 'border-transparent text-muted-foreground',
             )}
           >
-            {pane === 'chat' ? 'Describe it' : 'Settings'}
+            {pane === 'chat' ? 'Assistant' : 'Settings'}
           </button>
         ))}
       </div>
 
       <div className="flex-1 flex min-h-0">
-        {/* ---- builder chat (deprecated: creation moved to /agents/new wizard) ---- */}
+        {/* ---- builder edit assistant (creation lives in /agents/new wizard) ---- */}
         <div className={cn(
           'w-full lg:w-[420px] xl:w-[460px] border-r border-border flex-col min-h-0',
           mobilePane === 'chat' ? 'flex' : 'hidden lg:flex',
@@ -946,19 +940,11 @@ export default function AgentBuilder() {
                 <div className="w-10 h-10 rounded bg-agent-subtle border border-agent-line flex items-center justify-center mb-3">
                   <Bot className="w-5 h-5 text-agent" />
                 </div>
-                <h2 className="font-semibold mb-1">What should this agent do?</h2>
+                <h2 className="font-semibold mb-1">What should change?</h2>
                 <p className="text-[13px] text-muted-foreground leading-relaxed mb-4">
-                  Say it in plain language. I'll adjust the settings on the right and explain why
-                  I picked each one — nothing is hidden, and you can override all of it.
+                  Say it in plain language. I'll propose settings changes on the right and explain why
+                  I picked each one — nothing is saved until you press Save, and you can override all of it.
                 </p>
-                <div className="space-y-2">
-                  {STARTERS.map((s) => (
-                    <button key={s} onClick={() => send(s)} disabled={pending}
-                      className="w-full text-left px-3 py-2 text-[13px] bg-card hover:bg-accent border border-border rounded transition-colors disabled:opacity-50">
-                      {s}
-                    </button>
-                  ))}
-                </div>
               </div>
             ) : (
               messages.map((msg, i) => (
@@ -1000,7 +986,7 @@ export default function AgentBuilder() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && send(input)}
                 disabled={pending}
-                placeholder={pending ? 'Working…' : 'Describe what it should do…'}
+                placeholder={pending ? 'Working…' : 'Describe a change…'}
                 className="flex-1 h-10 px-3 rounded border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
               />
               <SendButton onClick={() => send(input)} disabled={!input.trim() || pending} />

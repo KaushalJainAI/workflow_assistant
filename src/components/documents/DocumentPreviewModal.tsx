@@ -1,20 +1,20 @@
 /**
  * Read one document without leaving the Documents page.
  *
- * Only the frame lives here — title, location, download, close. What is inside
- * is `components/files/FilePreview.tsx`, shared with the chat's file drawer so
- * a file looks the same wherever it is opened. The reasoning about where the
- * bytes come from, how HTML is contained and how truncation is stated lives
- * with that component.
+ * Only the frame lives here — title, location, open-in-app, download, close.
+ * What is inside is `components/files/FilePreview.tsx`, shared with the chat's
+ * file drawer so a file looks the same wherever it is opened. Editing is the
+ * apps' job (`/apps/<id>?file=`): the button here hands the file to the one
+ * that suits it, rather than keeping a second, weaker editor in a modal.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Download, X } from 'lucide-react';
 
 import type { Document } from '../../api/documents';
+import { defaultAppFor, openInAppPath } from '../../lib/apps';
 import FilePreview from '../files/FilePreview';
-import EditorByType, { isEditableType } from '../files/EditorByType';
-import { cn } from '../../lib/utils';
 
 interface Props {
   doc: Document;
@@ -23,8 +23,7 @@ interface Props {
 }
 
 export function DocumentPreviewModal({ doc, onClose, onDownload }: Props) {
-  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
-  const editable = isEditableType(doc.file_type);
+  const app = defaultAppFor(doc);
   // Escape closes, matching every other modal on the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,23 +58,13 @@ export function DocumentPreviewModal({ doc, onClose, onDownload }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {editable && (
-              <div className="mr-1 flex rounded-md border border-border/60 p-0.5 text-[11px]" role="group" aria-label="View">
-                {(['preview', 'edit'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    aria-pressed={mode === m}
-                    onClick={() => setMode(m)}
-                    className={cn(
-                      'rounded px-2 py-0.5 capitalize transition-colors',
-                      mode === m ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
+            {app && (
+              <Link
+                to={openInAppPath(doc, app)!}
+                className="mr-1 inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <app.icon className="h-3.5 w-3.5" /> Open in {app.title}
+              </Link>
             )}
             {onDownload && (
               <button
@@ -92,11 +81,7 @@ export function DocumentPreviewModal({ doc, onClose, onDownload }: Props) {
           </div>
         </div>
 
-        {mode === 'edit' && editable ? (
-          <EditorByType docId={doc.id} />
-        ) : (
-          <FilePreview doc={doc} className="flex-1" />
-        )}
+        <FilePreview doc={doc} className="min-h-0 flex-1 overflow-auto" />
       </div>
     </div>
   );

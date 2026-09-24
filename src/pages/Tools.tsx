@@ -4,7 +4,7 @@
  *
  * Vocabulary: Tool = callable function (code, ours), Plugin = external MCP pack
  * (Connections), Connector = credential (Credentials). Custom tools — your own
- * API and database connections, private until shared — live in "My tools"
+ * API and database connections, private to you — live in "My tools"
  * above the catalogue (`components/tools/CustomTools.tsx`).
  *
  * Two levels of configuration, and the page says which is which rather than
@@ -49,7 +49,6 @@ import PageHeader from '../components/layout/PageHeader';
 import SearchInput from '../components/ui/SearchInput';
 import { Button } from '../components/ui/Button';
 import {
-  InstallFromLinkDialog,
   MyToolsSection,
   NewToolDialog,
 } from '../components/tools/CustomTools';
@@ -734,7 +733,9 @@ export default function Tools() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [toolDialog, setToolDialog] = useState<'new' | 'link' | null>(null);
+  // Single entry point for creation lives in "My tools" below — the header
+  // used to carry a second "New tool" button doing the same thing.
+  const [showNewTool, setShowNewTool] = useState(false);
 
   const mutation = useMutation({
     mutationFn: (changes: Record<string, ToolChange>) => toolsService.update(changes),
@@ -844,15 +845,6 @@ export default function Tools() {
         subtitle={`${data.enabledTools} of ${data.totalTools} switched on${
           changedCount > 0 ? ` · ${changedCount} changed from default` : ''
         }`}
-        actions={
-          <Button
-            size="md"
-            className="whitespace-nowrap"
-            onClick={() => setToolDialog('new')}
-          >
-            New tool
-          </Button>
-        }
       >
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="group flex-1">
@@ -892,10 +884,7 @@ export default function Tools() {
 
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-8 custom-scrollbar">
         {!searching && (
-          <MyToolsSection
-            onNew={() => setToolDialog('new')}
-            onInstallLink={() => setToolDialog('link')}
-          />
+          <MyToolsSection onNew={() => setShowNewTool(true)} />
         )}
 
         {visible.length === 0 && (
@@ -969,11 +958,8 @@ export default function Tools() {
         />
       )}
 
-      {toolDialog === 'new' && (
-        <NewToolDialog onClose={() => setToolDialog(null)} />
-      )}
-      {toolDialog === 'link' && (
-        <InstallFromLinkDialog onClose={() => setToolDialog(null)} />
+      {showNewTool && (
+        <NewToolDialog onClose={() => setShowNewTool(false)} />
       )}
     </div>
   );

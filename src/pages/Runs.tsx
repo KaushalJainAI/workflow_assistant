@@ -16,7 +16,6 @@
  * at each step, which configuration revision it ran under, and — for a
  * delegated run — who asked for it and why.
  */
-import { useEffect, useState } from 'react';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -478,9 +477,29 @@ export default function Runs() {
   const [showEval, setShowEval] = usePersistedState<boolean>('runs.showEval', false);
   // The approval queue above the list: the only state that costs time while
   // producing nothing. Same query (and timer) the nav badge reads.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { data: pending = [] } = useHitlPending();
+  // The open run lives in the URL (`?run=<id>`), so a run can be linked to.
+  // "Open that run" on a delegated run and the builder's Run button both link
+  // here, and the id used to be dropped on arrival: the page opened with
+  // nothing expanded and the user had to find the run by eye.
+  // The selected approval lives in the URL (`?request=<id>`) next to `?run=`:
+  // a notification's "Open" selects the request it is about instead of
+  // dropping the user on the queue top. Read from `useSearchParams` directly
+  // rather than mirrored into state — the two sync effects that kept a copy
+  // chased each other and tripped the set-state-in-effect rule. Adopted and
+  // published with `replace` so following a link never spams history.
+  const [params, setParams] = useSearchParams();
+  const openId = params.get('run');
+  const selectedId = params.get('request');
+  const setSelectedId = (id: string | null) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) next.set('request', id);
+      else next.delete('request');
+      return next;
+    }, { replace: true });
+  };
   const respond = useMutation({
     mutationFn: ({ id, action, response }: { id: string; action: HITLResponse['action']; response?: string }) =>
       orchestratorService.respondToHITL(id, { action, response }),
@@ -497,12 +516,6 @@ export default function Runs() {
     ? pending.reduce((a, b) => (a.created_at < b.created_at ? a : b))
     : null;
   const selected = pending.find((r) => r.request_id === selectedId) ?? pending[0] ?? null;
-  // The open run lives in the URL (`?run=<id>`), so a run can be linked to.
-  // "Open that run" on a delegated run and the builder's Run button both link
-  // here, and the id used to be dropped on arrival: the page opened with
-  // nothing expanded and the user had to find the run by eye.
-  const [params, setParams] = useSearchParams();
-  const openId = params.get('run');
   const setOpenId = (id: string | null) => {
     setParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -511,31 +524,6 @@ export default function Runs() {
       return next;
     }, { replace: true });
   };
-
-  // The selected approval lives in the URL (`?request=<id>`) next to `?run=`:
-  // a notification's "Open" selects the request it is about instead of
-  // dropping the user on the queue top. Adopted and published with `replace`
-  // so following a link never spams history — and stable when equal, so the
-  // two effects below cannot chase each other.
-  useEffect(() => {
-    const r = params.get('request');
-    if (r && r !== selectedId) setSelectedId(r);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params]);
-  useEffect(() => {
-    const r = params.get('request');
-    if (selectedId ? r === selectedId : !r) return;
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (selectedId) next.set('request', selectedId);
-        else next.delete('request');
-        return next;
-      },
-      { replace: true },
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
 
   // One agent's runs, from `?agent=<id>` — the builder and Insights link here
   // with it. `?status=` / `?failure_category=` arrive the same way from the

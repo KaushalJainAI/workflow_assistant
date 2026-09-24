@@ -16,7 +16,7 @@ import apiClient from './client';
 export type SupervisionPolicy = 'none' | 'failures' | 'disagreement' | 'sampled' | 'all';
 
 export type RunStatus =
-  | 'queued' | 'running' | 'awaiting_review' | 'completed' | 'failed' | 'cancelled';
+  | 'pending' | 'queued' | 'running' | 'awaiting_review' | 'completed' | 'failed' | 'cancelled';
 
 export interface GraderSpec {
   type: string;
@@ -42,8 +42,38 @@ export interface EvalCase {
   weight: number;
   tags: string[];
   is_active: boolean;
+  /** The world version this case was built for; null predates worlds. */
+  world_version: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * What an eval run wanted from a person. An eval never pauses: a call that
+ * would have waited for approval, and every `ask_user` question, is recorded
+ * here instead (`agents/agent/runtime.py::collect_intents`).
+ */
+export type EvalIntent =
+  | { kind: 'approval'; tool: string; args?: Record<string, unknown>; sentence?: string; call_id?: string; iteration?: number }
+  | { kind: 'question'; question: string; assumption?: string; call_id?: string; iteration?: number };
+
+/** What an eval does with a call that would have paused: run it, or decline it. */
+export type GatedCalls = 'run' | 'block';
+
+/** Tag on a generated or imported case that has not been accepted yet. */
+export const DRAFT_TAG = 'needs-review';
+
+/** A generated or imported case nobody has accepted yet; the runner skips it. */
+export function isDraft(c: EvalCase): boolean {
+  return !c.is_active && c.tags.includes(DRAFT_TAG);
+}
+
+export interface GeneratedCases {
+  cases: EvalCase[];
+  /** Why drafted cases were thrown away (e.g. named a tool the agent lacks). */
+  rejected?: string[];
+  already_imported?: number;
+  cost_usd?: string | null;
 }
 
 export interface LastRun {
@@ -74,6 +104,7 @@ export interface EvalSuite {
   sample_percent: number;
   reviewer: number | null;
   concurrency: number;
+  gated_calls: GatedCalls;
   tags: string[];
   is_active: boolean;
   case_count: number;
@@ -114,6 +145,8 @@ export interface EvalRun {
   completed_at: string | null;
   error_message: string;
   notes: string;
+  /** The world version this sweep ran on; null for world-less suites. */
+  world_version: number | null;
   created_at: string;
 }
 
@@ -172,6 +205,9 @@ export interface EvalResult {
   tokens: number;
   duration_ms: number | null;
   error_message: string;
+  intents?: EvalIntent[];
+  /** What the run changed in the eval world: files written, mail sent, … */
+  env_changes?: Record<string, unknown>;
   /** Feeds `/api/logs/executions/{id}/` — score straight to full trace. */
   execution_id: string | null;
   created_at: string;
@@ -187,6 +223,42 @@ export interface QueueItem extends EvalResult {
 export interface SuiteListResponse {
   suites: EvalSuite[];
   health: unknown;
+}
+
+/**
+ * One fake situation a suite's cases share. Draft until a person accepts it
+ * on this page; a regenerated world is a new version, never an edit.
+ */
+export interface EvalWorld {
+  id: number;
+  suite: number;
+  version: number;
+  status: 'draft' | 'accepted';
+  brief: string;
+  surfaces: Record<string, unknown>;
+  fixtures: Record<string, unknown>;
+  facts: Array<{ key?: string; value?: unknown; statement?: string }>;
+  created_by_model: string;
+  cost_usd: string | null;
+  case_count: number;
+  is_live: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SuiteWorld {
+  live: EvalWorld | null;
+  draft: EvalWorld | null;
+  versions: number[];
+}
+
+export interface GeneratedWorld {
+  world: EvalWorld;
+  cases: EvalCase[];
+  rejected?: string[];
+  tokens?: number;
+  cost_usd?: string | null;
+  model?: string;
 }
 
 const evalsService = {
@@ -247,6 +319,10 @@ const evalsService = {
     return { ...data, results: data?.results ?? [] };
   },
 
+  deleteRun: async (runId: string): Promise<void> => {
+    await apiClient.delete(`/eval/runs/${runId}/`);
+  },
+
   cancelRun: async (runId: string): Promise<void> => {
     await apiClient.post(`/eval/runs/${runId}/cancel/`, {});
   },
@@ -260,7 +336,7 @@ const evalsService = {
   submitReview: async (
     resultId: number,
     body: { verdict: Verdict; comment?: string; corrected_answer?: string },
-  ): Promise<unknown> => {
+  ): Promise<{ deleted?: boolean }> => {
     const { data } = await apiClient.post(`/eval/results/${resultId}/review/`, body);
     return data;
   },
@@ -292,9 +368,55 @@ const evalsService = {
     return data;
   },
 
+  /** Drafts cases from the suite agent's configuration (judge model, billed). */
+  generateCases: async (suiteId: number, body: { count?: number; focus?: string } = {}): Promise<GeneratedCases> => {
+    const { data } = await apiClient.post<GeneratedCases>(`/eval/suites/${suiteId}/generate/`, body);
+    return data;
+  },
+
+  /** Drafts cases from the suite agent's recent real runs. Free. */
+  importRuns: async (
+    suiteId: number, body: { source?: 'all' | 'rated' | 'thumbs_down'; limit?: number } = {},
+  ): Promise<GeneratedCases> => {
+    const { data } = await apiClient.post<GeneratedCases>(`/eval/suites/${suiteId}/import-runs/`, body);
+    return data;
+  },
+
+  reviewDrafts: async (
+    suiteId: number, body: { accept?: number[]; reject?: number[] },
+  ): Promise<{ accepted: number; rejected: number; refused?: number[]; refused_reason?: string }> => {
+    const { data } = await apiClient.post(`/eval/suites/${suiteId}/drafts/`, body);
+    return data;
+  },
+
   caseFromRun: async (body: { execution_id: string; suite_id?: number }): Promise<EvalCase> => {
     const { data } = await apiClient.post<EvalCase>('/eval/cases/from-run/', body);
     return data;
+  },
+
+  /** The suite's live (accepted) world and its newest draft, if any. */
+  getWorld: async (suiteId: number): Promise<SuiteWorld> => {
+    const { data } = await apiClient.get<SuiteWorld>(`/eval/suites/${suiteId}/world/`);
+    return { live: data?.live ?? null, draft: data?.draft ?? null, versions: data?.versions ?? [] };
+  },
+
+  /** Judge-build a world and its cases. Drafts only — minutes, billed. */
+  generateWorld: async (
+    suiteId: number, body: { focus?: string; cases?: number } = {},
+  ): Promise<GeneratedWorld> => {
+    const { data } = await apiClient.post<GeneratedWorld>(`/eval/suites/${suiteId}/world/generate/`, body);
+    return data;
+  },
+
+  /** Accept a draft world. Older versions' cases go stale. */
+  acceptWorld: async (worldId: number): Promise<EvalWorld> => {
+    const { data } = await apiClient.post<EvalWorld>(`/eval/worlds/${worldId}/accept/`, {});
+    return data;
+  },
+
+  /** Delete a draft world. Accepted worlds are history and refuse. */
+  deleteWorld: async (worldId: number): Promise<void> => {
+    await apiClient.delete(`/eval/worlds/${worldId}/`);
   },
 };
 

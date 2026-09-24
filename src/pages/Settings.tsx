@@ -5,6 +5,7 @@ import {
   Settings as SettingsIcon,
   User,
   Bell,
+  Brain,
   // Shield,  // MVP: unused while the Security tab is hidden
   Palette,
   Code,
@@ -32,6 +33,7 @@ import nodeService from '../api/nodeService';
 import Select from '../components/ui/Select';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import NotificationsTab from '../components/settings/NotificationsTab';
+import MemoryTab from '../components/settings/MemoryTab';
 import { useAIModels } from '../hooks/useAIModels';
 import {
   DEFAULT_EFFORT, EFFORT_LABELS, effortLevelsFor, nearestEffort,
@@ -64,7 +66,7 @@ function languageCode(stored: string | undefined): string {
   return hit?.value ?? 'en';
 }
 
-type SettingsTab = 'general' | 'account' | 'notifications' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
+type SettingsTab = 'general' | 'account' | 'notifications' | 'memory' | 'security' | 'appearance' | 'api' | 'insights' | 'billing';
 
 
 /**
@@ -95,7 +97,7 @@ export default function Settings() {
   // replaced away so a reload keeps the user's own last tab, not the link's.
   useEffect(() => {
     const asked = searchParams.get('tab');
-    const visible: readonly string[] = ['general', 'account', 'insights', 'billing', 'notifications', 'appearance', 'api'];
+    const visible: readonly string[] = ['general', 'account', 'insights', 'billing', 'notifications', 'memory', 'appearance', 'api'];
     if (asked && visible.includes(asked)) {
       setActiveTab(asked as SettingsTab);
       setSearchParams({}, { replace: true });
@@ -351,6 +353,7 @@ export default function Settings() {
     { id: 'insights' as const, label: 'Insights', icon: BarChart3 },
     { id: 'billing' as const, label: 'Billing', icon: CreditCard },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+    { id: 'memory' as const, label: 'Memory', icon: Brain },
     // MVP: Security is the only tab with no `case` in renderContent(), so it
     // fell through to the "coming soon" default. Hidden rather than built out.
     // The 'security' member stays on SettingsTab and the default branch stays
@@ -914,6 +917,8 @@ export default function Settings() {
 
       case 'notifications':
         return <NotificationsTab />;
+      case 'memory':
+        return <MemoryTab />;
 
       default:
         return (

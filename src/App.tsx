@@ -6,6 +6,9 @@ import { AuthProvider } from './contexts/AuthContext';
 import ThemeSync from './components/layout/ThemeSync';
 import { useAuth } from './contexts/authState';
 import Sidebar from './components/layout/Sidebar';
+import Topbar from './components/layout/Topbar';
+import MobileTopBar from './components/layout/MobileTopBar';
+import MobileBottomNav from './components/layout/MobileBottomNav';
 import { useHITLReminders } from './hooks/useHITLReminders';
 import { useWebPush } from './hooks/useWebPush';
 import { ImagineProvider } from './contexts/ImagineContext';
@@ -39,6 +42,7 @@ const lazyPage = <T extends { default: React.ComponentType }>(
 
 const AIChat = lazyPage(() => import('./pages/AIChat'));
 const Apps = lazyPage(() => import('./pages/Apps'));
+const AppWorkspace = lazyPage(() => import('./pages/AppWorkspace'));
 const Dashboards = lazyPage(() => import('./pages/Dashboards'));
 const Legal = lazy(() => import('./pages/Legal'));
 const AgentBuilder = lazyPage(() => import('./pages/AgentBuilder'));
@@ -49,6 +53,7 @@ const Connections = lazyPage(() => import('./pages/Connections'));
 const Credentials = lazyPage(() => import('./pages/Credentials'));
 const Documents = lazyPage(() => import('./pages/Documents'));
 const Imagine = lazyPage(() => import('./pages/Imagine'));
+const Missions = lazyPage(() => import('./pages/Missions'));
 const OAuthCallback = lazyPage(() => import('./pages/OAuthCallback'));
 const Profile = lazyPage(() => import('./pages/Profile'));
 const Runs = lazyPage(() => import('./pages/Runs'));
@@ -77,7 +82,13 @@ function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   return children ? <>{children}</> : <Outlet />;
 }
 
-// Layout with sidebar
+// App shell — three navigation surfaces sharing lib/navigation.
+// Desktop: Topbar (brand left, primary tabs centre, actions right) + the
+// sidebar as the full catalogue beside it. Phones: MobileTopBar on top,
+// MobileBottomNav fixed at the bottom (Ask / Agents / New / Activity / More,
+// after nidhigrahudyog.com's Home / Shop / Chat / Offers / Orders row), and
+// the sidebar as a drawer for everything else. <main> carries bottom padding
+// below `md` so page content never slides under the fixed bar.
 const Layout = () => {
   const { isAuthenticated } = useAuth();
 
@@ -91,17 +102,22 @@ const Layout = () => {
   useWebPush(isAuthenticated);
 
   return (
-    <div className="flex h-viewport w-full bg-background text-foreground overflow-hidden">
-      <Sidebar />
-      <div className="flex-1 flex h-full overflow-hidden relative">
-        <main className="flex-1 h-full overflow-hidden relative">
-          <ErrorBoundary>
-            <RouteTransition>
-              <Outlet />
-            </RouteTransition>
-          </ErrorBoundary>
-        </main>
+    <div className="flex h-viewport w-full flex-col bg-background text-foreground overflow-hidden">
+      <Topbar />
+      <MobileTopBar />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex min-h-0 overflow-hidden relative">
+          <main className="flex-1 min-h-0 overflow-hidden relative pb-[68px] md:pb-0">
+            <ErrorBoundary>
+              <RouteTransition>
+                <Outlet />
+              </RouteTransition>
+            </ErrorBoundary>
+          </main>
+        </div>
       </div>
+      <MobileBottomNav />
       <ImagineGlobalTracker />
     </div>
   );
@@ -118,15 +134,20 @@ const LandingRoute = () => {
   }
   if (isAuthenticated) return <Navigate to="/ai-chat" replace />;
   return (
-    <div className="flex h-viewport w-full bg-background text-foreground overflow-hidden">
-      <Sidebar />
-      <div className="flex-1 flex h-full overflow-hidden relative">
-        <main className="flex-1 h-full overflow-hidden relative">
-          <ErrorBoundary>
-            <AIChat />
-          </ErrorBoundary>
-        </main>
+    <div className="flex h-viewport w-full flex-col bg-background text-foreground overflow-hidden">
+      <Topbar />
+      <MobileTopBar />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex min-h-0 overflow-hidden relative">
+          <main className="flex-1 min-h-0 overflow-hidden relative pb-[68px] md:pb-0">
+            <ErrorBoundary>
+              <AIChat />
+            </ErrorBoundary>
+          </main>
+        </div>
       </div>
+      <MobileBottomNav />
     </div>
   );
 };
@@ -180,6 +201,7 @@ const AppContent = () => {
               <Route path="/pages" element={<Pages />} />
               <Route path="/dashboards" element={<Dashboards />} />
               <Route path="/apps" element={<Apps />} />
+              <Route path="/apps/:appId" element={<AppWorkspace />} />
               {/* Connections merges the former "Data sources" (/connectors) and
                   "Tools" (/mcp-servers), which were two views of the same two
                   tables. Both paths redirect so existing links keep working. */}
@@ -208,6 +230,7 @@ const AppContent = () => {
               {/* Work — Activity absorbs Inbox: keep /inbox as redirect so deep links stay valid */}
               <Route path="/inbox" element={<Navigate to="/runs" replace />} />
               <Route path="/runs" element={<Runs />} />
+              <Route path="/missions" element={<Missions />} />
               <Route path="/schedules" element={<Schedules />} />
               {/* Build — creation is the orchestrator wizard; the builder is edit-only */}
               <Route path="/agents" element={<Agents />} />

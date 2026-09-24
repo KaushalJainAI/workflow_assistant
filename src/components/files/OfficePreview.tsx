@@ -18,7 +18,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { ImageIcon, Loader2 } from 'lucide-react';
 
-import { documentsService, type Document } from '../../api/documents';
+import { documentsService, type Document, type WorkbookGrid } from '../../api/documents';
 import ChartArtifact from '../chat/ChartArtifact';
 import {
   formatCell,
@@ -60,6 +60,12 @@ export default function OfficePreview({ doc: given, className }: { doc: Document
     );
   }
   const spec = officeSpecOf(doc.metadata);
+
+  if (!spec && doc.file_type === 'xlsx') {
+    // A workbook with no spec (uploaded, or edited cell by cell since it was
+    // rendered) is read from its real cells rather than from the extract.
+    return <LiveWorkbookPreview doc={doc} className={className} />;
+  }
 
   if (!spec) {
     // An uploaded Office file: no spec, but the extractor kept its text.
@@ -106,17 +112,44 @@ function Rich({ text, italic }: { text: string; italic?: boolean }) {
 /** Sizes are in container-width units, so a slide scales as one picture. */
 const cq = (n: number): CSSProperties => ({ fontSize: `${n}cqw`, lineHeight: 1.2 });
 
+/** A deck theme's colours, with safe fallbacks for a spec that lacks one. */
+function deckColors(t: DeckSpec['theme']): Colors {
+  return {
+    bg: hex(t?.background, '#ffffff'),
+    surface: hex(t?.surface, '#f3f5f8'),
+    text: hex(t?.text, '#1a1a1a'),
+    muted: hex(t?.muted, '#5f6368'),
+    accent: hex(t?.accent, '#2a78d6'),
+    onAccent: hex(t?.on_accent, '#ffffff'),
+    rule: hex(t?.rule, '#d9dde3'),
+  };
+}
+
+/** One slide drawn at 16:9, scaling as a single picture. Shared with the Slides app. */
+export function DeckSlide({ spec, index, className }: { spec: DeckSpec; index: number; className?: string }) {
+  const colors = deckColors(spec.theme);
+  const slide = spec.slides[index];
+  if (!slide) return null;
+  return (
+    <div
+      className={cn(
+        'relative aspect-[16/9] w-full overflow-hidden rounded-md border border-border/60 shadow-sm [container-type:inline-size]',
+        className,
+      )}
+      style={{ background: colors.bg, color: colors.text }}
+    >
+      <SlideBody slide={slide} c={colors} accentTitle={!!spec.theme?.accent_title} />
+      {slide.layout !== 'title' && (
+        <span className="absolute bottom-[3%] right-[5%]" style={{ ...cq(1.1), color: colors.muted }}>
+          {index + 1}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function DeckPreview({ spec }: { spec: DeckSpec }) {
   const t = spec.theme;
-  const colors = {
-    bg: hex(t.background, '#ffffff'),
-    surface: hex(t.surface, '#f3f5f8'),
-    text: hex(t.text, '#1a1a1a'),
-    muted: hex(t.muted, '#5f6368'),
-    accent: hex(t.accent, '#2a78d6'),
-    onAccent: hex(t.on_accent, '#ffffff'),
-    rule: hex(t.rule, '#d9dde3'),
-  };
   return (
     <div className="space-y-4 p-4">
       <p className="text-xs text-muted-foreground">
@@ -125,17 +158,7 @@ function DeckPreview({ spec }: { spec: DeckSpec }) {
       </p>
       {spec.slides.map((slide, i) => (
         <figure key={i} className="m-0">
-          <div
-            className="relative aspect-[16/9] w-full overflow-hidden rounded-md border border-border/60 shadow-sm [container-type:inline-size]"
-            style={{ background: colors.bg, color: colors.text }}
-          >
-            <SlideBody slide={slide} c={colors} accentTitle={t.accent_title} />
-            {slide.layout !== 'title' && (
-              <span className="absolute bottom-[3%] right-[5%]" style={{ ...cq(1.1), color: colors.muted }}>
-                {i + 1}
-              </span>
-            )}
-          </div>
+          <DeckSlide spec={spec} index={i} />
           {slide.notes && (
             <figcaption className="mt-1.5 px-1 text-[11px] text-muted-foreground">
               <span className="font-medium">Notes:</span> {slide.notes}
@@ -421,6 +444,88 @@ function WorkbookPreview({ spec }: { spec: WorkbookSpec }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function LiveWorkbookPreview({ doc, className }: { doc: Document; className?: string }) {
+  const [grid, setGrid] = useState<WorkbookGrid | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    documentsService
+      .workbook(doc.id)
+      .then((g) => { if (!cancelled) setGrid(g); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [doc.id]);
+
+  if (!grid) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+        {failed ? 'This workbook could not be read.' : (<><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>)}
+      </div>
+    );
+  }
+  const sheet = grid.sheets[Math.min(active, grid.sheets.length - 1)];
+  const rows = sheet?.rows.slice(0, 200) ?? [];
+  const width = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  return (
+    <div className={cn('min-h-0 overflow-auto p-4', className)}>
+      {grid.sheets.length > 1 && (
+        <div className="mb-3 flex flex-wrap gap-1" role="tablist" aria-label="Sheets">
+          {grid.sheets.map((s, i) => (
+            <button
+              key={s.name}
+              type="button"
+              role="tab"
+              aria-selected={i === active}
+              onClick={() => setActive(i)}
+              className={cn(
+                'rounded-md border px-2.5 py-1 text-xs transition-colors',
+                i === active ? 'border-primary/40 bg-primary/10 font-medium text-foreground' : 'border-border/60 text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {rows.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted-foreground">This sheet is empty.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border/60">
+          <table className="w-full border-collapse text-xs">
+            <tbody>
+              {rows.map((row, r) => (
+                <tr key={r} className={cn(r === 0 ? 'bg-muted/40 font-semibold' : r % 2 === 0 && 'bg-muted/20')}>
+                  {Array.from({ length: width }, (_, c) => {
+                    const v = row[c];
+                    const text = v === null || v === undefined ? '' : String(v);
+                    return (
+                      <td
+                        key={c}
+                        className={cn(
+                          'whitespace-nowrap border-b border-border/40 px-3 py-1.5',
+                          typeof v === 'number' && 'text-right tabular-nums',
+                          text.startsWith('=') && 'font-mono text-[11px] text-muted-foreground',
+                        )}
+                      >
+                        {text}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-2 text-xs text-muted-foreground">
+        {sheet && sheet.row_count > rows.length ? `Showing ${rows.length} of ${sheet.row_count.toLocaleString()} rows. ` : ''}
+        Formulas are shown as written.
+      </p>
     </div>
   );
 }

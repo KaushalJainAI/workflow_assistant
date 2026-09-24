@@ -1,384 +1,186 @@
-# Beginner's Guide to the n8n Clone Frontend
+# Frontend Beginner's Guide
 
-Welcome! This guide explains everything about this project in simple terms. If you're a beginner software engineer, this is for you! 
+A plain-language tour of the web app. For the whole system (backend too),
+start with [`../START_HERE.md`](../START_HERE.md).
 
----
-
-## What is This Project?
-
-This is a **workflow automation tool** frontend, similar to [n8n](https://n8n.io/). Think of it like a visual programming tool where you:
-
-1. **Drag and drop boxes (nodes)** onto a canvas
-2. **Connect them with lines (edges)** to create a flow
-3. **Each node does something** (send email, fetch data, etc.)
-4. **The workflow runs** from start to finish
-
-**Example Workflow:**
-```
-[Manual Trigger] → [HTTP Request] → [Set Data] → [Send Email]
-```
-This would: Start manually → Fetch data from API → Transform it → Email the result
+> Older versions of this guide described a drag-and-drop workflow canvas.
+> That canvas was removed in August 2026. The app is now about **chat** and
+> **agents**. If you see "workflow" or "node" in a name, it is left over.
 
 ---
 
-## Technologies Used
+## What the app does
 
-| Technology | What It Does | Why We Use It |
-|------------|--------------|---------------|
-| **React 19** | UI library | Build interactive components |
-| **TypeScript** | JavaScript + types | Catch bugs before runtime |
-| **Vite** | Build tool | Super fast development server |
-| **TailwindCSS** | CSS framework | Style with utility classes |
-| **ReactFlow** | Flow chart library | The drag-and-drop canvas |
-| **Lucide React** | Icons | Beautiful SVG icons |
+You sign in and land on **Ask** (the chat). From the menu you can reach:
 
----
+| Menu | Route | Page file | What it is |
+|---|---|---|---|
+| Ask | `/ai-chat` | `pages/AIChat.tsx` → `components/chat/StandaloneChat.tsx` | Chat with the assistant |
+| Activity | `/runs` | `pages/Runs.tsx` | Every agent run, and runs waiting for your approval |
+| Automations | `/agents`, `/agents/:id` | `pages/Agents.tsx`, `pages/AgentBuilder.tsx` | Your saved agents, and the editor for one |
+| Explore | `/templates` | `pages/Templates.tsx` | Ready-made agents and packs to install |
+| Tools | `/tools` | `pages/Tools.tsx` | Switch tools on/off; your custom tools |
+| Schedules | `/schedules` | `pages/Schedules.tsx` | When agents run automatically |
+| Studio | `/imagine` | `pages/Imagine.tsx` | Image / video / audio generation |
+| Skills | `/skills` | `pages/Skills.tsx` | Reusable instruction snippets |
+| Evals | `/evals` | `pages/Evals.tsx` | Testing how good an agent is |
+| Connections | `/connections` | `pages/Connections.tsx` | Gmail, Drive, Slack, MCP servers... |
+| Credentials | `/credentials` | `pages/Credentials.tsx` | Saved API keys |
+| Apps | `/apps` | `pages/Apps.tsx` | Shortcuts into your files by type |
+| Documents | `/documents` | `pages/Documents.tsx` | Your files, folders and knowledge bases |
+| Dashboards | `/dashboards` | `pages/Dashboards.tsx` | Live tiles an agent saved |
+| Pages | `/pages` | `pages/Pages.tsx` | Pages you published by link |
+| Settings / Profile | `/settings`, `/profile` | `pages/Settings.tsx`, `pages/Profile.tsx` | Your preferences, including Memory (what the assistant remembers about you) |
+| Missions | `/missions` | `pages/Missions.tsx` | Long goals that span many agent runs |
 
-## Project Structure Explained
+Public pages without login: `/a/:slug` (a shared agent) and `/p/:slug` (a
+published page).
+
+## Tools we use
+
+| Library | What for |
+|---|---|
+| React 19 + TypeScript | The UI |
+| Vite | Dev server and build |
+| Tailwind CSS | Styling with class names (`p-4 text-sm ...`) |
+| React Router | Pages and URLs (`App.tsx`) |
+| TanStack Query (`@tanstack/react-query`) | Fetching and caching server data (`useQuery`, `useMutation`) |
+| Axios | HTTP calls (`api/client.ts`) |
+| Zustand | Small global stores (e.g. `lib/toastStore.ts`) |
+| lucide-react | Icons |
+| react-markdown | Showing the AI's markdown answers |
+| Vitest, Playwright | Unit tests and browser tests |
+
+## Folders in `src/`
 
 ```
 src/
-├── App.tsx                 # Main app with routing
-├── main.tsx               # Entry point (renders App)
-│
-├── components/            # Reusable UI pieces
-│   ├── layout/           
-│   │   ├── Sidebar.tsx    # Left navigation menu
-│   │   └── AIChatPanel.tsx # AI assistant chat
-│   └── workflow/
-│       └── NodePanel.tsx   # Panel showing available nodes
-│
-├── pages/                 # Full page components
-│   ├── WorkflowEditor.tsx # The main canvas editor
-│   ├── WorkflowsDashboard.tsx # List of all workflows
-│   ├── Executions.tsx     # Workflow run history
-│   ├── Credentials.tsx    # API keys/passwords storage
-│   ├── Settings.tsx       # User preferences
-│   ├── Documents.tsx      # Documentation storage
-│   ├── AIChat.tsx         # AI workflow builder
-│   └── Logs.tsx           # System logs
-│
-├── hooks/                 # Custom React hooks (shortcuts, sockets, page state)
-├── lib/                   # Utility functions
-└── types/                 # TypeScript type definitions
+├── main.tsx          starts the app
+├── App.tsx           all routes. Every page is lazy-loaded except the login screens
+├── pages/            one file per screen
+├── components/       pieces of screens, grouped by feature
+│   ├── ui/           shared building blocks: Button, Modal, Switch, Select, EmptyState...
+│   ├── layout/       Topbar, Sidebar, mobile bars, PageHeader (menu items: lib/navigation.ts)
+│   ├── chat/         everything in the chat page
+│   └── agents/, runs/, files/, schedules/, ...   one folder per feature
+├── api/              one file per backend area. THE ONLY place that calls the backend
+├── hooks/            reusable React logic (useChatStream, useLiveRun, ...)
+├── lib/              plain functions, no React (cron text, costs, paths, ...)
+├── contexts/         app-wide state: logged-in user, theme, assistant
+└── types/            shared types (agentConfig.ts = every agent setting)
 ```
 
----
+Tests sit next to the code in `__tests__/` folders, e.g.
+`src/lib/__tests__/cron.test.ts`.
 
-## Key Concepts
+## How a page gets data (the pattern to copy)
 
-### 1. What is a Node?
+Almost every page follows the same three steps. `pages/Dashboards.tsx` is a
+short, clean example.
 
-A **node** is a single step in a workflow. It's represented as a box on the canvas.
+1. **A service in `api/`** wraps the HTTP call:
 
-```tsx
-// Example node data structure
-{
-  id: '1',                    // Unique identifier
-  type: 'custom',             // Node type (custom, trigger)
-  position: { x: 100, y: 200 }, // Position on canvas
-  data: {
-    label: 'HTTP Request',    // Display name
-  icon: '',  // Emoji icon
-    color: '#7b68ee',         // Background color
-    nodeType: 'http_request'  // What kind of node
-  }
-}
-```
-
-### 2. What is an Edge?
-
-An **edge** is a line connecting two nodes. It shows data flow.
-
-```tsx
-// Example edge
-{
-  id: 'e1-2',        // Unique ID
-  source: '1',       // Start node ID
-  target: '2',       // End node ID
-  animated: true     // Moving dots animation
-}
-```
-
-### 3. ReactFlow Basics
-
-ReactFlow is the library that powers the canvas. Here's how it works:
-
-```tsx
-import ReactFlow, { useNodesState, useEdgesState } from 'reactflow';
-
-function Editor() {
-  // State for nodes and edges
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  return (
-    <ReactFlow
-      nodes={nodes}           // Array of nodes to display
-      edges={edges}           // Array of connections
-      onNodesChange={onNodesChange}  // Handle node changes
-      onEdgesChange={onEdgesChange}  // Handle edge changes
-      onConnect={onConnect}   // Handle new connections
-    >
-      <Controls />            // Zoom buttons
-      <MiniMap />             // Small overview
-      <Background />          // Dotted background
-    </ReactFlow>
-  );
-}
-```
-
-### 4. Custom Node Components
-
-We create custom node appearances using React components:
-
-```tsx
-function CustomNode({ data, selected }) {
-  return (
-    <div className={`node-box ${selected ? 'selected' : ''}`}>
-      {/* Left handle - where connections come IN */}
-      <Handle type="target" position={Position.Left} />
-      
-      {/* Node content */}
-      <span>{data.icon}</span>
-      <span>{data.label}</span>
-      
-      {/* Right handle - where connections go OUT */}
-      <Handle type="source" position={Position.Right} />
-    </div>
-  );
-}
-```
-
----
-
-## Styling with TailwindCSS
-
-Instead of writing CSS files, we use utility classes directly in HTML:
-
-```tsx
-// Instead of this CSS:
-.button {
-  padding: 8px 16px;
-  background-color: blue;
-  color: white;
-  border-radius: 8px;
-}
-
-// We write this in JSX:
-<button className="px-4 py-2 bg-blue-600 text-white rounded-lg">
-  Click me
-</button>
-```
-
-**Common classes we use:**
-| Class | Meaning |
-|-------|---------|
-| `flex` | Display: flex |
-| `gap-2` | Gap between items |
-| `p-4` | Padding: 16px |
-| `bg-card` | Background: card color (from theme) |
-| `text-muted-foreground` | Gray text color |
-| `rounded-lg` | Rounded corners |
-| `hover:bg-muted` | Background on hover |
-
----
-
-## What We're Building
-
-### Feature 1: Node Configuration Panel
-
-**What it does:** When you click a node, a panel slides out where you can configure it.
-
-**Before:** Clicking shows "Selected: [name]" but nothing else works.
-
-**After:** A panel with form fields for that node type appears.
-
-```tsx
-// Example: HTTP Request node config
-<NodeConfigPanel>
-  <Input label="URL" placeholder="https://api.example.com" />
-  <Select label="Method" options={['GET', 'POST', 'PUT', 'DELETE']} />
-  <Textarea label="Headers" />
-  <Textarea label="Body" />
-</NodeConfigPanel>
-```
-
-### Feature 2: Keyboard Shortcuts
-
-**What it does:** Use keyboard for faster editing.
-
-```tsx
-// Hook usage
-useKeyboardShortcuts({
-  'ctrl+s': () => saveWorkflow(),
-  'ctrl+z': () => undo(),
-  'ctrl+y': () => redo(),
-  'delete': () => deleteSelectedNode(),
-});
-```
-
-### Feature 3: Undo/Redo
-
-**What it does:** Go back in time! Made a mistake? Undo it.
-
-**How it works:**
-1. Every action (add node, delete, move) creates a "snapshot"
-2. Snapshots are stored in an array (history)
-3. Undo moves backward, Redo moves forward
-
-```tsx
-// Simplified concept
-const history = [
-  { nodes: [...], edges: [...] },  // State 1
-  { nodes: [...], edges: [...] },  // State 2 (after adding node)
-  { nodes: [...], edges: [...] },  // State 3 (after connecting)
-];
-let currentIndex = 2;
-
-function undo() {
-  currentIndex--;
-  restoreState(history[currentIndex]);
-}
-```
-
-### Feature 4: JSON Tree Viewer
-
-**What it does:** Shows data flowing through nodes in a readable format.
-
-```
-▼ response: {object}
-  ▼ data: {object}
-    ├─ id: 123
-    ├─ name: "John"
-    └▼ items: [array]
-        ├─ 0: "Apple"
-        └─ 1: "Banana"
-```
-
----
-
-### Feature 5: Node Builder (Custom Nodes)
-
-**What it does:** Allows you to create your own nodes from scratch!
-
-1.  **Click "Create New Node Type"** in the node panel.
-2.  **Define Inputs:** Add fields like "API Key" or "Search Term".
-3.  **Write Code:** Add the Python logic for the node.
-4.  **Save:** It appears in your palette with your custom icon!
-
-```tsx
-// How we store custom nodes in localStorage
-const customNode = {
-  id: 'my-custom-node',
-  name: 'My Scraper',
-  fields: [
-    { id: 'url', type: 'text', label: 'Target URL' }
-  ],
-  code: 'class MyScraper: ...'
-};
-```
-
----
-
-## How to Run the Project
-
-1. **Install dependencies:**
-   ```bash
-   cd better-n8n-frontend
-   npm install
+   ```ts
+   // api/dashboards.ts
+   export const dashboardsService = {
+     list: async () => (await apiClient.get('/inference/dashboards/')).data,
+     remove: async (id: number) => { await apiClient.delete(`/inference/dashboards/${id}/`); },
+   };
    ```
 
-2. **Start development server:**
-   ```bash
-   npm run dev
+2. **The page reads it with `useQuery`** (loading, error and caching are handled for you):
+
+   ```tsx
+   const { data, isLoading, isError } = useQuery({
+     queryKey: ['dashboards'],
+     queryFn: () => dashboardsService.list(),
+   });
    ```
 
-3. **Open in browser:** http://localhost:5173
+3. **Changes use `useMutation`**, then refresh the list:
 
----
+   ```tsx
+   const remove = useMutation({
+     mutationFn: (id: number) => dashboardsService.remove(id),
+     onSuccess: () => {
+       toast.success('Dashboard deleted.');
+       qc.invalidateQueries({ queryKey: ['dashboards'] });   // re-fetch the list
+     },
+   });
+   ```
 
-## Common Patterns You'll See
+`api/client.ts` adds your login token to every request and quietly refreshes it
+when it expires. Pages never deal with tokens.
 
-### 1. State Management with useState
+## Live updates
 
-```tsx
-const [isOpen, setIsOpen] = useState(false);  // Boolean state
-const [count, setCount] = useState(0);         // Number state
-const [items, setItems] = useState([]);        // Array state
+- **Chat streams over HTTP.** The chat endpoint sends a stream of `data:` lines.
+  `api/sse.ts` reads them; `hooks/useChatStream.ts` turns each event into what
+  you see (text arriving, tool calls, charts, approval cards). The event names
+  are listed in `Backend/docs/CHAT_AGENT.md`.
+- **Everything else uses WebSockets** through one helper, `lib/websocket.ts`
+  (`useSocket`). It reconnects by itself. Don't open a `WebSocket` directly.
+  - `hooks/useLiveRun.ts`: live steps of an agent run (`ws/execution/<id>/`)
+  - `hooks/useHITLReminders.ts`: approval reminders and notifications (`ws/hitl/`)
+
+## The chat page
+
+`components/chat/StandaloneChat.tsx` holds the chat page's state and handlers.
+The screen is drawn by smaller pieces it passes data and callbacks to:
+
+| File | What it is |
+|---|---|
+| `components/chat/ChatHistorySidebar.tsx` | The conversation list on the left |
+| `components/chat/ChatHeader.tsx` | The top bar: history button, memory-off chip, cost, settings |
+| `components/chat/ChatSettingsDialog.tsx` | Per-chat system prompt and memory switch |
+| `components/chat/ChatMessageItem.tsx` | One saved question or answer, with its sources, reasoning, charts and action buttons |
+| `components/chat/ToolApprovalCard.tsx` | "The assistant wants to do X": Approve / Deny / Allow for this chat / Always |
+| `components/chat/format.ts` | Small text helpers shared by the pieces above |
+| `hooks/useChatStream.ts` | State of the answer currently streaming in |
+| `hooks/useChatModelSelection.ts`, `hooks/useEffortSelection.ts` | The model picker and "how hard to think" |
+| `hooks/useChatDraft.ts` | Keeps unsent text per conversation |
+| `components/chat/MarkdownMessage.tsx` | Draws one answer |
+| `components/chat/ChartArtifact.tsx`, `HtmlArtifact.tsx` | Charts and HTML the AI produced |
+| `components/chat/TodoPanel.tsx` | The AI's plan while it works |
+| `components/chat/CommandPalette.tsx`, `CommandCard.tsx` | The `/` command menu and its results |
+| `components/chat/ThinkingTimer.tsx` | The ticking timer (kept separate so it doesn't redraw everything) |
+
+## Common jobs
+
+**Add a page**
+
+1. Create `src/pages/MyPage.tsx`.
+2. In `App.tsx`, add `const MyPage = lazyPage(() => import('./pages/MyPage'));`
+   and a `<Route path="/my-page" element={<MyPage />} />`.
+3. Add it to `lib/navigation.ts`. That one list feeds the sidebar, the desktop
+   top bar and the mobile tab bar, so a page is never reachable from only one of them.
+
+**Call a new backend endpoint**
+
+Add a function to the matching file in `src/api/`, and use it from the page
+with `useQuery` or `useMutation`. Never call `axios` or `fetch` from a
+component.
+
+**Add a shared UI piece**
+
+Check `components/ui/` first. There is already one `Button`, one `Modal`, one
+`Switch`, one `Select` for the whole app. Reuse them so every screen looks the same.
+
+## Checks before you push
+
+```bash
+npx tsc -b --force     # type check. Plain `tsc --noEmit` checks nothing in this repo
+npm run lint           # should report 0 problems
+npm test               # unit tests (vitest)
+npm run build          # production build
 ```
 
-### 2. Callbacks with useCallback
+## Gotchas
 
-```tsx
-// Memoized function (doesn't recreate on every render)
-const handleClick = useCallback(() => {
-  console.log('Clicked!');
-}, []);  // Empty array = never recreate
-```
-
-### 3. Memoization with useMemo
-
-```tsx
-// Expensive calculation cached
-const filteredItems = useMemo(() => {
-  return items.filter(item => item.active);
-}, [items]);  // Only recalculate when items change
-```
-
-### 4. Conditional Rendering
-
-```tsx
-// Show something only if condition is true
-{isOpen && <Modal />}
-
-// Show one thing or another
-{isLoading ? <Spinner /> : <Content />}
-```
-
----
-
-## Debugging Tips
-
-1. **React DevTools:** Install browser extension to inspect components
-2. **Console.log:** Add logs to see what's happening
-3. **Network tab:** Check API calls in browser DevTools
-4. **React Query DevTools:** See cached data (if using React Query)
-
----
-
-## Next Steps for Beginners
-
-1. **Read the code:** Start with `WorkflowEditor.tsx` - it's the heart of the app
-2. **Make small changes:** Try changing a color or text
-3. **Add a node type:** Edit `NodePanel.tsx` to add a new node
-4. **Follow the implementation plan:** Build features one by one
-
----
-
-## Resources to Learn More
-
-- [React Docs](https://react.dev/)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-- [TailwindCSS Docs](https://tailwindcss.com/docs)
-- [ReactFlow Docs](https://reactflow.dev/docs/introduction)
-- [Vite Guide](https://vitejs.dev/guide/)
-
----
-
-## Glossary
-
-| Term | Definition |
-|------|------------|
-| **Component** | Reusable UI building block |
-| **Props** | Data passed to a component |
-| **State** | Data that changes over time |
-| **Hook** | Special function to add features (useState, useEffect) |
-| **JSX** | HTML-like syntax in JavaScript |
-| **Canvas** | The area where nodes are placed |
-| **Handle** | Connection point on a node |
-| **Edge** | Line connecting two nodes |
-
----
-
-Happy coding!  Don't be afraid to experiment and break things - that's how we learn!
+- The whole page layout is `overflow-hidden`. **Each page scrolls itself.** If
+  your page doesn't scroll, give its main area `overflow-y-auto`. A
+  Playwright test (`tests/e2e/mobile-layout.spec.ts`) checks this on phone sizes.
+- Anything that ticks fast (timers) goes in its own small component, or the
+  whole chat transcript re-renders every tick.
+- After login, `lib/nextPath.ts::safeNext` decides where to send the user.
+  Always use it; never redirect to a URL taken straight from the query string.

@@ -3,35 +3,36 @@
  *
  * A custom tool is a connection row, not code: the generic callers are the
  * runtime, and "New tool" writes a row they read. Rows are private to the
- * caller; sharing freezes a snapshot without secrets, and installing writes
- * a private copy owned by the installer whose auth starts empty.
+ * caller.
+ *
+ * Sharing (publish / install-from-link) stays on the backend; it is hidden
+ * from this UI for v1 to keep tool creation to one minimal form. Re-adding
+ * it means re-adding the share/install dialogs here, nothing else moves.
  *
  * Kept out of `Tools.tsx` so the code-owned catalogue page stays about the
- * catalogue: this file owns the "My tools" section plus the create / edit /
- * share / install-from-link dialogs.
+ * catalogue: this file owns the "My tools" section plus the create / edit
+ * dialog.
  */
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ChevronDown,
   Database,
   Globe,
   KeyRound,
   Pencil,
   Plus,
-  Share2,
   Trash2,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
-import { parseToolShareSlug } from '../../lib/toolShare';
 import datasourcesService, {
   type ApiConnection,
   type CustomToolKind,
   type DataConnection,
 } from '../../api/datasources';
 import { credentialsService } from '../../api/credentials';
-import type { ShareVisibility } from '../../api/templates';
 import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Modal, ModalBody, ModalFooter } from '../ui/Modal';
@@ -134,6 +135,20 @@ export function NewToolDialog({
   const editing = Boolean(initial);
   const [kind, setKind] = useState<CustomToolKind>(initial?.kind ?? 'api');
   const [error, setError] = useState<string | null>(null);
+  // Everything beyond name + target + credential lives here. Editing an
+  // existing row with advanced values set opens it expanded so nothing
+  // silently hides.
+  const [showAdvanced, setShowAdvanced] = useState(
+    Boolean(
+      (initial?.kind === 'api' &&
+        (((initial.row as ApiConnection).allowed_methods ?? []).length > 0 ||
+          Object.keys((initial.row as ApiConnection).openapi_spec ?? {}).length > 0 ||
+          (initial.row as ApiConnection).auth.type === 'header' ||
+          (initial.row as ApiConnection).auth.type === 'query')) ||
+        (initial?.kind === 'data' &&
+          Boolean((initial.row as DataConnection).port)),
+    ),
+  );
 
   // API fields
   const apiRow = initial?.kind === 'api' ? (initial.row as ApiConnection) : null;
@@ -248,8 +263,8 @@ export function NewToolDialog({
           <h2 className="font-semibold text-lg">{editing ? 'Edit tool' : 'New tool'}</h2>
           <p className="text-[13px] text-muted-foreground mt-1">
             {editing
-              ? 'Yours alone — editing never affects anyone you shared it with.'
-              : 'Yours alone until you share it. Credentials stay in your vault.'}
+              ? 'Yours alone — editing never affects anyone else.'
+              : 'Yours alone. Credentials stay in your vault.'}
           </p>
         </div>
         <button
@@ -347,55 +362,68 @@ export function NewToolDialog({
                   )}
                 </Field>
               )}
-              {authType === 'header' && (
-                <Field label="Header name">
-                  <input
-                    value={headerName}
-                    onChange={(e) => setHeaderName(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-              )}
-              {authType === 'query' && (
-                <Field label="Query parameter">
-                  <input
-                    value={paramName}
-                    onChange={(e) => setParamName(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-              )}
-              <Field
-                label="Allowed methods"
-                hint="Empty means read-only (GET, HEAD). Anything else pauses for a human."
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                aria-expanded={showAdvanced}
+                className="flex items-center gap-1 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
               >
-                <div className="flex flex-wrap gap-1.5">
-                  {API_METHODS.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => toggleMethod(m)}
-                      className={cn(
-                        'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
-                        methods.includes(m)
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background text-muted-foreground border-border/60 hover:text-foreground',
-                      )}
-                    >
-                      {m}
-                    </button>
-                  ))}
+                <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showAdvanced && 'rotate-180')} />
+                Advanced (methods, header names, OpenAPI)
+              </button>
+              {showAdvanced && (
+                <div className="space-y-4 rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
+                  {authType === 'header' && (
+                    <Field label="Header name">
+                      <input
+                        value={headerName}
+                        onChange={(e) => setHeaderName(e.target.value)}
+                        className={inputClass}
+                      />
+                    </Field>
+                  )}
+                  {authType === 'query' && (
+                    <Field label="Query parameter">
+                      <input
+                        value={paramName}
+                        onChange={(e) => setParamName(e.target.value)}
+                        className={inputClass}
+                      />
+                    </Field>
+                  )}
+                  <Field
+                    label="Allowed methods"
+                    hint="Empty means read-only (GET, HEAD). Anything else pauses for a human."
+                  >
+                    <div className="flex flex-wrap gap-1.5">
+                      {API_METHODS.map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => toggleMethod(m)}
+                          className={cn(
+                            'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
+                            methods.includes(m)
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-background text-muted-foreground border-border/60 hover:text-foreground',
+                          )}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label="OpenAPI spec (optional)" hint="Paste the JSON — only the operation index is read.">
+                    <textarea
+                      value={specText}
+                      onChange={(e) => setSpecText(e.target.value)}
+                      rows={3}
+                      placeholder='{"paths": {"/orders": {"get": {"summary": "List orders"}}}}'
+                      className={cn(inputClass, 'font-mono text-[12px]')}
+                    />
+                  </Field>
                 </div>
-              </Field>
-              <Field label="OpenAPI spec (optional)" hint="Paste the JSON — only the operation index is read.">
-                <textarea
-                  value={specText}
-                  onChange={(e) => setSpecText(e.target.value)}
-                  rows={3}
-                  placeholder='{"paths": {"/orders": {"get": {"summary": "List orders"}}}}'
-                  className={cn(inputClass, 'font-mono text-[12px]')}
-                />
-              </Field>
+              )}
             </>
           ) : (
             <>
@@ -424,25 +452,14 @@ export function NewToolDialog({
                 </Field>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Host">
-                      <input
-                        value={host}
-                        onChange={(e) => setHost(e.target.value)}
-                        placeholder="db.example.com"
-                        className={inputClass}
-                      />
-                    </Field>
-                    <Field label="Port (optional)">
-                      <input
-                        value={port}
-                        onChange={(e) => setPort(e.target.value)}
-                        placeholder="5432"
-                        inputMode="numeric"
-                        className={inputClass}
-                      />
-                    </Field>
-                  </div>
+                  <Field label="Host">
+                    <input
+                      value={host}
+                      onChange={(e) => setHost(e.target.value)}
+                      placeholder="db.example.com"
+                      className={inputClass}
+                    />
+                  </Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Database (optional)">
                       <input
@@ -486,6 +503,28 @@ export function NewToolDialog({
                       </span>
                     </span>
                   </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced((v) => !v)}
+                    aria-expanded={showAdvanced}
+                    className="flex items-center gap-1 text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showAdvanced && 'rotate-180')} />
+                    Advanced (port)
+                  </button>
+                  {showAdvanced && (
+                    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
+                      <Field label="Port (optional)">
+                        <input
+                          value={port}
+                          onChange={(e) => setPort(e.target.value)}
+                          placeholder="5432"
+                          inputMode="numeric"
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  )}
                 </>
               )}
             </>
@@ -511,264 +550,6 @@ export function NewToolDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Share dialog
-// ---------------------------------------------------------------------------
-
-const VISIBILITIES: { value: ShareVisibility; label: string; hint: string }[] = [
-  { value: 'link', label: 'Link only', hint: 'Reachable by link, listed nowhere.' },
-  { value: 'platform', label: 'Platform', hint: 'Listed to signed-in users.' },
-  { value: 'public', label: 'Public', hint: 'Listed to everyone.' },
-];
-
-export function ShareToolDialog({
-  kind,
-  id,
-  name,
-  onClose,
-}: {
-  kind: CustomToolKind;
-  id: number;
-  name: string;
-  onClose: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [tagline, setTagline] = useState('');
-  const [description, setDescription] = useState('');
-  const [visibility, setVisibility] = useState<ShareVisibility>('platform');
-  const [error, setError] = useState<string | null>(null);
-  const [justShared, setJustShared] = useState<string | null>(null);
-
-  const preview = useQuery({
-    queryKey: [...TOOLS_KEY, 'share-preview', kind, id],
-    queryFn: () => datasourcesService.sharePreview(kind, id),
-  });
-
-  const publish = useMutation({
-    mutationFn: () =>
-      datasourcesService.publish(kind, id, {
-        tagline: tagline.trim(), description: description.trim(), visibility,
-      }),
-    onSuccess: (share) => {
-      queryClient.invalidateQueries({ queryKey: TOOLS_KEY });
-      setJustShared(share.slug);
-    },
-    onError: (e: unknown) => setError(apiErrorMessage(e, 'Could not share this tool.')),
-  });
-
-  const withdraw = useMutation({
-    mutationFn: () => datasourcesService.withdraw(kind, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TOOLS_KEY });
-      onClose();
-      toast.success('Withdrawn from the listing. Installs keep working.');
-    },
-    onError: (e: unknown) => setError(apiErrorMessage(e, 'Could not withdraw.')),
-  });
-
-  const published = preview.data?.published;
-  const needs = preview.data?.auth_shape?.needs;
-  const link = justShared ?? (published ? preview.data?.slug ?? null : null);
-
-  return (
-    <Modal size="sm" label={`Share ${name}`} onClose={onClose}>
-      <div className="p-5 border-b border-border shrink-0">
-        <h2 className="font-semibold text-lg">Share {name}</h2>
-        <p className="text-[13px] text-muted-foreground mt-1">
-          Installers get a frozen copy. Your credentials never travel —
-          {needs
-            ? ` they link their own ${needs.slug} credential after installing.`
-            : ' this tool needs no credential.'}
-        </p>
-      </div>
-      <ModalBody>
-        <div className="space-y-4">
-          {error && (
-            <div className="px-3 py-2 rounded bg-destructive-subtle border border-destructive/20 text-[13px] text-destructive">
-              {error}
-            </div>
-          )}
-          {link ? (
-            <div>
-              <span className="text-[12px] font-semibold text-muted-foreground">
-                Anyone with this slug can install it
-              </span>
-              <div className="mt-1 flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-sm font-mono truncate">
-                  {link}
-                </code>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(link);
-                    toast.success('Link copied.');
-                  }}
-                >
-                  Copy
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <Field label="One-line description">
-                <input
-                  value={tagline || preview.data?.tagline || ''}
-                  onChange={(e) => setTagline(e.target.value)}
-                  placeholder="What it reaches, not how"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Longer pitch (optional)">
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={2}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Visibility">
-                <div className="space-y-1.5">
-                  {VISIBILITIES.map((v) => (
-                    <label key={v.value} className="flex items-start gap-2 text-[13px]">
-                      <input
-                        type="radio"
-                        name="tool-visibility"
-                        checked={visibility === v.value}
-                        onChange={() => setVisibility(v.value)}
-                        className="mt-1"
-                      />
-                      <span>
-                        <span className="font-medium">{v.label}</span>
-                        <span className="block text-[11px] text-muted-foreground">{v.hint}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </Field>
-            </>
-          )}
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        {published && !link && (
-          <Button variant="ghost" size="sm" loading={withdraw.isPending} onClick={() => withdraw.mutate()}>
-            Withdraw
-          </Button>
-        )}
-        <div className="flex-1" />
-        <Button variant="secondary" size="sm" onClick={onClose}>
-          {link ? 'Done' : 'Cancel'}
-        </Button>
-        {!link && (
-          <Button
-            variant="primary"
-            size="sm"
-            loading={publish.isPending || preview.isLoading}
-            onClick={() => {
-              if (!tagline.trim()) {
-                setError('A one-line description is required.');
-                return;
-              }
-              setError(null);
-              publish.mutate();
-            }}
-          >
-            Share
-          </Button>
-        )}
-      </ModalFooter>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Install from link
-// ---------------------------------------------------------------------------
-
-export function InstallFromLinkDialog({ onClose }: { onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ name: string; needs?: { slug: string; field: string } } | null>(null);
-
-  const install = useMutation({
-    mutationFn: async () => {
-      const slug = parseToolShareSlug(text);
-      if (!slug) throw new Error('Paste a share link or slug.');
-      const preview = await datasourcesService.getShared(slug);
-      const result = await datasourcesService.installShared(slug);
-      return { preview, result };
-    },
-    onSuccess: ({ preview, result }) => {
-      queryClient.invalidateQueries({ queryKey: TOOLS_KEY });
-      const needs = result.credentials_needed[0];
-      setDone({ name: preview.name, needs });
-    },
-    onError: (e: unknown) => {
-      const message = e instanceof Error
-        ? e.message
-        : apiErrorMessage(e, 'Could not install this tool.');
-      setError(message);
-    },
-  });
-
-  return (
-    <Modal size="sm" label="Install a shared tool" onClose={onClose}>
-      <div className="p-5 border-b border-border shrink-0">
-        <h2 className="font-semibold text-lg">Install a shared tool</h2>
-        <p className="text-[13px] text-muted-foreground mt-1">
-          You get a private copy. Its auth starts empty — link your own credential after.
-        </p>
-      </div>
-      <ModalBody>
-        <div className="space-y-4">
-          {error && (
-            <div className="px-3 py-2 rounded bg-destructive-subtle border border-destructive/20 text-[13px] text-destructive">
-              {error}
-            </div>
-          )}
-          {done ? (
-            <div className="px-3 py-2 rounded bg-success-subtle border border-border text-[13px]">
-              <span className="font-semibold">{done.name}</span> installed.
-              {done.needs && (
-                <span className="block text-muted-foreground mt-1">
-                  Link your own <span className="font-mono">{done.needs.slug}</span> credential
-                  on this page before it can call anything authenticated.
-                </span>
-              )}
-            </div>
-          ) : (
-            <Field label="Share link or slug">
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="acme-orders-api"
-                className={cn(inputClass, 'font-mono')}
-              />
-            </Field>
-          )}
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="secondary" size="sm" onClick={onClose}>
-          {done ? 'Done' : 'Cancel'}
-        </Button>
-        {!done && (
-          <Button
-            variant="primary"
-            size="sm"
-            loading={install.isPending}
-            onClick={() => { setError(null); install.mutate(); }}
-          >
-            Install
-          </Button>
-        )}
-      </ModalFooter>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // "My tools" section
 // ---------------------------------------------------------------------------
 
@@ -778,14 +559,11 @@ type Row =
 
 export function MyToolsSection({
   onNew,
-  onInstallLink,
 }: {
   onNew: () => void;
-  onInstallLink: () => void;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Row | null>(null);
-  const [sharingRow, setSharingRow] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
 
   const apis = useQuery({
@@ -843,17 +621,10 @@ export function MyToolsSection({
         <div>
           <h2 className="text-sm font-semibold text-foreground">My tools</h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">
-            Connections you created. Private to you until you share them.
+            Connections you created. Private to you.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onInstallLink}
-            className="text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Install from link
-          </button>
           <button
             type="button"
             onClick={onNew}
@@ -902,15 +673,6 @@ export function MyToolsSection({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSharingRow(row)}
-                  title="Share"
-                  aria-label={`Share ${row.row.name}`}
-                  className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
                   onClick={() => setDeleting(row)}
                   title="Delete"
                   aria-label={`Delete ${row.row.name}`}
@@ -930,18 +692,10 @@ export function MyToolsSection({
           onClose={() => setEditing(null)}
         />
       )}
-      {sharingRow && (
-        <ShareToolDialog
-          kind={sharingRow.kind}
-          id={sharingRow.row.id}
-          name={sharingRow.row.name}
-          onClose={() => setSharingRow(null)}
-        />
-      )}
       {deleting && (
         <ConfirmDialog
           title={`Delete "${deleting.row.name}"?`}
-          body="Agents using this tool lose access to it. Shared copies other people installed keep working."
+          body="Agents using this tool lose access to it."
           confirmLabel="Delete"
           busy={remove.isPending}
           onConfirm={() => remove.mutate(deleting)}

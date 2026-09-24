@@ -26,9 +26,12 @@ import MarkdownMessage from '../components/chat/MarkdownMessage';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Button } from '../components/ui/Button';
 import evalsService, {
-  type EvalRun, type EvalSuite, type QueueItem, type SupervisionPolicy, type Verdict,
+  isDraft, type EvalCase, type EvalRun, type EvalSuite, type GatedCalls, type QueueItem, type SupervisionPolicy, type Verdict,
 } from '../api/evals';
 import agentsService from '../api/agents';
+import DraftCases from '../components/evals/DraftCases';
+import WorldCard from '../components/evals/WorldCard';
+import IntentList from '../components/evals/IntentList';
 import { cn } from '../lib/utils';
 import { usePersistedState } from '../hooks/usePersistedState';
 
@@ -160,14 +163,29 @@ export default function Evals() {
   const review = useMutation({
     mutationFn: ({ resultId, verdict }: { resultId: number; verdict: Verdict }) =>
       evalsService.submitReview(resultId, { verdict }),
-    onSuccess: () => { invalidate(); },
-    onError: () => toast.error('Could not save that verdict'),
+    onSuccess: (result) => {
+      if (result.deleted) toast.success('Errored result dismissed');
+      invalidate();
+    },
+    onError: (error: unknown) => {
+      const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error('Could not save that verdict', { description: detail ?? 'Please try again.' });
+    },
   });
 
   const removeSuite = useMutation({
     mutationFn: (id: number) => evalsService.deleteSuite(id),
     onSuccess: () => { toast.success('Suite deleted'); invalidate(); },
     onError: () => toast.error('Could not delete the suite'),
+  });
+
+  const removeRun = useMutation({
+    mutationFn: (runId: string) => evalsService.deleteRun(runId),
+    onSuccess: () => { toast.success('Eval sweep deleted'); invalidate(); },
+    onError: (error: unknown) => {
+      const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error('Could not delete the sweep', { description: detail ?? 'Please try again.' });
+    },
   });
 
   const pendingTotal = queue.length;
@@ -255,6 +273,12 @@ export default function Evals() {
             loading={runsQuery.isLoading}
             openRun={openRun}
             onToggle={(id) => setOpenRun((prev) => (prev === id ? null : id))}
+            onDelete={(runId) => {
+              if (window.confirm('Delete this eval sweep, its results, and its evaluation run traces? This cannot be undone.')) {
+                removeRun.mutate(runId);
+              }
+            }}
+            deletingId={removeRun.isPending ? (removeRun.variables ?? null) : null}
           />
         )}
 
@@ -301,7 +325,9 @@ function ReviewQueue({
         Your verdict overrides the grader without erasing it: the grader's answer is
         kept so agreement stays measurable.
       </p>
-      {queue.map((item) => (
+      {queue.map((item) => {
+        const hasNoAnswer = item.status === 'error' || item.status === 'skipped';
+        return (
         <div key={item.id} className="rounded-lg border border-border/60 bg-card p-4">
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="min-w-0">
@@ -311,54 +337,81 @@ function ReviewQueue({
                 {item.review_reason && <> · queued because: {item.review_reason}</>}
               </div>
             </div>
-            <span className={cn(
-              'px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap',
-              item.auto_passed === null ? 'bg-muted text-muted-foreground'
-                : item.auto_passed ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                : 'bg-red-500/10 text-red-600 dark:text-red-400',
-            )}>
-              grader: {item.auto_passed === null ? 'no opinion' : item.auto_passed ? 'pass' : 'fail'}
-            </span>
+            {hasNoAnswer ? (
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap bg-red-500/10 text-red-600 dark:text-red-400">
+                no answer
+              </span>
+            ) : (
+              <span className={cn(
+                'px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap',
+                item.auto_passed === null ? 'bg-muted text-muted-foreground'
+                  : item.auto_passed ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'bg-red-500/10 text-red-600 dark:text-red-400',
+              )}>
+                grader: {item.auto_passed === null ? 'no opinion' : item.auto_passed ? 'pass' : 'fail'}
+              </span>
+            )}
           </div>
 
           {item.goal && (
             <Field label="Goal"><span className="text-muted-foreground">{item.goal}</span></Field>
           )}
-          <Field label="Answer">
-            {/* Agent answer — model-written markdown, not preformatted text. */}
-            <div className="text-sm leading-relaxed">
-              <MarkdownMessage content={item.answer || '(empty)'} variant="compact" />
-            </div>
-            {item.answer_truncated && (
-              <span className="text-[11px] text-muted-foreground">(truncated)</span>
-            )}
-          </Field>
+          {hasNoAnswer ? (
+            <Field label={item.status === 'error' ? 'Run error' : 'Skipped'}>
+              <div className="text-sm text-muted-foreground">{item.error_message || 'The agent did not produce an answer.'}</div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Dismiss this result to remove it from the review queue; it cannot be scored as a human verdict.
+              </p>
+            </Field>
+          ) : (
+            <Field label="Answer">
+              {/* Agent answer — model-written markdown, not preformatted text. */}
+              <div className="text-sm leading-relaxed">
+                <MarkdownMessage content={item.answer || '(empty)'} variant="compact" />
+              </div>
+              {item.answer_truncated && (
+                <span className="text-[11px] text-muted-foreground">(truncated)</span>
+              )}
+            </Field>
+          )}
 
           <div className="flex items-center gap-2 mt-4">
-            <button
-              onClick={() => onVerdict(item.id, 'pass')}
-              disabled={pendingId === item.id}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium hover:bg-emerald-500/20 transition disabled:opacity-50"
-            >
-              <Check className="w-3.5 h-3.5" /> Pass
-            </button>
-            <button
-              onClick={() => onVerdict(item.id, 'fail')}
-              disabled={pendingId === item.id}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-500/20 transition disabled:opacity-50"
-            >
-              <X className="w-3.5 h-3.5" /> Fail
-            </button>
-            {/* A real third answer. Forcing a coin-flip when the reviewer
-                cannot tell would corrupt `grader_agreement`, which is the one
-                number this whole feature exists to produce. */}
-            <button
-              onClick={() => onVerdict(item.id, 'unsure')}
-              disabled={pendingId === item.id}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:bg-muted/70 transition disabled:opacity-50"
-            >
-              <HelpCircle className="w-3.5 h-3.5" /> Unsure
-            </button>
+            {hasNoAnswer ? (
+              <button
+                onClick={() => onVerdict(item.id, 'unsure')}
+                disabled={pendingId === item.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-500/20 transition disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Dismiss result
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => onVerdict(item.id, 'pass')}
+                  disabled={pendingId === item.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium hover:bg-emerald-500/20 transition disabled:opacity-50"
+                >
+                  <Check className="w-3.5 h-3.5" /> Pass
+                </button>
+                <button
+                  onClick={() => onVerdict(item.id, 'fail')}
+                  disabled={pendingId === item.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-500/20 transition disabled:opacity-50"
+                >
+                  <X className="w-3.5 h-3.5" /> Fail
+                </button>
+                {/* A real third answer. Forcing a coin-flip when the reviewer
+                    cannot tell would corrupt `grader_agreement`, which is the one
+                    number this whole feature exists to produce. */}
+                <button
+                  onClick={() => onVerdict(item.id, 'unsure')}
+                  disabled={pendingId === item.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:bg-muted/70 transition disabled:opacity-50"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" /> Unsure
+                </button>
+              </>
+            )}
             {item.execution_id && (
               <a
                 href={`/runs?execution=${item.execution_id}`}
@@ -369,7 +422,8 @@ function ReviewQueue({
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -503,35 +557,102 @@ function SuiteCases({ suiteId, agents, subagent }: {
     queryKey: ['eval', 'suite', suiteId],
     queryFn: () => evalsService.getSuite(suiteId),
   });
+  const world = useQuery({
+    queryKey: ['eval', 'world', suiteId],
+    queryFn: () => evalsService.getWorld(suiteId),
+  });
 
+  const qc = useQueryClient();
+  const gated = useMutation({
+    mutationFn: (value: GatedCalls) => evalsService.updateSuite(suiteId, { gated_calls: value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['eval', 'suite', suiteId] }),
+    onError: () => toast.error('Could not save that setting.'),
+  });
   const agentName = agents.find((a) => a.id === subagent)?.name;
 
   if (detail.isLoading) return <div className="px-4 pb-4"><Loading /></div>;
-  const cases = detail.data?.cases ?? [];
+  const all = detail.data?.cases ?? [];
+  const drafts = all.filter(isDraft);
+  const cases = all.filter((c) => !isDraft(c));
+  const liveVersion = world.data?.live?.version ?? null;
 
   return (
-    <div className="border-t border-border/60 bg-muted/20 px-4 py-3">
-      <div className="text-xs text-muted-foreground mb-2">
-        {agentName ? <>Runs against <span className="font-medium text-foreground">{agentName}</span></> : 'No agent set — pick one when you run it.'}
+    <div className="border-t border-border/60 bg-muted/20 px-4 py-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          {agentName ? <>Runs against <span className="font-medium text-foreground">{agentName}</span></> : 'No agent set — pick one to generate cases.'}
+        </span>
+        {/* An eval never waits for a person; this decides what happens to a
+            call that would have. Either way it is recorded on the result. */}
+        <label className="flex items-center gap-1.5">
+          Calls needing approval:
+          <select
+            className="rounded border border-border bg-card px-1.5 py-1 text-xs text-foreground"
+            value={detail.data?.gated_calls ?? 'run'}
+            disabled={gated.isPending}
+            onChange={(e) => gated.mutate(e.target.value as GatedCalls)}
+          >
+            <option value="run">Record and run</option>
+            <option value="block">Record and block</option>
+          </select>
+        </label>
       </div>
+      <WorldCard suiteId={suiteId} hasAgent={subagent != null} />
+      <DraftCases suiteId={suiteId} hasAgent={subagent != null} drafts={drafts} />
       {cases.length === 0 ? (
         <p className="text-xs text-muted-foreground py-2">
-          No cases yet. A case is a goal plus the graders that decide whether the answer was good.
+          No cases yet. Generate some from the agent's setup, import its recent runs, or write your own.
         </p>
       ) : (
         <div className="space-y-1.5">
           {cases.map((c) => (
-            <div key={c.id} className="flex items-start justify-between gap-3 py-1.5 text-xs">
-              <div className="min-w-0">
-                <div className="font-medium truncate">{c.name || `Case ${c.id}`}</div>
-                <div className="text-muted-foreground truncate">{c.goal}</div>
-              </div>
-              <span className="text-muted-foreground whitespace-nowrap">
-                {c.graders.length} grader{c.graders.length === 1 ? '' : 's'}
-                {!c.is_active && ' · inactive'}
-              </span>
-            </div>
+            <CaseRow key={c.id} caseData={c} liveVersion={liveVersion} />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One accepted case: goal on the row, expected answer and facts on expand. */
+function CaseRow({ caseData: c, liveVersion }: { caseData: EvalCase; liveVersion: number | null }) {
+  const [open, setOpen] = useState(false);
+  const facts = Array.isArray((c.input_data ?? {})['__facts__'])
+    ? (c.input_data['__facts__'] as unknown[]).map(String)
+    : [];
+  const stale = c.world_version !== null && liveVersion !== null && c.world_version !== liveVersion;
+  return (
+    <div className="py-1.5 text-xs">
+      <button type="button" onClick={() => setOpen(!open)} className="w-full text-left">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-medium truncate">{c.name || `Case ${c.id}`}</span>
+              {c.world_version !== null && c.world_version !== undefined && (
+                <span className={cn(
+                  'shrink-0 rounded px-1 py-px text-[10px] font-medium',
+                  stale ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-muted text-muted-foreground',
+                )} title={stale ? 'Built for an older world version — kept, listed, never swept' : 'The world version this case was built for'}>
+                  {stale ? `stale (world v${c.world_version})` : `world v${c.world_version}`}
+                </span>
+              )}
+            </div>
+            <div className={cn('text-muted-foreground mt-0.5', !open && 'truncate')}>{c.goal}</div>
+          </div>
+          <span className="text-muted-foreground whitespace-nowrap shrink-0">
+            {c.graders.length} grader{c.graders.length === 1 ? '' : 's'}
+            {!c.is_active && ' · inactive'}
+          </span>
+        </div>
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1 text-muted-foreground">
+          {c.reference && <div><span className="text-foreground">Expected answer:</span> {c.reference}</div>}
+          {facts.length > 0 && <div><span className="text-foreground">Rests on facts:</span> {facts.join(', ')}</div>}
+          <div>
+            <span className="text-foreground">Checks:</span>{' '}
+            {c.graders.map((g) => g.type).join(', ') || 'none — queued for review under every policy'}
+          </div>
         </div>
       )}
     </div>
@@ -540,11 +661,13 @@ function SuiteCases({ suiteId, agents, subagent }: {
 
 /* -------------------------------------------------------------------- runs */
 
-function RunList({ runs, loading, openRun, onToggle }: {
+function RunList({ runs, loading, openRun, onToggle, onDelete, deletingId }: {
   runs: EvalRun[];
   loading: boolean;
   openRun: string | null;
   onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+  deletingId: string | null;
 }) {
   if (loading) return <Loading />;
   if (runs.length === 0) {
@@ -553,38 +676,57 @@ function RunList({ runs, loading, openRun, onToggle }: {
 
   return (
     <div className="space-y-2">
-      {runs.map((run) => (
-        <div key={run.run_id} className="rounded-lg border border-border/60 bg-card overflow-hidden">
-          <button
-            onClick={() => onToggle(run.run_id)}
-            className="w-full p-4 flex items-center justify-between gap-4 text-left"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition', openRun === run.run_id && 'rotate-90')} />
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{run.suite_name || 'Suite'}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {run.agent_name || 'agent'}
-                  {run.revision_number !== null && ` · rev ${run.revision_number}`}
-                  {' · '}{run.total_cases} case{run.total_cases === 1 ? '' : 's'}
-                  {new Date(run.created_at).toString() !== 'Invalid Date' && ` · ${new Date(run.created_at).toLocaleString()}`}
+      {runs.map((run) => {
+        const canDelete = !['pending', 'queued', 'running'].includes(run.status)
+          && !(run.status === 'cancelled' && !run.completed_at);
+        return (
+          <div key={run.run_id} className="rounded-lg border border-border/60 bg-card overflow-hidden">
+            <div className="flex items-center gap-2 pr-3">
+              <button
+                onClick={() => onToggle(run.run_id)}
+                className="min-w-0 flex-1 p-4 flex items-center justify-between gap-4 text-left"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition', openRun === run.run_id && 'rotate-90')} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{run.suite_name || 'Suite'}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {run.agent_name || 'agent'}
+                      {run.revision_number !== null && ` · rev ${run.revision_number}`}
+                      {' · '}{run.total_cases} case{run.total_cases === 1 ? '' : 's'}
+                      {new Date(run.created_at).toString() !== 'Invalid Date' && ` · ${new Date(run.created_at).toLocaleString()}`}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {run.grader_agreement !== null && (
-                <span className="text-[11px] text-muted-foreground" title="How often a reviewer agreed with the graders.">
-                  {Math.round(run.grader_agreement * 100)}% agreement
-                </span>
+                <div className="flex items-center gap-3 shrink-0">
+                  {run.grader_agreement !== null && (
+                    <span className="text-[11px] text-muted-foreground" title="How often a reviewer agreed with the graders.">
+                      {Math.round(run.grader_agreement * 100)}% agreement
+                    </span>
+                  )}
+                  <ScoreCell run={run} />
+                  <StatusPill status={run.status} />
+                </div>
+              </button>
+              {canDelete && (
+                <button
+                  onClick={() => onDelete(run.run_id)}
+                  disabled={deletingId === run.run_id}
+                  aria-label={`Delete eval sweep ${run.suite_name || run.run_id}`}
+                  title="Delete this sweep and its evaluation traces"
+                  className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
+                >
+                  {deletingId === run.run_id
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Trash2 className="w-4 h-4" />}
+                </button>
               )}
-              <ScoreCell run={run} />
-              <StatusPill status={run.status} />
             </div>
-          </button>
 
-          {openRun === run.run_id && <RunResults runId={run.run_id} error={run.error_message} />}
-        </div>
-      ))}
+            {openRun === run.run_id && <RunResults runId={run.run_id} error={run.error_message} />}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -709,8 +851,63 @@ function QualityTab({ data, loading }: { data?: Record<string, unknown>; loading
   );
 }
 
-function RunResults({ runId, error }: { runId: string; error?: string }) {
-  const detail = useQuery({
+/** What the run changed in the eval world — the "what changed" panel. */
+function ChangedList({ changes }: { changes?: Record<string, unknown> }) {
+  const lines = changedLines(changes);
+  if (lines.length === 0) return null;
+  return (
+    <div className="mt-1 text-muted-foreground">
+      <span className="text-foreground">Changed:</span> {lines.join(' · ')}
+    </div>
+  );
+}
+
+function changedLines(changes?: Record<string, unknown>): string[] {
+  if (!changes || typeof changes !== 'object') return [];
+  const lines: string[] = [];
+  const strList = (v: unknown): string[] =>
+    Array.isArray(v) ? v.map(String).filter(Boolean) : [];
+  const files = strList(changes.files_written);
+  if (files.length > 0) lines.push(`wrote ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` +${files.length - 3} more` : ''}`);
+  const removed = strList(changes.files_removed);
+  if (removed.length > 0) lines.push(`removed ${removed.slice(0, 3).join(', ')}`);
+  const mail = changes.mail as Record<string, unknown> | undefined;
+  if (mail && typeof mail === 'object') {
+    const sent = mail.sent as Array<{ to?: string; subject?: string }> | undefined;
+    if (Array.isArray(sent) && sent.length > 0) {
+      lines.push(`sent ${sent.length} email${sent.length === 1 ? '' : 's'} (${sent.slice(0, 2).map((s) => s?.to ?? '').filter(Boolean).join(', ')})`);
+    }
+    const drafts = mail.drafts as unknown[] | undefined;
+    if (Array.isArray(drafts) && drafts.length > 0) lines.push(`${drafts.length} draft${drafts.length === 1 ? '' : 's'}`);
+  }
+  const cal = changes.calendar as Record<string, unknown> | undefined;
+  if (cal && typeof cal === 'object') {
+    for (const [key, label] of [['events_created', 'created'], ['events_updated', 'updated'], ['events_deleted', 'deleted']] as const) {
+      const items = cal[key] as unknown[] | undefined;
+      if (Array.isArray(items) && items.length > 0) lines.push(`${label} ${items.length} event${items.length === 1 ? '' : 's'}`);
+    }
+  }
+  const drive = changes.drive as Record<string, unknown> | undefined;
+  if (drive && typeof drive === 'object') {
+    const cells = drive.cells_updated as unknown[] | undefined;
+    if (Array.isArray(cells) && cells.length > 0) lines.push(`updated ${cells.length} sheet range${cells.length === 1 ? '' : 's'}`);
+    const created = drive.files_created as unknown[] | undefined;
+    if (Array.isArray(created) && created.length > 0) lines.push(`created ${created.length} drive file${created.length === 1 ? '' : 's'}`);
+  }
+  const web = changes.web as Record<string, unknown> | undefined;
+  if (web && typeof web === 'object') {
+    const searches = web.searches as unknown[] | undefined;
+    const reads = web.reads as unknown[] | undefined;
+    const bits = [
+      Array.isArray(searches) && searches.length > 0 ? `${searches.length} search${searches.length === 1 ? '' : 'es'}` : '',
+      Array.isArray(reads) && reads.length > 0 ? `${reads.length} read${reads.length === 1 ? '' : 's'}` : '',
+    ].filter(Boolean);
+    if (bits.length > 0) lines.push(`web: ${bits.join(', ')}`);
+  }
+  return lines;
+}
+
+function RunResults({ runId, error }: { runId: string; error?: string }) {  const detail = useQuery({
     queryKey: ['eval', 'run', runId],
     queryFn: () => evalsService.getRun(runId),
   });
@@ -733,6 +930,8 @@ function RunResults({ runId, error }: { runId: string; error?: string }) {
             {r.error_message
               ? <div className="text-red-600 dark:text-red-400 truncate">{r.error_message}</div>
               : <div className="text-muted-foreground truncate">{r.answer || '(no answer)'}</div>}
+            <IntentList intents={r.intents} />
+            <ChangedList changes={r.env_changes} />
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {/* auto vs final: showing both is the point of the review model. */}

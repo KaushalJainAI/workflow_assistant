@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { AlarmClock, Mail, Repeat, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -40,6 +41,22 @@ export default function ScheduledReminders() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications', 'scheduled'] });
       setCancelling(null);
+    },
+    onError: (error: unknown) => {
+      /* A one-time reminder can fire between list load and confirm: the row
+         is gone, so the cancel answers 404. Close the dialog, refresh the
+         list, and say what happened — otherwise the dialog sits open over a
+         stale list with nothing shown. Any other failure closes it too: the
+         list refresh is what tells the user whether the cancel landed. */
+      const status = (error as { response?: { status?: number } })
+        ?.response?.status;
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'scheduled'] });
+      setCancelling(null);
+      toast.error(
+        status === 404
+          ? 'That reminder already fired or was removed.'
+          : 'Could not cancel that reminder.',
+      );
     },
   });
 

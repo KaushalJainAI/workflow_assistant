@@ -126,6 +126,19 @@ export interface TrashResult {
   purges_after_days: number;
 }
 
+export interface WorkbookSheet {
+  name: string;
+  rows: (string | number | boolean | null)[][];
+  row_count: number;
+  col_count: number;
+  truncated: boolean;
+}
+
+export interface WorkbookGrid {
+  sheets: WorkbookSheet[];
+  updated_at: string;
+}
+
 export interface DocumentChunk {
   id: number;
   content: string;
@@ -180,6 +193,8 @@ export const documentsService = {
      * for the documents sitting directly at the user's root.
      */
     folder_id?: number | 'root';
+    /** Narrow the personal half to these `file_type`s, across the whole tree. */
+    types?: string;
   }): Promise<DocumentListPage> {
     const r = await apiClient.get<DocumentListPage>('/inference/documents/', { params });
     return r.data;
@@ -230,6 +245,49 @@ export const documentsService = {
       `/inference/documents/${id}/content/`,
       { content, ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}) },
       expectedUpdatedAt ? { headers: { 'If-Match': expectedUpdatedAt } } : undefined,
+    );
+    return r.data;
+  },
+
+  /** A blank file (or a text file holding `content`). A taken name is numbered. */
+  async create(name: string, folderId?: number | null, content?: string): Promise<Document> {
+    const r = await apiClient.post<Document>('/inference/documents/new/', {
+      name,
+      ...(folderId != null ? { folder_id: folderId } : {}),
+      ...(content ? { content } : {}),
+    });
+    return r.data;
+  },
+
+  /** Rename in place. The extension must stay the same. */
+  async rename(id: number, name: string): Promise<Document> {
+    const r = await apiClient.patch<Document>(`/inference/documents/${id}/`, { name });
+    return r.data;
+  },
+
+  /** Duplicate into `folderId` (null = root). In its own folder it becomes `name - Copy.ext`. */
+  async copy(id: number, folderId: number | null): Promise<Document> {
+    const r = await apiClient.post<Document>(`/inference/documents/${id}/copy/`, {
+      ...(folderId != null ? { folder_id: folderId } : {}),
+    });
+    return r.data;
+  },
+
+  /** Every sheet of an .xlsx as raw cells (formulas as their `=` source). */
+  async workbook(id: number): Promise<WorkbookGrid> {
+    const r = await apiClient.get<WorkbookGrid>(`/inference/documents/${id}/office/`);
+    return r.data;
+  },
+
+  /** Cell edits to an .xlsx, or `{spec}` for a deck / Word file made here. */
+  async editOffice(
+    id: number,
+    body: { sheet?: string; set_cells?: { cell: string; value: string | number | boolean | null }[]; spec?: unknown },
+    expectedUpdatedAt?: string,
+  ): Promise<Document> {
+    const r = await apiClient.post<Document>(
+      `/inference/documents/${id}/office/`,
+      { ...body, ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}) },
     );
     return r.data;
   },

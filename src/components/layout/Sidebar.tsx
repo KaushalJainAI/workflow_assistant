@@ -1,32 +1,14 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import {
-  CalendarClock,
   GitGraph,
   Key,
-  KeyRound,
   Menu,
   Plus,
-  FileText,
-  Globe,
-  MessageCircle,
-  Plug,
-  Wrench,
-  GraduationCap,
-  FlaskConical,
   User,
-  Activity,
-  Bot,
-  LayoutGrid,
-  LayoutDashboard,
-  AppWindow,
-  Clapperboard,
-  // BarChart3,  // Insights lives in Settings now; no top-level entry
-  // LineChart,  // MVP: unused while Evals is hidden
-  // SlidersHorizontal,  // MVP: unused while Tuning is hidden
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useState, useEffect } from "react";
+import { navGroups } from "../../lib/navigation";
 import { OPEN_SIDEBAR_EVENT } from "./sidebarBus";
 import { useQuery } from "@tanstack/react-query";
 import { useHitlPending } from "../../hooks/useHitlPending";
@@ -156,98 +138,9 @@ const Sidebar = () => {
         return '??';
     };
 
-    /* The four groups mirror docs/prototype/index.html: what you do today (Work),
-       what you build (Build), how you make it better (Improve), and what it runs
-       on (Data). `pending` shows a count badge, `agent` a violet activity dot. */
-    type NavItem = {
-        icon: LucideIcon;
-        label: string;
-        path: string;
-        guestOk?: boolean;   // reachable without logging in
-        agent?: boolean;     // show the violet "running unattended" dot
-        pending?: boolean;   // show the blue "waiting on you" count
-        /** Extra path prefixes this entry should light up for. One entry can
-         *  own several routes — Automations covers the agent list, the builder
-         *  and both canvases. */
-        match?: string[];
-    };
-    const navGroups: { title: string; items: NavItem[] }[] = [
-        {
-            title: "Work",
-            items: [
-                { icon: MessageCircle, label: "Ask", path: "/ai-chat", guestOk: true },
-                // Activity is the single surface ordered by whether it needs
-                // a human: approvals first, then runs. `pending` shows the
-                // blue "waiting on you" count, `agent` the violet "running
-                // unattended" dot. /overview and /inbox redirect here so old
-                // links keep working.
-                { icon: Activity, label: "Activity", path: "/runs", agent: true, pending: true },
-                // Insights answers "is any of this working?" and lives only
-                // in Settings now — one way in, not two.
-            ],
-        },
-        {
-            title: "Build",
-            items: [
-                // Agents and workflows are the same table (`Workflow.kind`)
-                // and the same product — an agent decides *whether*, a
-                // workflow decides *how*. Automations is the agent list; a
-                // workflow canvas is somewhere you open from an agent, not a
-                // separate destination. `/workflows` redirects here so old
-                // links keep working.
-                { icon: Bot, label: "Automations", path: "/agents", match: ["/agents", "/workflow"] },
-                // Standard tool library — code-owned tools grouped by grant.
-                // Plugins (MCP) bring dynamic mcp__* tools; their catalogue is on
-                // Connections, not here. Connectors are credentials (Credentials).
-                // Where most agents start — ours to install, and other
-                // users' to install or to publish into. A destination
-                // rather than a button inside the agent list.
-                { icon: LayoutGrid, label: "Explore", path: "/templates" },
-                { icon: Wrench, label: "Tools", path: "/tools" },
-                // Separate from Automations on purpose: an agent is a
-                // configuration, a schedule is a standing commitment to
-                // spend on it. The second is worth being able to audit in
-                // one place without opening every agent to find it.
-                { icon: CalendarClock, label: "Schedules", path: "/schedules" },
-                { icon: Clapperboard, label: "Studio", path: "/imagine" },
-            ],
-        },
-        {
-            title: "Improve",
-            items: [
-                // How you make it better: reusable capabilities (Skills) and
-                // the suites that grade what the agents do (Evals). They sit
-                // together here rather than under Build/Runs: a suite is
-                // something you author, and its result is only final once a
-                // person has answered the review queue.
-                { icon: GraduationCap, label: "Skills", path: "/skills" },
-                { icon: FlaskConical, label: "Evals", path: "/evals" },
-            ],
-        },
-        // Plugins vs Connectors vs Tools — unambiguous now:
-        // Tools = one callable function the model can invoke (Tools page, code-owned)
-        // Plugin = external MCP pack that advertises mcp__* tools at runtime (Connections)
-        // Connector = credential/connection info that lets a plugin act as you (Credentials + per-plugin wiring on Connections)
-        // Documents holds the file tree that the fileOps tools address via inference/vfs.py.
-        {
-            title: "Data",
-            items: [
-                // Connections = Plugins: the MCPServer rows + per-plugin connector wiring.
-                // "Data sources" (/connectors) and "Tools" (/mcp-servers) used to be
-                // two views of the same tables; they are now one page with clear
-                // section headings (Plugins vs Connectors).
-                { icon: Plug, label: "Connections", path: "/connections" },
-                { icon: KeyRound, label: "Credentials", path: "/credentials" },
-                { icon: AppWindow, label: "Apps", path: "/apps" },
-                { icon: FileText, label: "Documents", path: "/documents", match: ["/documents"] },
-                { icon: LayoutDashboard, label: "Dashboards", path: "/dashboards" },
-                // Pages: snapshots published by link (`publish_page`), and withdrawing them.
-                { icon: Globe, label: "Pages", path: "/pages" },
-            ],
-        },
-    ];
-
-
+    /* Groups come from lib/navigation so the topbar, sidebar and mobile bars
+       can never disagree about what exists. Badges: `pending` = blue count
+       waiting on you, `agent` = violet running-unattended dot. */
 
     /* Title bars own their menu button now (`SidebarMenuButton`, in-flow at the
        start of each header). It fires this event; the sidebar just opens.

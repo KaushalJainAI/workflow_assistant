@@ -54,9 +54,16 @@ export default function CommandPalette({
     [query, commands],
   );
 
-  useEffect(() => {
-    if (open) setActive(0);
-  }, [open, query]);
+  /* Reset the highlight when the palette opens or the query changes — during
+     render, not in an effect: the previous open/query are state, and adjusting
+     `active` alongside them is the render-phase pattern the rule wants. */
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (open !== prevOpen || (open && query !== prevQuery)) {
+    setPrevOpen(open);
+    setPrevQuery(query);
+    setActive(0);
+  }
 
   useEffect(() => {
     if (!open) return;
