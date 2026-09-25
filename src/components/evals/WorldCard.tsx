@@ -8,7 +8,7 @@
  * on their version and are never swept.
  */
 import { useState } from 'react';
-import { Check, FlaskConical, Sparkles, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, FlaskConical, Loader2, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -25,7 +25,7 @@ function fixtureSummary(world: EvalWorld): Array<{ label: string; items: string[
   const out: Array<{ label: string; items: string[] }> = [];
   const fx = world.fixtures ?? {};
   const files = fx.files as Record<string, string> | undefined;
-  if (files && typeof files === 'object') {
+  if (files && typeof files === 'object' && Object.keys(files).length > 0) {
     out.push({ label: `${Object.keys(files).length} files`, items: Object.keys(files) });
   }
   const kb = fx.kb as { documents?: Array<{ name?: string }> } | undefined;
@@ -116,12 +116,10 @@ function GenerateForm({ suiteId, hasAgent, onDone, label }: {
       cases: Math.max(1, Math.min(25, Number(count) || 12)),
     }),
     onSuccess: (res) => {
-      const extra = [
-        res.rejected?.length ? `${res.rejected.length} thrown out` : '',
-        res.cost_usd ? `$${Number(res.cost_usd).toFixed(4)}` : '',
-      ].filter(Boolean).join(' · ');
+      // 202: the judge builds it in the background; the card polls until the
+      // row turns draft or failed, and a notification lands either way.
       toast.success(
-        `World v${res.world.version} drafted with ${res.cases.length} cases${extra ? ` (${extra})` : ''} — accept it below, then its cases.`);
+        `Building world v${res.world.version} — this takes a few minutes. You'll get a notification when it's ready.`);
       setOpen(false);
       onDone();
     },
@@ -166,6 +164,8 @@ export default function WorldCard({ suiteId, hasAgent }: {
   const world = useQuery({
     queryKey: ['eval', 'world', suiteId],
     queryFn: () => evalsService.getWorld(suiteId),
+    // Poll only while a generation is running; stop the moment it settles.
+    refetchInterval: (q) => (q.state.data?.pending?.status === 'generating' ? 5000 : false),
   });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['eval', 'world', suiteId] });
@@ -186,15 +186,66 @@ export default function WorldCard({ suiteId, hasAgent }: {
     onSuccess: () => { toast.success('Draft world deleted.'); refresh(); },
     onError: (e) => toast.error(errorText(e)),
   });
+  const retry = useMutation({
+    mutationFn: (failed: EvalWorld) => evalsService.generateWorld(suiteId, {
+      focus: failed.focus, cases: failed.requested_cases,
+    }),
+    onSuccess: (res) => {
+      toast.success(`Building world v${res.world.version} again.`);
+      refresh();
+    },
+    onError: (e) => toast.error(errorText(e)),
+  });
+
+  // When a generation finishes, the drafts it made belong in the case list.
+  const pendingStatus = world.data?.pending?.status;
+  const [lastPending, setLastPending] = useState(pendingStatus);
+  if (pendingStatus !== lastPending) {
+    setLastPending(pendingStatus);
+    if (lastPending === 'generating') refresh();
+  }
 
   if (world.isLoading) return null;
   const live = world.data?.live ?? null;
   const draft = world.data?.draft ?? null;
-  // A newer draft supersedes the live card's regenerate button placement.
-  const showGenerate = !draft;
+  const pending = world.data?.pending ?? null;
+  const generating = pending?.status === 'generating';
+  // A newer draft, or one being built, supersedes the regenerate button.
+  const showGenerate = !draft && !generating;
 
   return (
     <div className="space-y-2">
+      {generating && (
+        <div className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-2 text-xs">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />
+          <span>
+            Building world v{pending.version}{pending.focus ? <> — {pending.focus}</> : null}.
+            This takes a few minutes; you can leave this page.
+          </span>
+        </div>
+      )}
+      {pending?.status === 'failed' && (
+        <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-2 min-w-0">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-red-600 dark:text-red-400" />
+              <span className="min-w-0 break-words">
+                World v{pending.version} could not be built: {pending.error_message || 'unknown error'}
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="ghost" disabled={remove.isPending}
+                onClick={() => remove.mutate(pending.id)}>
+                <Trash2 className="w-3.5 h-3.5" /> Dismiss
+              </Button>
+              <Button size="sm" variant="secondary" loading={retry.isPending}
+                onClick={() => retry.mutate(pending)}>
+                <RotateCcw className="w-3.5 h-3.5" /> Try again
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {draft && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -214,6 +265,16 @@ export default function WorldCard({ suiteId, hasAgent }: {
             </div>
           </div>
           <WorldFacts world={draft} />
+          {draft.rejected?.length > 0 && (
+            <details className="mt-1.5 text-[11px] text-muted-foreground">
+              <summary className="cursor-pointer">
+                {draft.rejected.length} drafted case{draft.rejected.length === 1 ? '' : 's'} thrown out
+              </summary>
+              <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                {draft.rejected.map((why, i) => <li key={i} className="break-words">{why}</li>)}
+              </ul>
+            </details>
+          )}
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             Nothing scores until this is accepted — and its cases stay drafts until accepted after it.
           </p>

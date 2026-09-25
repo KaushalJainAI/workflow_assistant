@@ -26,18 +26,24 @@
  * track that it was opened, or draw a login form. Source stays one click away.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { Check, Copy, FileWarning, Loader2, WrapText } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Check, Copy, FileArchive, FileWarning, Loader2, WrapText } from 'lucide-react';
 
-import { documentsService, type Document } from '../../api/documents';
+import { documentsService, type ArchiveListing, type Document } from '../../api/documents';
 import MarkdownMessage from '../chat/MarkdownMessage';
 import { AuthenticatedMediaPreview } from '../documents/AuthenticatedMediaPreview';
 import CodeView from './CodeView';
 import OfficePreview from './OfficePreview';
 import { CSV_PREVIEW_ROWS, parseCsv } from '../../lib/csv';
 import { languageFor, languageForFile } from '../../lib/codeLanguage';
-import { formatJson, kindOf, parseNotebook, type Notebook, type PreviewKind } from '../../lib/filePreview';
+import {
+  extensionOfDoc, formatJson, kindOf, legacySentence, parseNotebook,
+  type Notebook, type PreviewKind,
+} from '../../lib/filePreview';
 import { cn } from '../../lib/utils';
+
+// pdf.js stays a lazy chunk: only a PDF preview downloads it.
+const PdfJsViewer = lazy(() => import('./PdfJsViewer'));
 
 /** Characters shown on open, and added by each "Show more". */
 const PREVIEW_STEP = 200_000;
@@ -94,7 +100,13 @@ export default function FilePreview({ doc, className }: Props) {
   }, [doc.id, kind]);
 
   const full = text ?? '';
-  const clipped = full.length > limit ? full.slice(0, limit) : full;
+  // Clipped at a block boundary for markdown: a mid-fence cut swallows
+  // everything after it, which reads as content (bullets included) vanishing.
+  const clipped = useMemo(() => {
+    if (kind !== 'markdown' || full.length <= limit) return full.slice(0, limit);
+    const cut = full.lastIndexOf('\n\n', limit);
+    return (cut > 0 ? full.slice(0, cut) : full.slice(0, limit)).replace(/\s+$/, '');
+  }, [full, limit, kind]);
   const truncated = full.length > limit;
 
   const table = useMemo(
@@ -130,9 +142,55 @@ export default function FilePreview({ doc, className }: Props) {
     return <OfficePreview doc={doc} className={className} />;
   }
 
+  if (kind === 'pdf') {
+    return (
+      <div className={cn('flex min-h-0 flex-1 flex-col', className)}>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+            </div>
+          }
+        >
+          <PdfJsViewer docId={doc.id} />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (kind === 'legacy_office') {
+    return (
+      <div className={cn('p-4', className)}>
+        <LegacyOfficeNotice doc={doc} />
+      </div>
+    );
+  }
+
+  if (kind === 'converted_image') {
+    return (
+      <div className={cn('p-4', className)}>
+        <ConvertedImage doc={doc} />
+      </div>
+    );
+  }
+
+  if (kind === 'archive') {
+    return (
+      <div className={cn('p-4', className)}>
+        <ArchiveList doc={doc} />
+      </div>
+    );
+  }
+
   if (kind === 'media') {
     return (
       <div className={cn('p-4', className)}>
+        {doc.file_type === 'other' && (
+          <p className="mx-auto mb-3 max-w-2xl rounded-lg border border-border/60 bg-card px-4 py-3 text-center text-[13px] text-muted-foreground">
+            No preview for{extensionOfDoc(doc) ? ` .${extensionOfDoc(doc)}` : ''} files
+            {doc.file_size ? ` (${formatSize(doc.file_size)})` : ''} — download it to open it.
+          </p>
+        )}
         <AuthenticatedMediaPreview doc={doc} />
       </div>
     );
@@ -220,6 +278,12 @@ export default function FilePreview({ doc, className }: Props) {
             <div className="px-6 py-5">
               <MarkdownMessage content={clipped} variant="full" />
             </div>
+          ) : (kind === 'email' || kind === 'opendocument') ? (
+            <div className="px-6 py-5">
+              <pre className="m-0 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">
+                {clipped}
+              </pre>
+            </div>
           ) : rendered && kind === 'csv' && table ? (
             <div className="p-4">
               <CsvTableView table={table} />
@@ -258,6 +322,143 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Old Office binaries: the sentence, plus whatever text was recovered. */
+function LegacyOfficeNotice({ doc }: { doc: Document }) {
+  // The extract, never the bytes: reading an OLE2 binary as text is the zip
+  // noise this whole phase exists to stop showing.
+  const [text, setText] = useState<string | null>(doc.content ?? null);
+  useEffect(() => {
+    if (doc.content !== undefined) return;
+    let cancelled = false;
+    documentsService
+      .get(doc.id)
+      .then((detail) => {
+        if (!cancelled) setText(detail.content ?? '');
+      })
+      .catch(() => {
+        if (!cancelled) setText('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc.id, doc.content]);
+  return (
+    <div className="mx-auto max-w-2xl px-2 py-6">
+      <p className="rounded-lg border border-border/60 bg-card px-4 py-3 text-[13px] text-muted-foreground">
+        {legacySentence(doc)}
+      </p>
+      {text !== null && text.trim() !== '' && (
+        <pre className="mt-4 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground/90">
+          {text}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/** TIFF/BMP/HEIC through the server-side PNG conversion. */
+function ConvertedImage({ doc }: { doc: Document }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    documentsService
+      .previewImageBlob(doc.id)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [doc.id]);
+  if (failed) {
+    return (
+      <div className="mx-auto max-w-2xl px-2 py-6">
+        <p className="rounded-lg border border-border/60 bg-card px-4 py-3 text-[13px] text-muted-foreground">
+          This image cannot be shown in the browser
+          {extensionOfDoc(doc) === 'heic' || extensionOfDoc(doc) === 'heif'
+            ? ' (HEIC needs conversion support the server does not have)'
+            : ''}
+          . Download it to view it.
+        </p>
+      </div>
+    );
+  }
+  if (!url) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-center">
+      <img src={url} alt={doc.filename} className="max-h-full max-w-full rounded-md object-contain" />
+    </div>
+  );
+}
+
+/** A zip's entries: names, sizes, dates — never the bytes. */
+function ArchiveList({ doc }: { doc: Document }) {
+  const [listing, setListing] = useState<ArchiveListing | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    documentsService
+      .archive(doc.id)
+      .then((body) => {
+        if (!cancelled) setListing(body);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc.id]);
+  if (failed) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">This archive could not be read.</p>;
+  }
+  if (!listing) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Opening…
+      </div>
+    );
+  }
+  return (
+    <div className="mx-auto max-w-2xl px-2 py-2">
+      <p className="mb-3 flex items-center gap-2 text-[13px] text-muted-foreground">
+        <FileArchive className="h-4 w-4" />
+        {listing.count} {listing.count === 1 ? 'file' : 'files'} inside
+        {listing.truncated ? ` — showing the first ${listing.entries.length}` : ''}.
+      </p>
+      {listing.entries.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">This archive is empty.</p>
+      ) : (
+        <ul className="m-0 list-none space-y-0.5 p-0">
+          {listing.entries.map((entry) => (
+            <li
+              key={entry.name}
+              className="flex items-baseline gap-3 rounded-md px-2.5 py-1.5 text-[13px] hover:bg-muted/50"
+            >
+              <span className="min-w-0 flex-1 truncate font-mono text-[12.5px]">{entry.name}</span>
+              <span className="shrink-0 text-[11.5px] text-muted-foreground">{formatSize(entry.size)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function HtmlFrame({ html, title }: { html: string; title: string }) {

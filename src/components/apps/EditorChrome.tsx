@@ -12,7 +12,9 @@ export function Toolbar({ children, className }: { children: ReactNode; classNam
   return (
     <div
       className={cn(
-        'flex shrink-0 flex-wrap items-center gap-1 border-b border-border/60 bg-card px-2 py-1.5',
+        // One scrollable row on phones (a wrapping toolbar would eat the
+        // document); wrapping rows again from md up.
+        'app-no-print flex shrink-0 flex-nowrap items-center gap-1 overflow-x-auto border-b border-border/60 bg-card px-2 py-1.5 md:flex-wrap md:overflow-visible',
         className,
       )}
     >
@@ -89,7 +91,7 @@ export function SaveStatus({
   readOnly?: boolean;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-3 border-t border-border/60 bg-card px-3 py-1.5 text-[11.5px] text-muted-foreground">
+    <div className="app-no-print flex shrink-0 items-center gap-3 border-t border-border/60 bg-card px-3 py-1.5 text-[11.5px] text-muted-foreground">
       {readOnly ? (
         <span>Read-only</span>
       ) : saving ? (

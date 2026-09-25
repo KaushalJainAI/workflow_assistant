@@ -73,6 +73,8 @@ import ChatHeader from './ChatHeader';
 import ChatMessageItem from './ChatMessageItem';
 import ChatSettingsDialog from './ChatSettingsDialog';
 import ToolApprovalCard from './ToolApprovalCard';
+import QuestionCard from './QuestionCard';
+import type { QuestionAnswer } from '../../lib/question';
 import { SendButton } from '../ui/SendButton';
 import { apiErrorMessage } from '../../lib/apiError';
 import { nextChatMode, toChatMode } from '../../lib/chatMode';
@@ -252,6 +254,7 @@ export default function StandaloneChat() {
     reset: resetStream,
     clearStatus: clearStreamStatus,
     clearPendingToolCall,
+    clearPendingQuestion,
     dismissBlockedAttachments,
   } = useChatStream();
 
@@ -267,7 +270,7 @@ export default function StandaloneChat() {
 
   // Bound as consts so a `&&` guard narrows them inside event handlers too,
   // which a `live.x` property read does not.
-  const { pendingToolCall, blockedAttachments } = live;
+  const { pendingToolCall, pendingQuestion, blockedAttachments } = live;
   // The answer being streamed re-parses its whole markdown on every update.
   // Deferred, so that work yields to typing in the composer rather than
   // making the box lag behind the keys while an answer is arriving.
@@ -853,6 +856,47 @@ export default function StandaloneChat() {
     );
   };
 
+  /**
+   * Answer the question the run paused on. The answer resumes the same turn —
+   * like an approval, it carries no new message — and comes back to the model
+   * as the result of its `ask_user` call. The server checks it against the
+   * question actually asked, so a stale card fails as an error, not a turn.
+   */
+  const handleAnswerQuestion = (answer: QuestionAnswer) => {
+    const callId = pendingQuestion?.call_id;
+    if (!conversationId || !callId) return;
+    clearPendingQuestion();
+    setIsLoading(true);
+    startChatRun(
+      conversationId,
+      (onEvent, signal) =>
+        chatService.sendMessageStream(
+          conversationId, 'Answer', activeIntent, onEvent, undefined, signal,
+          llmProvider, llmModel, undefined, undefined, effortToSend,
+          { answerToolCall: callId, answer },
+        ),
+      { intent: activeIntent },
+    );
+  };
+
+  /** Skipping is a refusal of the question: the run proceeds on its assumption. */
+  const handleSkipQuestion = () => {
+    const callId = pendingQuestion?.call_id;
+    if (!conversationId || !callId) return;
+    clearPendingQuestion();
+    setIsLoading(true);
+    startChatRun(
+      conversationId,
+      (onEvent, signal) =>
+        chatService.sendMessageStream(
+          conversationId, 'Skip', activeIntent, onEvent, undefined, signal,
+          llmProvider, llmModel, undefined, undefined, effortToSend,
+          { rejectToolCall: callId, rejectReason: 'skipped' },
+        ),
+      { intent: activeIntent },
+    );
+  };
+
   const handleSaveSessionSettings = async (patch: Partial<ChatSession>) => {
     if (!conversationId || !currentSession) return;
     if (isGuest && 'memory_enabled' in patch) {
@@ -903,6 +947,7 @@ export default function StandaloneChat() {
       }
 
       case 'ask_permission':
+      case 'ask_question':
         setIsLoading(false);
         break;
 
@@ -981,10 +1026,46 @@ export default function StandaloneChat() {
     }
   };
 
+  /**
+   * The server refused the message before the turn began (the input
+   * sanitizer). Nothing was saved, so it comes out of the transcript here too:
+   * the next message is answered as if this one had never been sent, and the
+   * user can keep chatting. A conversation created only to hold it is deleted
+   * rather than left in the list, empty and titled after the refused text.
+   */
+  const dropRefusedMessage = (
+    sessionId: string,
+    meta: RunMeta,
+    notice: string | undefined,
+    replayed: boolean,
+  ) => {
+    if (meta.optimisticId) {
+      setMessages(prev => prev.filter(m => m.id !== meta.optimisticId));
+    }
+    if (replayed) return;
+    toast.warning(
+      notice || "We didn't process this message due to security concerns. It was not saved.",
+      { duration: 12000 },
+    );
+    if (meta.createdSession && !isGuest) {
+      chatService.deleteSession(sessionId).catch(err => {
+        console.error('Failed to remove the empty conversation', err);
+      });
+      queryClient.setQueryData<ChatSessionSummary[]>(
+        ['chatSessions'], (old = []) => old.filter(c => c.id !== sessionId));
+      queryClient.removeQueries({ queryKey: ['chatSession', sessionId] });
+      forgetTranscript(sessionId);
+      clearChatDraft(sessionId, isGuest);
+      startNewConversation();
+    }
+  };
+
   // The subscription effect below must not re-subscribe on every render, so it
-  // reads the handler through a ref that always holds the latest closure.
+  // reads the handlers through refs that always hold the latest closure.
   const handleStreamEventRef = useRef(handleStreamEvent);
   handleStreamEventRef.current = handleStreamEvent;
+  const dropRefusedMessageRef = useRef(dropRefusedMessage);
+  dropRefusedMessageRef.current = dropRefusedMessage;
 
   /**
    * Binds the view to the run for whichever conversation is open.
@@ -1009,6 +1090,15 @@ export default function StandaloneChat() {
       if (frame.type === RUN_STATUS_EVENT) {
         setIsLoading(false);
         clearStreamStatus();
+        if (frame.status === 'error' && frame.code === 'SECURITY_VIOLATION') {
+          dropRefusedMessageRef.current(
+            conversationId,
+            run.meta,
+            typeof frame.error === 'string' ? frame.error : undefined,
+            replayed,
+          );
+          return;
+        }
         // `RunFrame` is a union with `SseEvent`, whose fields are `unknown`,
         // so the status frame's own `error?: string` has to be re-narrowed
         // here rather than assumed.
@@ -1252,6 +1342,7 @@ export default function StandaloneChat() {
         }
         if (!currentSessionId) {
           const newSession = await chatService.guest.createSession(textToSend.slice(0, 30) + '...');
+          meta.createdSession = true;
           currentSessionId = newSession.id;
           setConversationId(newSession.id);
           setCurrentSession(newSession);
@@ -1287,6 +1378,7 @@ export default function StandaloneChat() {
             llm_model: llmModel,
             system_prompt: ""
           });
+          meta.createdSession = true;
           currentSessionId = newSession.id;
           setConversationId(newSession.id);
           setCurrentSession(newSession);
@@ -1993,6 +2085,17 @@ export default function StandaloneChat() {
                 call={pendingToolCall}
                 onApprove={handleApproveTool}
                 onDeny={handleDenyTool}
+              />
+            )}
+
+            {/* A question the assistant (or one of its agents) asked */}
+            {pendingQuestion && !pendingToolCall && (
+              <QuestionCard
+                key={pendingQuestion.call_id}
+                spec={pendingQuestion}
+                onSubmit={handleAnswerQuestion}
+                onSkip={handleSkipQuestion}
+                busy={isLoading}
               />
             )}
 

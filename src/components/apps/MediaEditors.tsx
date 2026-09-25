@@ -5,7 +5,7 @@
  * Every byte comes through `hooks/useBlobUrl`, which explains why a `blob:`
  * URL and not the API address.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 import { documentsService, type Document } from '../../api/documents';
-import { useBlobUrl } from '../../hooks/useBlobUrl';
+import { useBlobUrl, usePreviewImageUrl } from '../../hooks/useBlobUrl';
 import { apiErrorMessage } from '../../lib/apiError';
 import { toast } from '../../lib/toastStore';
 import { cn } from '../../lib/utils';
@@ -52,14 +52,16 @@ function Chrome({ children, doc, extra }: { children: React.ReactNode; doc: Docu
 // PDF Reader
 // ---------------------------------------------------------------------------
 
+const PdfJsViewer = lazy(() => import('../files/PdfJsViewer'));
+
 export function PdfViewer({ doc }: { doc: Document }) {
-  const { url, error } = useBlobUrl(doc.id);
-  if (error) return <EditorError message={error} />;
-  if (!url) return <EditorLoading />;
   return (
     <Chrome doc={doc}>
-      {/* The browser's own PDF viewer: search, zoom, print and page thumbnails for free. */}
-      <iframe src={url} title={doc.filename} className="min-h-0 w-full flex-1 border-0 bg-muted" />
+      {/* pdf.js, not the browser's viewer: the same pages on every device,
+          phones included. */}
+      <Suspense fallback={<EditorLoading label="Opening…" />}>
+        <PdfJsViewer docId={doc.id} />
+      </Suspense>
     </Chrome>
   );
 }
@@ -68,11 +70,20 @@ export function PdfViewer({ doc }: { doc: Document }) {
 // Photos
 // ---------------------------------------------------------------------------
 
+/** Extensions most browsers cannot display, converted server-side to PNG. */
+function needsConversion(filename: string): boolean {
+  const ext = filename.includes('.') ? filename.split('.').pop()!.toLowerCase() : '';
+  return ext === 'tif' || ext === 'tiff' || ext === 'bmp' || ext === 'heic' || ext === 'heif';
+}
+
 export function PhotosViewer({
   doc, siblings = [], onOpenDoc,
 }: { doc: Document; siblings?: Document[]; onOpenDoc?: (d: Document) => void }) {
   const navigate = useNavigate();
-  const { url, error } = useBlobUrl(doc.id);
+  const converted = needsConversion(doc.filename);
+  const direct = useBlobUrl(converted ? null : doc.id);
+  const rendered = usePreviewImageUrl(converted ? doc.id : null);
+  const { url, error } = converted ? rendered : direct;
   const [zoom, setZoom] = useState(1);
   const [rotate, setRotate] = useState(0);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -153,18 +164,34 @@ export function PhotosViewer({
 
 export function MediaPlayer({ doc }: { doc: Document }) {
   const { url, error } = useBlobUrl(doc.id);
+  // Fresh mount per file (callers key on the document id), so the initial
+  // state is the reset.
+  const [unplayable, setUnplayable] = useState(false);
   if (error) return <EditorError message={error} />;
   if (!url) return <EditorLoading />;
+  // Converting media server-side is too heavy for the box, so a format the
+  // browser cannot play says so instead of sitting black or silent.
+  if (unplayable) {
+    return (
+      <Chrome doc={doc}>
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <p className="max-w-sm rounded-lg border border-border/60 bg-card px-4 py-3 text-center text-[13px] text-muted-foreground">
+            This format doesn&apos;t play in the browser. Download it to watch.
+          </p>
+        </div>
+      </Chrome>
+    );
+  }
   return (
     <Chrome doc={doc}>
       <div className="flex min-h-0 flex-1 items-center justify-center bg-black/90 p-4">
         {doc.file_type === 'audio' ? (
           <div className="w-full max-w-lg rounded-xl bg-card p-6 text-center shadow-lg">
             <p className="mb-4 truncate text-sm font-medium">{doc.filename}</p>
-            <audio src={url} controls autoPlay className="w-full" />
+            <audio src={url} controls autoPlay className="w-full" onError={() => setUnplayable(true)} />
           </div>
         ) : (
-          <video src={url} controls autoPlay className="max-h-full max-w-full rounded-md" />
+          <video src={url} controls autoPlay className="max-h-full max-w-full rounded-md" onError={() => setUnplayable(true)} />
         )}
       </div>
     </Chrome>

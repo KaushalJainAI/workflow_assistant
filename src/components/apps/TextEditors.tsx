@@ -7,11 +7,15 @@
  * (empty `sandbox`, no-network CSP) plus scripts off: the page is the user's
  * own, but it may be one an agent wrote from a web page it read.
  */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Bold, Code, Columns2, Eye, Heading1, Heading2, Italic, Link2, List, ListChecks, ListOrdered,
   PencilLine, Plus, Quote, Trash2, WrapText,
 } from 'lucide-react';
+import { useThemeContext } from '../../contexts/themeState';
+
+// CodeMirror stays a lazy chunk: only the Code Editor downloads it.
+const CodeMirrorView = lazy(() => import('./CodeMirrorView'));
 
 import type { Document } from '../../api/documents';
 import { useTextFile, type TextFile } from '../../hooks/useTextFile';
@@ -19,11 +23,10 @@ import { languageForFile } from '../../lib/codeLanguage';
 import { parseTasks, serializeTasks, type TaskLine } from '../../lib/sheetGrid';
 import { cn } from '../../lib/utils';
 import MarkdownMessage from '../chat/MarkdownMessage';
-import CodeView from '../files/CodeView';
 import {
   Divider, EditorError, EditorLoading, SaveStatus, StaleBanner, ToolButton, Toolbar,
 } from './EditorChrome';
-import { isSaveKey } from '../../lib/editorKeys';
+import { isEditableTarget, isRedoKey, isSaveKey, isUndoKey } from '../../lib/editorKeys';
 
 export interface EditorProps {
   doc: Document;
@@ -61,6 +64,19 @@ function TextSurface({
     if (isSaveKey(e)) {
       e.preventDefault();
       void file.save();
+      return;
+    }
+    // Session undo/redo (Ctrl+Z / Ctrl+Y): the stack lives in the file hook,
+    // so it works in every text-shaped app. preventDefault stops the
+    // textarea's own stack from applying the same step twice.
+    if (isUndoKey(e)) {
+      e.preventDefault();
+      file.undo();
+      return;
+    }
+    if (isRedoKey(e)) {
+      e.preventDefault();
+      file.redo();
       return;
     }
     if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -102,8 +118,7 @@ function Frame({ file, children, extra, hint }: { file: TextFile; children: Reac
       <SaveStatus
         dirty={file.dirty}
         saving={file.saving}
-        onSave={() => void file.save()}
-        hint={hint}
+        hint={hint ?? 'Autosaves as you type'}
         extra={extra ?? counts(file.text)}
       />
     </div>
@@ -183,7 +198,7 @@ function applyMarkdown(
 }
 
 export function MarkdownEditor({ doc, onDirtyChange }: EditorProps) {
-  const file = useTextFile(doc.id);
+  const file = useTextFile(doc.id, { autosaveMs: 1500 });
   useReportDirty(file, onDirtyChange);
   const area = useRef<HTMLTextAreaElement>(null);
   const [view, setView] = useState<MdView>(() => (window.innerWidth >= 1024 ? 'split' : 'edit'));
@@ -254,13 +269,12 @@ export function MarkdownEditor({ doc, onDirtyChange }: EditorProps) {
 // ---------------------------------------------------------------------------
 
 export function CodeEditor({ doc, onDirtyChange }: EditorProps) {
-  const file = useTextFile(doc.id);
+  const file = useTextFile(doc.id, { autosaveMs: 1500 });
   useReportDirty(file, onDirtyChange);
-  const [view, setView] = useState<'edit' | 'highlight'>('edit');
   const [wrap, setWrap] = useState(false);
+  const { resolvedTheme } = useThemeContext();
   const language = languageForFile(doc.filename);
   const lineCount = file.text.split('\n').length;
-  const gutter = useRef<HTMLDivElement>(null);
 
   const isJson = /\.json$/i.test(doc.filename);
   const jsonError = useMemo(() => {
@@ -293,13 +307,6 @@ export function CodeEditor({ doc, onDirtyChange }: EditorProps) {
       }
     >
       <Toolbar>
-        <ToolButton onClick={() => setView('edit')} active={view === 'edit'} title="Edit">
-          <PencilLine className="h-4 w-4" /> Edit
-        </ToolButton>
-        <ToolButton onClick={() => setView('highlight')} active={view === 'highlight'} title="Highlighted view">
-          <Eye className="h-4 w-4" /> Highlighted
-        </ToolButton>
-        <Divider />
         <ToolButton onClick={() => setWrap((w) => !w)} active={wrap} title="Wrap long lines">
           <WrapText className="h-4 w-4" />
         </ToolButton>
@@ -309,33 +316,16 @@ export function CodeEditor({ doc, onDirtyChange }: EditorProps) {
           </ToolButton>
         )}
       </Toolbar>
-      {view === 'highlight' ? (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <CodeView code={file.text} language={language} wrap={wrap} />
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          {!wrap && (
-            <div
-              ref={gutter}
-              aria-hidden
-              className="w-12 shrink-0 select-none overflow-hidden border-r border-border/60 bg-muted/30 py-4 pr-2 text-right font-mono text-[13px] leading-relaxed text-muted-foreground/70"
-            >
-              {Array.from({ length: Math.min(lineCount, 20000) }, (_, i) => (
-                <div key={i}>{i + 1}</div>
-              ))}
-            </div>
-          )}
-          <div
-            className="flex min-h-0 flex-1 flex-col"
-            onScrollCapture={(e) => {
-              if (gutter.current) gutter.current.scrollTop = (e.target as HTMLElement).scrollTop;
-            }}
-          >
-            <TextSurface file={file} mono wrap={wrap} />
-          </div>
-        </div>
-      )}
+      <Suspense fallback={<EditorLoading label="Loading the editor…" />}>
+        <CodeMirrorView
+          value={file.text}
+          language={language}
+          dark={resolvedTheme === 'dark'}
+          wrap={wrap}
+          onChange={file.setText}
+          onSave={() => void file.save()}
+        />
+      </Suspense>
     </Frame>
   );
 }
@@ -352,7 +342,7 @@ function withCsp(html: string): string {
 }
 
 export function WebEditor({ doc, onDirtyChange }: EditorProps) {
-  const file = useTextFile(doc.id);
+  const file = useTextFile(doc.id, { autosaveMs: 1500 });
   useReportDirty(file, onDirtyChange);
   const [view, setView] = useState<MdView>(() => (window.innerWidth >= 1024 ? 'split' : 'edit'));
   // Debounced so the frame is not rebuilt on every keystroke.
@@ -413,7 +403,7 @@ export function WebEditor({ doc, onDirtyChange }: EditorProps) {
 // ---------------------------------------------------------------------------
 
 export function TasksEditor({ doc, onDirtyChange }: EditorProps) {
-  const file = useTextFile(doc.id, { autosaveMs: 800 });
+  const file = useTextFile(doc.id, { autosaveMs: 1500 });
   useReportDirty(file, onDirtyChange);
   const lines = useMemo(() => parseTasks(file.text), [file.text]);
   const [draft, setDraft] = useState('');
@@ -438,7 +428,21 @@ export function TasksEditor({ doc, onDirtyChange }: EditorProps) {
 
   return (
     <Frame file={file} hint="Saves automatically" extra={<span>{done} of {tasks.length} done</span>}>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        className="min-h-0 flex-1 overflow-auto"
+        onKeyDown={(e) => {
+          // Checkbox toggles and text fields keep their native keys; anywhere
+          // else steps the file's session history.
+          if (isEditableTarget(e.target)) return;
+          if (isUndoKey(e)) {
+            e.preventDefault();
+            file.undo();
+          } else if (isRedoKey(e)) {
+            e.preventDefault();
+            file.redo();
+          }
+        }}
+      >
         <div className="mx-auto max-w-2xl px-4 py-6">
           <h2 className="mb-1 text-lg font-semibold">
             {heading && heading.kind === 'other' ? heading.raw.replace(/^#\s*/, '') : doc.filename.replace(/\.[^.]+$/, '')}

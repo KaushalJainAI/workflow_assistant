@@ -308,7 +308,7 @@ function PlanPanel(props: Props) {
     <>
       {/* Desktop: sticky right rail. */}
       <aside className="hidden w-72 shrink-0 md:block">
-        <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-border/60 bg-background">
+        <div className="sticky top-4 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-border/60 bg-background">
           <PanelBody {...props} />
         </div>
       </aside>
@@ -319,7 +319,7 @@ function PlanPanel(props: Props) {
         <div className="md:hidden">
           <button
             onClick={() => setSheetOpen((v) => !v)}
-            className="fixed bottom-20 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-[12px] shadow-lg"
+            className="fixed bottom-[calc(80px+env(safe-area-inset-bottom))] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-[12px] shadow-lg"
           >
             <ChevronUp className={`h-3.5 w-3.5 transition-transform ${sheetOpen ? 'rotate-180' : ''}`} />
             <span className="tabular-nums">
@@ -328,7 +328,7 @@ function PlanPanel(props: Props) {
             </span>
           </button>
           {sheetOpen && (
-            <div className="fixed inset-x-0 bottom-0 z-40 max-h-[60vh] overflow-y-auto rounded-t-xl border-t border-border bg-background shadow-2xl">
+            <div className="fixed inset-x-0 bottom-[calc(68px+env(safe-area-inset-bottom))] z-40 max-h-[60dvh] overflow-y-auto rounded-t-xl border-t border-border bg-background shadow-2xl">
               <PanelBody {...props} />
             </div>
           )}

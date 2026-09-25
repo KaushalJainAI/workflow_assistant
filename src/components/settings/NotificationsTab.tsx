@@ -29,6 +29,7 @@ const ACTION_PATHS: Record<string, string> = {
   '/runs': 'Open Activity',
   '/documents': 'Open documents',
   '/settings': 'Open settings',
+  '/evals': 'Review on Evals',
 };
 
 function actionLink(notification: Notification): { to: string; label: string } | null {

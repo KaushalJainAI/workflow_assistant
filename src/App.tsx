@@ -42,7 +42,7 @@ const lazyPage = <T extends { default: React.ComponentType }>(
 
 const AIChat = lazyPage(() => import('./pages/AIChat'));
 const Apps = lazyPage(() => import('./pages/Apps'));
-const AppWorkspace = lazyPage(() => import('./pages/AppWorkspace'));
+const AppFrame = lazyPage(() => import('./components/apps/AppFrame'));
 const Dashboards = lazyPage(() => import('./pages/Dashboards'));
 const Legal = lazy(() => import('./pages/Legal'));
 const AgentBuilder = lazyPage(() => import('./pages/AgentBuilder'));
@@ -53,7 +53,6 @@ const Connections = lazyPage(() => import('./pages/Connections'));
 const Credentials = lazyPage(() => import('./pages/Credentials'));
 const Documents = lazyPage(() => import('./pages/Documents'));
 const Imagine = lazyPage(() => import('./pages/Imagine'));
-const Missions = lazyPage(() => import('./pages/Missions'));
 const OAuthCallback = lazyPage(() => import('./pages/OAuthCallback'));
 const Profile = lazyPage(() => import('./pages/Profile'));
 const Runs = lazyPage(() => import('./pages/Runs'));
@@ -187,6 +186,10 @@ const AppContent = () => {
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
+            {/* Document apps run full-screen in AppFrame, outside <Layout />:
+                the document gets the whole screen instead of two-thirds of
+                it. The launcher (/apps) stays a normal page. */}
+            <Route path="/apps/:appId" element={<AppFrame />} />
             <Route element={<Layout />}>
               <Route path="/ai-chat" element={<AIChat />} />
               {/* The workflow *list* is retired: automations are listed on
@@ -201,7 +204,6 @@ const AppContent = () => {
               <Route path="/pages" element={<Pages />} />
               <Route path="/dashboards" element={<Dashboards />} />
               <Route path="/apps" element={<Apps />} />
-              <Route path="/apps/:appId" element={<AppWorkspace />} />
               {/* Connections merges the former "Data sources" (/connectors) and
                   "Tools" (/mcp-servers), which were two views of the same two
                   tables. Both paths redirect so existing links keep working. */}
@@ -230,7 +232,9 @@ const AppContent = () => {
               {/* Work — Activity absorbs Inbox: keep /inbox as redirect so deep links stay valid */}
               <Route path="/inbox" element={<Navigate to="/runs" replace />} />
               <Route path="/runs" element={<Runs />} />
-              <Route path="/missions" element={<Missions />} />
+              {/* Missions live inside Activity now (goals above their runs);
+                  keep /missions as a redirect so saved links keep working. */}
+              <Route path="/missions" element={<Navigate to="/runs" replace />} />
               <Route path="/schedules" element={<Schedules />} />
               {/* Build — creation is the orchestrator wizard; the builder is edit-only */}
               <Route path="/agents" element={<Agents />} />

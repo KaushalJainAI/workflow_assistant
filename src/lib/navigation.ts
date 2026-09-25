@@ -11,7 +11,6 @@ import {
   LayoutGrid,
   MessageCircle,
   Plug,
-  Target,
   Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -49,8 +48,9 @@ export const navGroups: NavGroup[] = [
     title: 'Work',
     items: [
       { icon: MessageCircle, label: 'Ask', path: '/ai-chat', guestOk: true },
+      // Missions live inside Activity (goals above their runs); /missions
+      // redirects to /runs so no nav entry is needed.
       { icon: Activity, label: 'Activity', path: '/runs', agent: true, pending: true },
-      { icon: Target, label: 'Missions', path: '/missions' },
     ],
   },
   {

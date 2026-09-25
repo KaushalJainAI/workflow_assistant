@@ -41,19 +41,6 @@ export interface User {
   createdAt: string;
 }
 
-export interface UsageInsight {
-  total_executions: number;
-  total_cost: string;
-  success_rate: number;
-  hours_saved: number;
-  daily_stats: Array<{
-    date: string;
-    execute_count: number;
-  }>;
-  tier: string;
-  credits_remaining: number;
-}
-
 interface BackendProfileResponse {
   user: {
     id: number;
@@ -98,6 +85,15 @@ export interface ProfileUpdatePayload extends Partial<User> {
 export interface OTPVerifyResponse {
   detail: string;
   verification_token: string;
+}
+
+/**
+ * A password or email change signs out every session, this one included, and
+ * hands back a new pair for this tab. Without storing it the very next request
+ * would 401 and the user would be logged out by their own change.
+ */
+function keepFreshPair(data: { access?: string; refresh?: string }): void {
+  if (data?.access && data?.refresh) tokenManager.setTokens(data.access, data.refresh);
 }
 
 function mapProfileResponse(data: BackendProfileResponse): User {
@@ -288,6 +284,7 @@ export const authService = {
     const response = await apiClient.post('/auth/email/change/confirm/', {
       otp_code: otpCode,
     });
+    keepFreshPair(response.data);
     return response.data;
   },
 
@@ -312,6 +309,7 @@ export const authService = {
     confirm_password: string;
   }): Promise<{ detail: string }> {
     const response = await apiClient.post('/auth/change-password/', data);
+    keepFreshPair(response.data);
     return response.data;
   },
 
@@ -339,14 +337,6 @@ export const authService = {
   },
 
   /**
-   * Get usage insights
-   */
-  async getUsageInsights(): Promise<UsageInsight> {
-    const response = await apiClient.get<UsageInsight>('/usage/insights/');
-    return response.data;
-  },
-
-  /**
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
@@ -354,20 +344,17 @@ export const authService = {
   },
 
   /**
-   * Get current API Key
+   * The current API key, masked. The server stores only a hash, so the full
+   * key exists once — in the create/rotate response — and never again; what
+   * comes back here is its first eight characters.
    */
   async getApiKey(): Promise<{ key: string; created_at: string }> {
     const response = await apiClient.get('/auth/api-keys/');
-    const data = response.data as
-      | { key: string; created_at: string }[]
-      | { results?: { key: string; created_at: string }[] };
-    if (Array.isArray(data) && data.length > 0) {
-      return data[0];
-    }
-    if (!Array.isArray(data) && data.results && data.results.length > 0) {
-      return data.results[0];
-    }
-    return { key: '', created_at: '' };
+    type Row = { key_prefix: string; created_at: string };
+    const data = response.data as Row[] | { results?: Row[] };
+    const rows = Array.isArray(data) ? data : data.results ?? [];
+    if (rows.length === 0) return { key: '', created_at: '' };
+    return { key: `${rows[0].key_prefix}…`, created_at: rows[0].created_at };
   },
 
   /**
@@ -400,22 +387,6 @@ export const authService = {
       key: data.api_key,
       created_at: data.data?.created_at ?? new Date().toISOString(),
     };
-  },
-
-  /**
-   * Refresh access token
-   */
-  async refreshToken(): Promise<string> {
-    const refresh = tokenManager.getRefreshToken();
-    if (!refresh) throw new Error('No refresh token');
-
-    const response = await apiClient.post<{ access: string; refresh?: string }>(
-      '/auth/token/refresh/',
-      { refresh }
-    );
-    const { access, refresh: newRefresh } = response.data;
-    tokenManager.setTokens(access, newRefresh || refresh);
-    return access;
   },
 };
 

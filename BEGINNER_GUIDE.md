@@ -31,7 +31,7 @@ You sign in and land on **Ask** (the chat). From the menu you can reach:
 | Dashboards | `/dashboards` | `pages/Dashboards.tsx` | Live tiles an agent saved |
 | Pages | `/pages` | `pages/Pages.tsx` | Pages you published by link |
 | Settings / Profile | `/settings`, `/profile` | `pages/Settings.tsx`, `pages/Profile.tsx` | Your preferences, including Memory (what the assistant remembers about you) |
-| Missions | `/missions` | `pages/Missions.tsx` | Long goals that span many agent runs |
+| Missions | Activity (`/runs`, Missions section) | `pages/Runs.tsx` (Missions section, via `api/missions.ts`) | Long goals that span many agent runs |
 
 Public pages without login: `/a/:slug` (a shared agent) and `/p/:slug` (a
 published page).
@@ -62,6 +62,10 @@ src/
 │   ├── ui/           shared building blocks: Button, Modal, Switch, Select, EmptyState...
 │   ├── layout/       Topbar, Sidebar, mobile bars, PageHeader (menu items: lib/navigation.ts)
 │   ├── chat/         everything in the chat page
+│   ├── apps/         the document apps (Docs, Sheets, Slides...): AppFrame,
+│   │                 AppBar, FileMenu, one editor per file type. The heavy
+│   │                 editors (Univer, TipTap, CodeMirror, pdf.js) load lazily,
+│   │                 only inside the app that uses them
 │   └── agents/, runs/, files/, schedules/, ...   one folder per feature
 ├── api/              one file per backend area. THE ONLY place that calls the backend
 ├── hooks/            reusable React logic (useChatStream, useLiveRun, ...)

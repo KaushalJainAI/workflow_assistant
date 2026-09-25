@@ -16,7 +16,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   Activity, AlertCircle, Check, ChevronRight, ClipboardCheck, FlaskConical,
-  HelpCircle, Loader2, Play, Plus, Trash2, X,
+  HelpCircle, Loader2, Pencil, Play, Plus, Trash2, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +30,7 @@ import evalsService, {
 } from '../api/evals';
 import agentsService from '../api/agents';
 import DraftCases from '../components/evals/DraftCases';
+import CaseEditor from '../components/evals/CaseEditor';
 import WorldCard from '../components/evals/WorldCard';
 import IntentList from '../components/evals/IntentList';
 import { cn } from '../lib/utils';
@@ -569,6 +570,7 @@ function SuiteCases({ suiteId, agents, subagent }: {
     onError: () => toast.error('Could not save that setting.'),
   });
   const agentName = agents.find((a) => a.id === subagent)?.name;
+  const [editing, setEditing] = useState<EvalCase | 'new' | null>(null);
 
   if (detail.isLoading) return <div className="px-4 pb-4"><Loading /></div>;
   const all = detail.data?.cases ?? [];
@@ -599,6 +601,12 @@ function SuiteCases({ suiteId, agents, subagent }: {
       </div>
       <WorldCard suiteId={suiteId} hasAgent={subagent != null} />
       <DraftCases suiteId={suiteId} hasAgent={subagent != null} drafts={drafts} />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium">{cases.length} case{cases.length === 1 ? '' : 's'}</span>
+        <Button size="sm" variant="secondary" onClick={() => setEditing('new')}>
+          <Plus className="w-3.5 h-3.5" /> Write a case
+        </Button>
+      </div>
       {cases.length === 0 ? (
         <p className="text-xs text-muted-foreground py-2">
           No cases yet. Generate some from the agent's setup, import its recent runs, or write your own.
@@ -606,16 +614,27 @@ function SuiteCases({ suiteId, agents, subagent }: {
       ) : (
         <div className="space-y-1.5">
           {cases.map((c) => (
-            <CaseRow key={c.id} caseData={c} liveVersion={liveVersion} />
+            <CaseRow key={c.id} caseData={c} liveVersion={liveVersion} onEdit={() => setEditing(c)} />
           ))}
         </div>
+      )}
+      {editing && (
+        <CaseEditor
+          suiteId={suiteId}
+          existing={editing === 'new' ? undefined : editing}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );
 }
 
 /** One accepted case: goal on the row, expected answer and facts on expand. */
-function CaseRow({ caseData: c, liveVersion }: { caseData: EvalCase; liveVersion: number | null }) {
+function CaseRow({ caseData: c, liveVersion, onEdit }: {
+  caseData: EvalCase;
+  liveVersion: number | null;
+  onEdit: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const facts = Array.isArray((c.input_data ?? {})['__facts__'])
     ? (c.input_data['__facts__'] as unknown[]).map(String)
@@ -653,6 +672,9 @@ function CaseRow({ caseData: c, liveVersion }: { caseData: EvalCase; liveVersion
             <span className="text-foreground">Checks:</span>{' '}
             {c.graders.map((g) => g.type).join(', ') || 'none — queued for review under every policy'}
           </div>
+          <Button size="sm" variant="ghost" onClick={onEdit}>
+            <Pencil className="w-3.5 h-3.5" /> Edit
+          </Button>
         </div>
       )}
     </div>

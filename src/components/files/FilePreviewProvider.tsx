@@ -12,14 +12,12 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { Download, FileWarning, FolderOpen, Loader2, X } from 'lucide-react';
+import { FileWarning, Loader2 } from 'lucide-react';
 
 import { documentsService, type Document } from '../../api/documents';
-import { downloadDocument } from '../../lib/filePreview';
 import { resolvePath } from '../../lib/vfsPath';
-import { toast } from '../../lib/toastStore';
 import FilePreview from './FilePreview';
+import PreviewFrame from './PreviewFrame';
 import { FilePreviewContext, type FileTarget } from './filePreviewState';
 
 export default function FilePreviewProvider({ children }: { children: ReactNode }) {
@@ -77,63 +75,27 @@ function FileDrawer({ target, onClose }: { target: FileTarget; onClose: () => vo
     };
   }, [target, label]);
 
-  const download = async () => {
-    if (!doc) return;
-    try {
-      await downloadDocument(doc);
-    } catch {
-      toast.error('Download failed');
-    }
-  };
-
   return (
     <aside
       role="dialog"
       aria-label={`Preview of ${doc?.filename ?? label}`}
       className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-border bg-card shadow-2xl animate-in slide-in-from-right duration-200 sm:w-[min(760px,55vw)] sm:min-w-[440px]"
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-foreground">{doc?.filename ?? label}</h2>
-          <p className="truncate text-xs text-muted-foreground">
-            {doc?.folder_path && doc.folder_path !== '/' ? doc.folder_path : doc ? 'Your files' : ' '}
-          </p>
-        </div>
-        {doc && (
-          <>
-            <Link
-              to={`/documents?doc=${doc.id}`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
-              <span>Open in Documents</span>
-            </Link>
-            <button
-              type="button"
-              onClick={download}
-              className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Download"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Close preview"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
       {doc ? (
-        <FilePreview key={doc.id} doc={doc} className="flex-1" />
+        <PreviewFrame doc={doc} onClose={onClose}>
+          <FilePreview key={doc.id} doc={doc} className="flex-1" />
+        </PreviewFrame>
       ) : problem ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
           <FileWarning className="h-6 w-6" />
           {problem}
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-2 rounded-md border border-border/60 px-3 py-1.5 text-[13px] hover:bg-muted"
+          >
+            Close
+          </button>
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">

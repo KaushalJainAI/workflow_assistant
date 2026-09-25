@@ -282,14 +282,6 @@ const templatesService = {
     );
     return data;
   },
-
-  /** The public catalogue. Capped server-side; `truncated` says when it cut. */
-  publicList: async (): Promise<{ results: PublicAgent[]; truncated: boolean }> => {
-    const { data } = await apiClient.get<{ results: PublicAgent[]; truncated: boolean }>(
-      '/orchestrator/public/agents/',
-    );
-    return data;
-  },
 };
 
 export default templatesService;

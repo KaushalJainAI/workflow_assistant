@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { ChartSpec, FileCardData, TodoItem, HtmlArtifact as HtmlArtifactData } from '../api/chat';
 import type { ChatMediaItem, CodeExecutionEntry } from '../api/chat';
+import { toQuestionSpec, type QuestionSpec } from '../lib/question';
 
 /**
  * One frame off the SSE wire. The payload shape varies per `type` and is not
@@ -131,6 +132,8 @@ export interface ChatStreamState {
   files: FileCardData[];
   blockedAttachments: { message: string; items: BlockedAttachment[] } | null;
   pendingToolCall: PendingToolCall | null;
+  /** An `ask_user` question the run paused on, drawn as a question card. */
+  pendingQuestion: QuestionSpec | null;
   /** `/agent` delegation while it runs: the run card. Replaced wholesale. */
   agentRun: LiveAgentRun | null;
   /** The latest command card (mission, status, cost, findings, confirm). */
@@ -152,6 +155,7 @@ const EMPTY: ChatStreamState = {
   files: [],
   blockedAttachments: null,
   pendingToolCall: null,
+  pendingQuestion: null,
   agentRun: null,
   commandCard: null,
 };
@@ -162,6 +166,7 @@ type Action =
   | { type: 'events'; events: StreamEvent[] }
   | { type: 'clearStatus' }
   | { type: 'clearPendingToolCall' }
+  | { type: 'clearPendingQuestion' }
   | { type: 'dismissBlockedAttachments' };
 
 /** Consecutive `thought` traces collapse into one entry rather than stacking. */
@@ -255,6 +260,8 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
           detail: (event.detail as ToolCallDetail | undefined) ?? null,
         },
       };
+    case 'ask_question':
+      return { ...state, pendingQuestion: toQuestionSpec(event) };
     case 'agent_run': {
       const run = (event.agent_run ?? event) as Record<string, unknown>;
       return {
@@ -280,6 +287,9 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
         ...EMPTY,
         blockedAttachments: state.blockedAttachments,
         pendingToolCall: state.pendingToolCall,
+        // A question is answered by the person, like an approval, so it
+        // outlives the turn that asked it.
+        pendingQuestion: state.pendingQuestion,
         // The run card and the command card describe the turn that just
         // finished, like the blocked-attachment notice — a reload reads them
         // from the persisted message, but the live view keeps them too.
@@ -305,6 +315,8 @@ function reducer(state: ChatStreamState, action: Action): ChatStreamState {
       return { ...state, status: null };
     case 'clearPendingToolCall':
       return { ...state, pendingToolCall: null };
+    case 'clearPendingQuestion':
+      return { ...state, pendingQuestion: null };
     case 'dismissBlockedAttachments':
       return { ...state, blockedAttachments: null };
   }
@@ -374,13 +386,18 @@ export function useChatStream() {
   }, []);
   const clearStatus = useCallback(() => dispatch({ type: 'clearStatus' }), []);
   const clearPendingToolCall = useCallback(() => dispatch({ type: 'clearPendingToolCall' }), []);
+  const clearPendingQuestion = useCallback(() => dispatch({ type: 'clearPendingQuestion' }), []);
   const dismissBlockedAttachments = useCallback(
     () => dispatch({ type: 'dismissBlockedAttachments' }),
     [],
   );
 
   return useMemo(
-    () => ({ live, applyEvent, reset, clearStatus, clearPendingToolCall, dismissBlockedAttachments }),
-    [live, applyEvent, reset, clearStatus, clearPendingToolCall, dismissBlockedAttachments],
+    () => ({
+      live, applyEvent, reset, clearStatus, clearPendingToolCall, clearPendingQuestion,
+      dismissBlockedAttachments,
+    }),
+    [live, applyEvent, reset, clearStatus, clearPendingToolCall, clearPendingQuestion,
+      dismissBlockedAttachments],
   );
 }

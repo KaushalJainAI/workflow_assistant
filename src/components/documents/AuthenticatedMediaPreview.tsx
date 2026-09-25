@@ -29,6 +29,7 @@ export function AuthenticatedMediaPreview({ doc, className }: Props) {
   const type = isImage ? 'image' : isPdf ? 'pdf' : isVideo ? 'video' : 'link';
 
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [unplayable, setUnplayable] = useState(false);
 
   useEffect(() => {
     if (!isPreviewable) return;
@@ -39,7 +40,9 @@ export function AuthenticatedMediaPreview({ doc, className }: Props) {
       .download(doc.id, { inline: true })
       .then((blob) => {
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
+        // The PDF branch frames this blob URL, which runs with our origin:
+        // pin its type so an HTML body can never render there (S8).
+        objectUrl = URL.createObjectURL(isPdf ? new Blob([blob], { type: 'application/pdf' }) : blob);
         setBlobUrl(objectUrl);
       })
       .catch(() => {
@@ -51,7 +54,17 @@ export function AuthenticatedMediaPreview({ doc, className }: Props) {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [doc.id, isPreviewable]);
+  }, [doc.id, isPreviewable, isPdf]);
+
+  // A format the browser cannot play says so instead of sitting black or
+  // silent — converting media server-side is too heavy for the box.
+  if (unplayable) {
+    return (
+      <p className="mx-auto max-w-sm px-4 py-10 text-center text-[13px] text-muted-foreground">
+        This format doesn&apos;t play in the browser. Download it to watch.
+      </p>
+    );
+  }
 
   // Inline viewers: images, PDFs, video and audio all play in-browser from
   // the authenticated blob. Anything else falls back to the link card.
@@ -62,12 +75,12 @@ export function AuthenticatedMediaPreview({ doc, className }: Props) {
   }
   if (isVideo && blobUrl) {
     return (
-      <video src={blobUrl} controls className={className ?? 'block max-h-[65vh] w-full rounded-md bg-black'} />
+      <video src={blobUrl} controls onError={() => setUnplayable(true)} className={className ?? 'block max-h-[65vh] w-full rounded-md bg-black'} />
     );
   }
   if (isAudio && blobUrl) {
     return (
-      <audio src={blobUrl} controls className={className ?? 'w-full'} />
+      <audio src={blobUrl} controls onError={() => setUnplayable(true)} className={className ?? 'w-full'} />
     );
   }
 

@@ -108,11 +108,6 @@ export const notificationsService = {
     return response.data;
   },
 
-  async listPushSubscriptions(): Promise<PushSubscriptionRow[]> {
-    const response = await apiClient.get('/notifications/push/');
-    return asArray<PushSubscriptionRow>(response.data);
-  },
-
   async subscribePush(sub: PushSubscriptionPayload): Promise<PushSubscriptionRow> {
     const response = await apiClient.post('/notifications/push/subscribe/', sub);
     return response.data;

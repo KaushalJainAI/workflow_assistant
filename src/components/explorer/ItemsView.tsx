@@ -30,6 +30,10 @@ interface Props {
   renaming: string | null;
   /** An extra column: where a file lives (Recent, search) or who shared it (public library). */
   showLocation?: 'path' | 'author';
+  /** A muted line under a row's name — a search snippet, or where a folder hit lives. Plain text. */
+  subtitle?: (item: Item) => string | undefined;
+  /** False while the order is the server's relevance ranking: headers stop sorting. */
+  sortable?: boolean;
   onItemClick: (item: Item, e: MouseEvent) => void;
   onItemOpen: (item: Item) => void;
   onItemMenu: (item: Item, e: MouseEvent) => void;
@@ -75,10 +79,10 @@ export default function ItemsView(props: Props) {
 }
 
 function DetailsView(props: Props) {
-  const { items, sort, onSort, showLocation } = props;
+  const { items, sort, onSort, showLocation, sortable = true } = props;
   const header = (key: SortKey | null, label: string, className?: string) => (
     <th className={cn('sticky top-0 z-10 bg-card px-2 py-1.5 text-left font-medium', className)}>
-      {key ? (
+      {key && sortable ? (
         <button
           type="button"
           onClick={() => onSort(key)}
@@ -93,7 +97,20 @@ function DetailsView(props: Props) {
     </th>
   );
   return (
-    <table className="w-full table-fixed border-separate border-spacing-0 text-[13px]" role="grid" aria-multiselectable>
+    <table
+      className={cn(
+        'w-full table-fixed border-separate border-spacing-0 text-[13px]',
+        // Minimum widths per visible-column set so the table scrolls
+        // horizontally (the pane has overflow-auto) instead of crushing the
+        // flexible Name column to ~0 — a crushed Name left its shrink-0 file
+        // icon overflowing visibly into the next cell, painting over the
+        // "Shared by" author text.
+        'min-w-[320px] sm:min-w-[480px] md:min-w-[660px]',
+        showLocation ? 'lg:min-w-[840px]' : 'lg:min-w-[660px]',
+      )}
+      role="grid"
+      aria-multiselectable
+    >
       <colgroup>
         <col />
         {showLocation && <col className="hidden w-48 lg:table-column" />}
@@ -108,14 +125,14 @@ function DetailsView(props: Props) {
           {showLocation && header(null, showLocation === 'author' ? 'Shared by' : 'Location', 'hidden lg:table-cell')}
           {header('modified', 'Date modified')}
           {header('type', 'Type', 'hidden md:table-cell')}
-          {header('size', 'Size', 'hidden sm:table-cell')}
+          {header('size', 'Size', 'hidden text-right sm:table-cell')}
           <th className="sticky top-0 z-10 bg-card" aria-label="Actions" />
         </tr>
       </thead>
       <tbody>
         {items.map((item) => (
           <ItemShell key={keyOf(item)} item={item} {...props} as="tr">
-            <td className="py-1 pl-4 pr-2">
+            <td className="overflow-hidden py-1 pl-4 pr-2">
               <div className="flex min-w-0 items-center gap-2">
                 <ItemIcon item={item} className="h-4 w-4" />
                 <NameCell item={item} {...props} />
@@ -218,7 +235,7 @@ function ItemIcon({ item, className }: { item: Item; className?: string }) {
 }
 
 function NameCell({
-  item, renaming, onRename, onRenameCancel, center,
+  item, renaming, onRename, onRenameCancel, center, subtitle,
 }: Props & { item: Item; center?: boolean }) {
   const key = keyOf(item);
   const name = nameOf(item);
@@ -226,11 +243,17 @@ function NameCell({
     return <RenameInput name={name} isFile={item.kind === 'doc'} onCommit={(v) => onRename(item, v)} onCancel={onRenameCancel} center={center} />;
   }
   const status = item.kind === 'doc' ? item.doc.status : null;
+  const note = subtitle?.(item);
   return (
     <span className={cn('min-w-0', center ? 'w-full' : 'flex-1')}>
       <span className={cn('block text-foreground', center ? 'line-clamp-2 break-words text-[12.5px]' : 'truncate')} title={name}>
         {name}
       </span>
+      {note && (
+        <span className={cn('block text-[11px] text-muted-foreground', center ? 'line-clamp-2 break-words' : 'truncate')} title={note}>
+          {note}
+        </span>
+      )}
       {(status === 'pending' || status === 'processing') && (
         <span className="block text-[10.5px] text-warning">Indexing…</span>
       )}

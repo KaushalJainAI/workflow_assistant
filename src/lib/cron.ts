@@ -57,16 +57,6 @@ export const DEFAULT_SPEC: ScheduleSpec = {
   expression: '0 9 * * *',
 };
 
-export const KIND_LABELS: Record<ScheduleKind, string> = {
-  minutes: 'Every few minutes',
-  hourly: 'Every few hours',
-  daily: 'Every day',
-  weekdays: 'Every weekday',
-  weekly: 'Certain days',
-  monthly: 'Every month',
-  custom: 'Custom cron',
-};
-
 export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DAY_FULL = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',

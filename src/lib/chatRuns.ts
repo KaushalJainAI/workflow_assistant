@@ -18,7 +18,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
-import type { SseEvent } from '../api/sse';
+import { StreamRequestError, type SseEvent } from '../api/sse';
 
 export type RunStatus = 'running' | 'done' | 'error' | 'aborted';
 
@@ -33,6 +33,8 @@ export interface RunStatusEvent {
   type: typeof RUN_STATUS_EVENT;
   status: RunStatus;
   error?: string;
+  /** The server's reason code when it refused the request (`SECURITY_VIOLATION`). */
+  code?: string;
   /**
    * This is a synthetic frame the client injects into the same stream as the
    * server's, so it has to be assignable to `SseEvent`. Without the index
@@ -49,6 +51,11 @@ export interface RunMeta {
   /** Client-side id of the optimistic user message this turn answers. */
   optimisticId?: number;
   intent?: string;
+  /**
+   * The conversation was created for this message. If the server refuses the
+   * message, the conversation is empty and titled after it, so it goes too.
+   */
+  createdSession?: boolean;
 }
 
 type Listener = (frame: RunFrame, replayed: boolean) => void;
@@ -58,6 +65,7 @@ export interface ChatRun {
   meta: RunMeta;
   status: RunStatus;
   error?: string;
+  errorCode?: string;
   startedAt: number;
   frames: SseEvent[];
 }
@@ -109,11 +117,12 @@ function scheduleGc(run: InternalRun) {
   }, RETAIN_FINISHED_MS);
 }
 
-function finish(run: InternalRun, status: RunStatus, error?: string) {
+function finish(run: InternalRun, status: RunStatus, error?: string, code?: string) {
   if (run.status !== 'running') return;
   run.status = status;
   run.error = error;
-  emit(run, { type: RUN_STATUS_EVENT, status, error });
+  run.errorCode = code;
+  emit(run, { type: RUN_STATUS_EVENT, status, error, code });
   scheduleGc(run);
   publish();
 }
@@ -160,7 +169,12 @@ export function startChatRun(
         finish(run, 'aborted');
         return;
       }
-      finish(run, 'error', err instanceof Error ? err.message : 'Failed to get response');
+      finish(
+        run,
+        'error',
+        err instanceof Error ? err.message : 'Failed to get response',
+        err instanceof StreamRequestError ? err.code : undefined,
+      );
     },
   );
 
@@ -182,7 +196,10 @@ export function subscribeChatRun(key: string, listener: Listener): () => void {
 
   for (const frame of run.frames) listener(frame, true);
   if (run.status !== 'running') {
-    listener({ type: RUN_STATUS_EVENT, status: run.status, error: run.error }, true);
+    listener(
+      { type: RUN_STATUS_EVENT, status: run.status, error: run.error, code: run.errorCode },
+      true,
+    );
   }
 
   run.listeners.add(listener);

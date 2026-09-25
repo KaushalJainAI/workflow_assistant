@@ -1,37 +1,47 @@
 /**
- * `/apps/:appId` — one productivity app with the user's files beside it.
+ * `/apps/:appId` — one productivity app, full-screen.
  *
- * The left pane lists every file the app can open, from anywhere in the
- * user's tree — an agent's report under `/Agents/…` and a chat export under
- * `/Chat/` included — narrowed on the server by `file_type` and in the
- * browser by extension (`lib/apps.ts::acceptsDoc`). `?file=<id>` is the open
- * file, so a link from the file browser or a chat card lands in the right app
- * with the right file, and Back works.
+ * Runs inside `AppFrame` (no site Topbar/Sidebar/BottomNav) under an `AppBar`
+ * (home, app switcher, File menu, save status). The left file list is a
+ * collapsible panel — a drawer on phones — with its state remembered; open
+ * files are tabs kept per app in `sessionStorage`, with `?file=<id>` as the
+ * active tab; version history slides in from the right.
  *
- * Leaving a file with unsaved changes asks first, the one rule every editor
- * shares; each editor reports its dirty state up through `onDirtyChange`.
+ * Leaving a dirty file — switching files, tabs, or closing a tab — goes
+ * through the in-app unsaved-changes dialog (Save / Don't save / Cancel),
+ * never the browser's `window.confirm`. Editors register their `save()`
+ * through `SaveContext`, so the dialog saves whichever editor is mounted.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, ChevronDown, FolderOpen, Loader2, Plus, Search, Sparkles, Upload,
+  ChevronDown, Loader2, Plus, Search, Sparkles, Upload, X,
 } from 'lucide-react';
 
 import { documentsService, type Document } from '../api/documents';
+import AppBar from '../components/apps/AppBar';
 import AppEditor from '../components/apps/AppEditor';
 import { Whiteboard } from '../components/apps/MediaEditors';
 import NameDialog from '../components/apps/NameDialog';
-import SidebarMenuButton from '../components/layout/SidebarMenuButton';
+import UnsavedDialog from '../components/apps/UnsavedDialog';
+import VersionHistoryPanel from '../components/apps/VersionHistoryPanel';
+import { useSave } from '../components/apps/useSave';
+import { useAppTabs } from '../hooks/useAppTabs';
 import { acceptsDoc, getApp, type AppMeta, type NewFileOption } from '../lib/apps';
 import { apiErrorMessage } from '../lib/apiError';
 import { fileIcon, formatDate, formatSize, locationOf } from '../lib/fileDisplay';
 import { toast } from '../lib/toastStore';
 import { cn } from '../lib/utils';
+import '../components/apps/appPrint.css';
 
 const PAGE = 100;
 const PRIMARY_BTN =
   'inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:bg-primary/90';
+
+function panelKey(appId: string) {
+  return `app-panel:${appId}`;
+}
 
 export default function AppWorkspace() {
   const { appId } = useParams();
@@ -39,6 +49,11 @@ export default function AppWorkspace() {
   if (!app) return <Navigate to="/apps" replace />;
   if (app.kind === 'route') return <Navigate to={app.path} replace />;
   return <Workspace key={app.id} app={app} />;
+}
+
+interface PendingNav {
+  action: () => void;
+  filename: string;
 }
 
 function Workspace({ app }: { app: AppMeta }) {
@@ -54,9 +69,24 @@ function Workspace({ app }: { app: AppMeta }) {
   const [naming, setNaming] = useState<NewFileOption | null>(null);
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const dirty = useRef(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [pending, setPending] = useState<PendingNav | null>(null);
+  const [epoch, setEpoch] = useState(0);
+  const [panelOpen, setPanelOpen] = useState(() => {
+    try {
+      return localStorage.getItem(panelKey(app.id)) !== '0';
+    } catch {
+      return true;
+    }
+  });
   const uploadInput = useRef<HTMLInputElement>(null);
-  const Icon = app.icon;
+  const saveCtx = useSave();
+  // Mirrored for the navigation guard and `beforeunload`, which read it from
+  // callbacks outside render.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = saveCtx.dirty;
+  }, [saveCtx.dirty]);
 
   const files = useInfiniteQuery({
     queryKey: ['app-files', app.id],
@@ -90,22 +120,36 @@ function Workspace({ app }: { app: AppMeta }) {
   });
   const selected = listed ?? (fetched && fetched.id === selectedId ? fetched : null);
 
+  const { tabs, close } = useAppTabs(
+    app.id,
+    selected ? { id: selected.id, name: selected.filename } : null,
+  );
+
+  // A file open from a tab whose row has not loaded yet still labels the tab.
+  const tabName = (id: number) =>
+    all.find((d) => d.id === id)?.filename ?? tabs.find((t) => t.id === id)?.name ?? `File ${id}`;
+
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (dirty.current) e.preventDefault();
+      if (dirtyRef.current) e.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
 
-  const onDirtyChange = useCallback((d: boolean) => {
-    dirty.current = d;
-  }, []);
+  const togglePanel = useCallback(() => {
+    setPanelOpen((prev) => {
+      try {
+        localStorage.setItem(panelKey(app.id), prev ? '0' : '1');
+      } catch {
+        // The panel still toggles; it just is not remembered.
+      }
+      return !prev;
+    });
+  }, [app.id]);
 
-  const open = useCallback(
+  const gotoFile = useCallback(
     (doc: Document | 'new' | null) => {
-      if (dirty.current && !window.confirm('You have unsaved changes. Leave this file without saving?')) return;
-      dirty.current = false;
       setParams((prev) => {
         const next = new URLSearchParams(prev);
         if (doc === null) next.delete('file');
@@ -114,6 +158,50 @@ function Workspace({ app }: { app: AppMeta }) {
       });
     },
     [setParams],
+  );
+
+  const gotoId = useCallback(
+    (id: number | null) => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (id === null) next.delete('file');
+        else next.set('file', String(id));
+        return next;
+      });
+    },
+    [setParams],
+  );
+
+  /** Through the dialog when dirty, straight through when clean. */
+  const requestNav = useCallback(
+    (action: () => void) => {
+      if (dirtyRef.current && selected) {
+        setPending({ action, filename: selected.filename });
+        return;
+      }
+      action();
+    },
+    [selected],
+  );
+
+  const open = useCallback(
+    (doc: Document | 'new' | null) => {
+      requestNav(() => gotoFile(doc));
+    },
+    [requestNav, gotoFile],
+  );
+
+  const closeTab = useCallback(
+    (id: number) => {
+      requestNav(() => {
+        close(id);
+        if (id === selectedId) {
+          const rest = tabs.filter((t) => t.id !== id);
+          gotoId(rest.length ? rest[0].id : null);
+        }
+      });
+    },
+    [requestNav, close, selectedId, tabs, gotoId],
   );
 
   const create = async (opt: NewFileOption, name: string) => {
@@ -125,7 +213,7 @@ function Workspace({ app }: { app: AppMeta }) {
       qc.invalidateQueries({ queryKey: ['documents'] });
       qc.invalidateQueries({ queryKey: ['folders'] });
       setNaming(null);
-      open(doc);
+      gotoFile(doc);
     } catch (err) {
       toast.error('Could not create the file', apiErrorMessage(err, 'Please try again.'));
     } finally {
@@ -155,6 +243,13 @@ function Workspace({ app }: { app: AppMeta }) {
   const newOptions = app.newFiles ?? [];
   const canCreate = newOptions.length > 0 || app.editor === 'whiteboard';
   const hasOpen = !!selected || blankBoard;
+
+  const onDirtyChange = useCallback(
+    (d: boolean) => {
+      saveCtx.report({ dirty: d, saving: saveCtx.saving });
+    },
+    [saveCtx],
+  );
 
   const newButton = canCreate && (
     <div className="relative">
@@ -192,46 +287,86 @@ function Workspace({ app }: { app: AppMeta }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      {/* Title bar */}
-      <header className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2 md:px-4">
-        <SidebarMenuButton />
-        {hasOpen ? (
-          <button type="button" onClick={() => open(null)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted md:hidden" aria-label="Back to files">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-        ) : (
-          <Link to="/apps" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" aria-label="All apps" title="All apps">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        )}
-        <span className={cn('inline-flex rounded-md bg-gradient-to-br p-1.5 text-white', app.tint)}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[15px] font-semibold leading-tight">
-            {selected ? selected.filename : blankBoard ? 'New board' : app.title}
-          </h1>
-          <p className="truncate text-[11.5px] text-muted-foreground">
-            {selected ? `${app.title} · ${locationOf(selected)}` : app.description}
-          </p>
+      <div className="app-no-print">
+        <AppBar
+          app={app}
+          doc={selected}
+          panelOpen={panelOpen}
+          onTogglePanel={togglePanel}
+          onNewFile={(opt) => setNaming(opt)}
+          onOpenFile={open}
+          onChanged={() => {
+            qc.invalidateQueries({ queryKey: ['app-files'] });
+            qc.invalidateQueries({ queryKey: ['documents'] });
+          }}
+          onTrashed={() => {
+            if (selectedId !== null) close(selectedId);
+            gotoFile(null);
+          }}
+          onShowHistory={() => setHistoryOpen(true)}
+        />
+      </div>
+
+      {tabs.length > 0 && (
+        <div
+          className="app-no-print flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 bg-card px-2 py-1"
+          role="tablist"
+          aria-label="Open files"
+        >
+          {tabs.map((t) => {
+            const active = t.id === selectedId;
+            return (
+              <div
+                key={t.id}
+                role="tab"
+                aria-selected={active}
+                className={cn(
+                  'flex shrink-0 items-center gap-1 rounded-md pr-1',
+                  active ? 'bg-primary/10' : 'hover:bg-muted',
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!active) {
+                      const known = all.find((d) => d.id === t.id);
+                      if (known) open(known);
+                      else requestNav(() => gotoId(t.id));
+                    }
+                  }}
+                  title={tabName(t.id)}
+                  className="max-w-44 truncate px-2 py-1.5 text-left text-[12.5px]"
+                >
+                  {active && saveCtx.dirty ? (
+                    <span aria-label="Unsaved changes">• {tabName(t.id)}</span>
+                  ) : (
+                    tabName(t.id)
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => closeTab(t.id)}
+                  aria-label={`Close ${tabName(t.id)}`}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            );
+          })}
         </div>
-        {selected && (
-          <Link
-            to={`/documents?doc=${selected.id}`}
-            className="hidden items-center gap-1 rounded-md px-2 py-1.5 text-[12.5px] text-muted-foreground hover:bg-muted hover:text-foreground sm:inline-flex"
-            title="Show in Files"
-          >
-            <FolderOpen className="h-4 w-4" /> Show in Files
-          </Link>
-        )}
-      </header>
+      )}
 
       <div className="flex min-h-0 flex-1">
-        {/* File pane */}
+        {/* File panel: static when it fits, a drawer on phones. */}
         <aside
           className={cn(
-            'min-h-0 w-full shrink-0 flex-col border-r border-border/60 bg-card md:flex md:w-72',
-            hasOpen ? 'hidden' : 'flex',
+            'min-h-0 bg-card',
+            hasOpen
+              ? panelOpen
+                ? 'fixed inset-y-0 left-0 z-40 flex w-80 max-w-[85vw] flex-col border-r border-border/60 shadow-xl md:static md:z-auto md:w-72 md:shadow-none'
+                : 'hidden'
+              : 'flex w-full flex-col md:w-72 md:border-r md:border-border/60',
           )}
           aria-label={`${app.title} files`}
         >
@@ -259,6 +394,16 @@ function Workspace({ app }: { app: AppMeta }) {
                   }}
                 />
               </>
+            )}
+            {hasOpen && (
+              <button
+                type="button"
+                onClick={togglePanel}
+                aria-label="Close file panel"
+                className="ml-auto rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
           </div>
           <div className="mx-3 mb-2 flex shrink-0 items-center gap-2 rounded-md border border-border/60 bg-background px-2.5 py-1.5">
@@ -298,7 +443,10 @@ function Workspace({ app }: { app: AppMeta }) {
                     <li key={d.id}>
                       <button
                         type="button"
-                        onClick={() => open(d)}
+                        onClick={() => {
+                          open(d);
+                          if (window.innerWidth < 768) setPanelOpen(false);
+                        }}
                         aria-current={active}
                         className={cn(
                           'flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left',
@@ -330,14 +478,22 @@ function Workspace({ app }: { app: AppMeta }) {
             )}
           </div>
         </aside>
+        {hasOpen && panelOpen && (
+          <button
+            type="button"
+            aria-label="Close file panel"
+            onClick={togglePanel}
+            className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          />
+        )}
 
         {/* Editor */}
-        <main className={cn('min-h-0 min-w-0 flex-1 flex-col', hasOpen ? 'flex' : 'hidden md:flex')}>
+        <main className={cn('app-print-area min-h-0 min-w-0 flex-1 flex-col', hasOpen ? 'flex' : 'hidden md:flex')}>
           {blankBoard ? (
-            <Whiteboard doc={null} onCreated={(d) => open(d)} />
+            <Whiteboard doc={null} onCreated={(d) => gotoFile(d)} />
           ) : selected ? (
             <AppEditor
-              key={selected.id}
+              key={`${selected.id}:${epoch}`}
               app={app}
               doc={selected}
               siblings={shown}
@@ -371,6 +527,21 @@ function Workspace({ app }: { app: AppMeta }) {
             />
           )}
         </main>
+
+        {selected && historyOpen && (
+          <div className="app-no-print flex min-h-0 max-md:contents">
+            <VersionHistoryPanel
+              key={selected.id}
+              doc={selected}
+              onRestored={() => {
+                setEpoch((e) => e + 1);
+                qc.invalidateQueries({ queryKey: ['app-files'] });
+                qc.invalidateQueries({ queryKey: ['documents'] });
+              }}
+              onClose={() => setHistoryOpen(false)}
+            />
+          </div>
+        )}
       </div>
 
       {naming && (
@@ -380,6 +551,23 @@ function Workspace({ app }: { app: AppMeta }) {
           busy={creating}
           onSubmit={(name) => void create(naming, name)}
           onCancel={() => setNaming(null)}
+        />
+      )}
+
+      {pending && (
+        <UnsavedDialog
+          filename={pending.filename}
+          onSaved={() => {
+            const { action } = pending;
+            setPending(null);
+            action();
+          }}
+          onDontSave={() => {
+            const { action } = pending;
+            setPending(null);
+            action();
+          }}
+          onCancel={() => setPending(null)}
         />
       )}
     </div>
@@ -443,3 +631,5 @@ function Welcome({
     </div>
   );
 }
+
+

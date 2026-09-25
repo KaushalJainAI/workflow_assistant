@@ -10,27 +10,53 @@ import { documentsService, type Document } from '../api/documents';
 import { languageForFile } from './codeLanguage';
 
 export type PreviewKind =
-  | 'markdown' | 'csv' | 'json' | 'html' | 'notebook' | 'code' | 'text' | 'media' | 'office';
+  | 'markdown' | 'csv' | 'json' | 'html' | 'notebook' | 'code' | 'text' | 'media' | 'office'
+  | 'pdf' | 'legacy_office' | 'converted_image' | 'archive' | 'email' | 'opendocument';
 
 /** Types whose bytes are a zip of XML: previewed from their stored spec or extract, never read as text. */
 const OFFICE_TYPES = new Set(['pptx', 'xlsx', 'docx']);
 
+/** Old Office binaries: the new-format libraries cannot read them. */
+const LEGACY_OFFICE_EXTS = new Set(['doc', 'xls', 'ppt']);
+const LEGACY_OFFICE_TYPES = new Set(['doc_legacy', 'xls_legacy', 'ppt_legacy']);
+
+/** Images most browsers cannot display: converted server-side to PNG. */
+const CONVERTIBLE_IMAGE_EXTS = new Set(['tif', 'tiff', 'bmp', 'heic', 'heif']);
+
+/** A `.doc` that is really Word 97–2003, for the preview sentence. */
+const LEGACY_TARGET: Record<string, string> = { doc: '.docx', xls: '.xlsx', ppt: '.pptx' };
+
 type Previewable = Pick<Document, 'filename' | 'file_type'>;
+
+/** The extension, lowercased, or '' when there is none. */
+export function extensionOfDoc(doc: Previewable): string {
+  const name = doc.filename || '';
+  return name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
+}
 
 /** How to show a document, from its extension first and then its type. */
 export function kindOf(doc: Previewable): PreviewKind {
   const type = (doc.file_type || '').toLowerCase();
+  const ext = extensionOfDoc(doc);
+  // Extension first: an old row may still call a `.doc` file `docx`, and a
+  // `.py` arrives as `txt` — the name is the finer signal either way.
+  if (ext === 'pdf' || type === 'pdf') return 'pdf';
+  if (LEGACY_OFFICE_EXTS.has(ext) || LEGACY_OFFICE_TYPES.has(type)) return 'legacy_office';
+  if (CONVERTIBLE_IMAGE_EXTS.has(ext)) return 'converted_image';
+  if (ext === 'zip' || type === 'zip') return 'archive';
+  if (ext === 'eml' || type === 'eml') return 'email';
+  if (ext === 'odt' || ext === 'ods' || ext === 'odp'
+    || type === 'odt' || type === 'ods' || type === 'odp') return 'opendocument';
   // `audio` and `other` (a format we keep but cannot parse yet) join them:
   // the media view is an icon and a download, and rendering unknown bytes as
   // text is what put zip noise on the screen before.
-  if (['image', 'video', 'pdf', 'audio', 'other'].includes(type)) return 'media';
+  if (['image', 'video', 'audio', 'other'].includes(type)) return 'media';
   // Before the extension checks below, because a .docx read as text is zip noise.
-  if (OFFICE_TYPES.has(type) || OFFICE_TYPES.has((doc.filename.split('.').pop() ?? '').toLowerCase())) return 'office';
+  if (OFFICE_TYPES.has(type) || OFFICE_TYPES.has(ext)) return 'office';
 
   // `file_type` is a small closed vocabulary, so anything the user named
-  // `.py` or `.ipynb` arrives as 'txt' or 'json'. The extension is the finer
-  // signal, which is why it is read first.
-  const ext = (doc.filename.split('.').pop() ?? '').toLowerCase();
+  // `.py` or `.ipynb` arrives as 'txt' or 'json'. The extension (`ext`,
+  // read first above) is the finer signal.
   if (ext === 'ipynb') return 'notebook';
   if (ext === 'md' || ext === 'markdown' || type === 'md') return 'markdown';
   if (ext === 'csv' || ext === 'tsv' || type === 'csv') return 'csv';
@@ -38,6 +64,16 @@ export function kindOf(doc: Previewable): PreviewKind {
   if (ext === 'html' || ext === 'htm' || type === 'html') return 'html';
   if (languageForFile(doc.filename)) return 'code';
   return 'text';
+}
+
+/** What the preview says for an old Office binary (mirrors the backend). */
+export function legacySentence(doc: Previewable): string {
+  const ext = extensionOfDoc(doc);
+  const label = ext === 'doc' ? 'Word 97–2003' : ext === 'xls' ? 'Excel 97–2003'
+    : ext === 'ppt' ? 'PowerPoint 97–2003' : 'old Office';
+  const target = LEGACY_TARGET[ext];
+  return `Old Office format (${label}). Download to open it`
+    + (target ? `, or re-save as ${target} to edit it here.` : '.');
 }
 
 /** `text` re-indented when it parses as JSON; null when it does not. */

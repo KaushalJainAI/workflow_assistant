@@ -32,6 +32,24 @@ export interface StreamRequest {
 }
 
 /**
+ * A stream the server refused before it started. `code` is the server's
+ * machine-readable reason (e.g. `SECURITY_VIOLATION`), so a caller can act on
+ * *why* — take a refused message back out of the transcript — rather than
+ * matching on the wording of `message`.
+ */
+export class StreamRequestError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'StreamRequestError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/**
  * Splits a text chunk into complete `data:` frames, returning the trailing
  * partial line for the next chunk to finish.
  */
@@ -72,6 +90,7 @@ export async function streamSse({
 
   if (!response.ok) {
     let errorMessage = `Stream request failed: ${response.status}`;
+    let errorCode: string | undefined;
     try {
       const text = await response.text();
       for (const line of text.split('\n')) {
@@ -93,6 +112,7 @@ export async function streamSse({
       if (errorMessage === `Stream request failed: ${response.status}` && text.trim().startsWith('{')) {
         try {
           const j = JSON.parse(text);
+          if (typeof j.code === 'string') errorCode = j.code;
           if (typeof j.detail === 'string' && j.detail.trim()) errorMessage = j.detail;
           else if (typeof j.message === 'string' && j.message.trim()) errorMessage = j.message;
           else if (typeof j.error === 'string' && j.error.trim()) errorMessage = j.error;
@@ -103,7 +123,7 @@ export async function streamSse({
     } catch {
       // Unable to read body - keep generic message.
     }
-    throw new Error(errorMessage);
+    throw new StreamRequestError(errorMessage, response.status, errorCode);
   }
 
   if (!response.body) {

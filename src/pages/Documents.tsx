@@ -19,7 +19,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, ClipboardPaste,
   Clock, Copy, Download, Eye, ExternalLink, FilePlus2, Folder as FolderIcon, FolderInput, FolderPlus, Globe,
@@ -36,25 +36,25 @@ import ItemsView, { type ViewMode } from '../components/explorer/ItemsView';
 import NavPane from '../components/explorer/NavPane';
 import PropertiesDialog from '../components/explorer/PropertiesDialog';
 import ExtractionPanel from '../components/extraction/ExtractionPanel';
-import FileIcon from '../components/files/FileIcon';
+
 import FilePreview from '../components/files/FilePreview';
+import PreviewFrame from '../components/files/PreviewFrame';
 import SidebarMenuButton from '../components/layout/SidebarMenuButton';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { apiErrorMessage } from '../lib/apiError';
-import { appsForDoc, defaultAppFor, openInAppPath, type NewFileOption } from '../lib/apps';
+import { appsForDoc, openInAppPath, type NewFileOption } from '../lib/apps';
 import {
   clickSelect, emptySelection, keyOf, nextSort, sameLocation, sortItems, stepSelect,
   type Item, type Location, type Selection, type Sort,
 } from '../lib/explorer';
-import { fileIcon, fileTint, formatDate, formatDateTime, formatSize, locationOf, typeName } from '../lib/fileDisplay';
+import { canNarrow, isSearchable, resultSections, searchParamsFor, SEARCH_DEBOUNCE_MS } from '../lib/documentSearch';
+import { fileIcon, fileTint, formatDate, formatDateTime, formatSize, typeName } from '../lib/fileDisplay';
 import { toast } from '../lib/toastStore';
 import { cn } from '../lib/utils';
 import { resolvePath } from '../lib/vfsPath';
 
 const PAGE = 100;
-/** How many pages "search everywhere" reads before saying the results may be partial. */
-const SEARCH_PAGES = 5;
 
 const NEW_FILES: NewFileOption[] = [
   { ext: 'txt', label: 'Text document' },
@@ -181,21 +181,31 @@ export default function Documents() {
     staleTime: 60_000,
   });
 
+  // Search: one character filters what is on screen; two or more ask the
+  // server, which searches names and contents across the subtree (or the
+  // whole library) and adds close matches by name (`inference/search.py`).
   const searching = query.trim().length > 0;
-  const everywhere = useInfiniteQuery({
-    queryKey: ['documents', 'explorer', 'all'],
-    initialPageParam: null as string | null,
-    enabled: searchAll && searching,
-    queryFn: ({ pageParam }) => documentsService.list({ limit: PAGE, cursor: pageParam, scope: 'personal' }),
-    getNextPageParam: (last) => (last.has_more ? last.next_cursor : undefined),
-    staleTime: 60_000,
-  });
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
   useEffect(() => {
-    const pages = everywhere.data?.pages.length ?? 0;
-    if (searchAll && searching && everywhere.hasNextPage && !everywhere.isFetchingNextPage && pages < SEARCH_PAGES) {
-      void everywhere.fetchNextPage();
-    }
-  }, [searchAll, searching, everywhere]);
+    const t = window.setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [query]);
+  const listingLoc = loc.kind === 'folder' || loc.kind === 'recent' || loc.kind === 'public';
+  const serverSearch = listingLoc && isSearchable(query);
+  const searchArgs = searchParamsFor(loc, searchAll, debouncedQuery);
+  const found = useQuery({
+    queryKey: ['documents', 'search', searchArgs],
+    queryFn: () => documentsService.searchFiles(searchArgs),
+    enabled: listingLoc && isSearchable(debouncedQuery),
+    // The last answer stays up while the next one loads, so the list does
+    // not flash empty on every keystroke.
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+  const sections = useMemo(
+    () => (serverSearch ? resultSections(found.data) : resultSections(undefined)),
+    [serverSearch, found.data],
+  );
 
   // Whether the user owns any file at all — the only thing that earns the
   // first-run "upload your first file" screen.
@@ -229,12 +239,10 @@ export default function Documents() {
 
   // ---- The items on screen -----------------------------------------------------
   const items: Item[] = useMemo(() => {
+    // Server results keep the server's relevance order; exact then close.
+    if (serverSearch) return [...sections.exact, ...sections.fuzzy];
     const needle = query.trim().toLowerCase();
     const match = (name: string) => !needle || name.toLowerCase().includes(needle);
-    if (searchAll && needle) {
-      const all = everywhere.data?.pages.flatMap((p) => p.my_documents) ?? [];
-      return sortItems(all.filter((d) => match(d.filename)).map((doc) => ({ kind: 'doc', doc })), sort);
-    }
     const pages = docs.data?.pages ?? [];
     const rows = loc.kind === 'public' ? pages.flatMap((p) => p.public_documents) : pages.flatMap((p) => p.my_documents);
     const folders: Item[] = loc.kind === 'folder'
@@ -244,7 +252,7 @@ export default function Documents() {
     const files: Item[] = rows.filter((d) => match(d.filename)).map((doc) => ({ kind: 'doc', doc }));
     const effective: Sort = loc.kind === 'recent' && sort.key === 'name' ? { key: 'modified', dir: 'desc' } : sort;
     return [...pending, ...sortItems([...folders, ...files], effective)];
-  }, [query, searchAll, everywhere.data, docs.data, loc.kind, folderPage, uploads, sort]);
+  }, [serverSearch, sections, query, docs.data, loc.kind, folderPage, uploads, sort]);
 
   const order = useMemo(() => items.map(keyOf), [items]);
   const selectedItems = useMemo(() => items.filter((i) => selection.keys.has(keyOf(i))), [items, selection]);
@@ -661,7 +669,32 @@ export default function Documents() {
           : loc.kind === 'extraction' ? 'Extraction' : 'Trash';
 
   const listing = loc.kind === 'folder' || loc.kind === 'recent' || loc.kind === 'public';
-  const loading = listing && (docs.isLoading || (inFolder && !folderPage)) && items.length === 0;
+  const loading = !serverSearch && listing && (docs.isLoading || (inFolder && !folderPage)) && items.length === 0;
+
+  // One list, or one per search section — the same row contract either way.
+  const renderItems = (list: Item[]) => (
+    <ItemsView
+      items={list}
+      view={view}
+      sort={sort}
+      onSort={(k) => setSort((s) => nextSort(s, k))}
+      sortable={!serverSearch}
+      subtitle={serverSearch ? (item) => sections.subtitles.get(keyOf(item)) : undefined}
+      selected={selection.keys}
+      cut={cutKeys}
+      renaming={renaming}
+      showLocation={loc.kind === 'public' ? 'author' : loc.kind !== 'folder' || serverSearch ? 'path' : undefined}
+      onItemClick={onItemClick}
+      onItemOpen={openItem}
+      onItemMenu={onItemMenu}
+      onRename={(item, name) => void rename(item, name)}
+      onRenameCancel={() => setRenaming(null)}
+      onDragStart={onDragStart}
+      onDragEnd={() => setDragging(null)}
+      onDropOnFolder={(id) => dragging && void move(dragging, id)}
+      canDrop={!!dragging}
+    />
+  );
   const selectedSize = selectedDocs.reduce((n, d) => n + (d.file_size || 0), 0);
 
   const cmd = (label: string, I: typeof Eye, onClick: () => void, disabled = false) => (
@@ -876,28 +909,39 @@ export default function Documents() {
               className={cn('relative min-h-0 flex-1 overflow-auto outline-none', osDrop && 'bg-primary/5 ring-2 ring-inset ring-primary')}
               aria-label={`${title} contents`}
             >
-              {searching && listing && loc.kind !== 'public' && (
-                <div className="flex items-center gap-2 border-b border-border/40 px-4 py-1.5 text-[12px] text-muted-foreground">
-                  {searchAll ? (
+              {searching && listing && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-border/40 px-4 py-1.5 text-[12px] text-muted-foreground">
+                  {!serverSearch ? (
+                    <>Showing matching names here. Type another letter to search names and contents.</>
+                  ) : loc.kind === 'public' ? (
+                    <>Searching the public library{found.isFetching ? '…' : '.'}</>
+                  ) : canNarrow(loc) && !searchAll ? (
                     <>
-                      Searching all your files{everywhere.isFetching ? '…' : ''}
-                      {!everywhere.isFetching && everywhere.hasNextPage && ` (the ${SEARCH_PAGES * PAGE} most recent)`}
-                      <button type="button" onClick={() => setSearchAll(false)} className="text-primary hover:underline">Only {title}</button>
+                      Searching {title} and its subfolders{found.isFetching ? '…' : '.'}
+                      <button type="button" onClick={() => setSearchAll(true)} className="text-primary hover:underline">Search all files</button>
                     </>
                   ) : (
                     <>
-                      Searching {title}.
-                      <button type="button" onClick={() => setSearchAll(true)} className="text-primary hover:underline">Search all files</button>
+                      Searching all your files{found.isFetching ? '…' : '.'}
+                      {canNarrow(loc) && (
+                        <button type="button" onClick={() => setSearchAll(false)} className="text-primary hover:underline">Only {title}</button>
+                      )}
                     </>
                   )}
                 </div>
               )}
 
-              {loading ? (
+              {loading || (serverSearch && !found.data && !found.isError) ? (
                 <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                  <Loader2 className="h-4 w-4 animate-spin" /> {serverSearch ? 'Searching…' : 'Loading…'}
                 </div>
-              ) : docs.isError && items.length === 0 ? (
+              ) : serverSearch && found.isError && items.length === 0 ? (
+                <div className="mx-auto mt-16 flex max-w-md flex-col items-center gap-2 px-6 text-center">
+                  <AlertCircle className="h-8 w-8 text-destructive" />
+                  <p className="font-medium">Search failed</p>
+                  <p className="text-sm text-muted-foreground">{apiErrorMessage(found.error, 'Please try again.')}</p>
+                </div>
+              ) : !serverSearch && docs.isError && items.length === 0 ? (
                 <div className="mx-auto mt-16 flex max-w-md flex-col items-center gap-2 px-6 text-center">
                   <AlertCircle className="h-8 w-8 text-destructive" />
                   <p className="font-medium">Could not load your files</p>
@@ -909,33 +953,29 @@ export default function Documents() {
                   query={query}
                   loc={loc}
                   firstRun={!hasAnyFile && loc.kind === 'folder' && loc.id === null && !folderPage?.folders.length && !!anyPage}
+                  onSearchAll={serverSearch && canNarrow(loc) && !searchAll ? () => setSearchAll(true) : undefined}
                   onUpload={() => uploadInput.current?.click()}
                   onNew={() => setNaming({ kind: 'file', opt: NEW_FILES[1] })}
                   onNewFolder={() => setNaming({ kind: 'folder' })}
                 />
+              ) : serverSearch ? (
+                <>
+                  {sections.exact.length > 0 && renderItems(sections.exact)}
+                  {sections.fuzzy.length > 0 && (
+                    <>
+                      <p className="border-y border-border/40 bg-muted/30 px-4 py-1.5 text-[12px] font-medium text-muted-foreground">
+                        {sections.exact.length ? 'Close matches' : `No exact matches — close matches for “${found.data?.query ?? query.trim()}”`}
+                      </p>
+                      {renderItems(sections.fuzzy)}
+                    </>
+                  )}
+                  {found.data?.note && <p className="px-4 py-3 text-[12px] text-muted-foreground">{found.data.note}</p>}
+                </>
               ) : (
-                <ItemsView
-                  items={items}
-                  view={view}
-                  sort={sort}
-                  onSort={(k) => setSort((s) => nextSort(s, k))}
-                  selected={selection.keys}
-                  cut={cutKeys}
-                  renaming={renaming}
-                  showLocation={loc.kind === 'public' ? 'author' : loc.kind !== 'folder' || (searchAll && searching) ? 'path' : undefined}
-                  onItemClick={onItemClick}
-                  onItemOpen={openItem}
-                  onItemMenu={onItemMenu}
-                  onRename={(item, name) => void rename(item, name)}
-                  onRenameCancel={() => setRenaming(null)}
-                  onDragStart={onDragStart}
-                  onDragEnd={() => setDragging(null)}
-                  onDropOnFolder={(id) => dragging && void move(dragging, id)}
-                  canDrop={!!dragging}
-                />
+                renderItems(items)
               )}
 
-              {docs.hasNextPage && !searchAll && (
+              {docs.hasNextPage && !serverSearch && (
                 <div className="flex justify-center py-4">
                   <button
                     type="button"
@@ -988,10 +1028,8 @@ export default function Documents() {
             <PreviewPane
               item={single}
               count={selectedItems.length}
-              publicView={loc.kind === 'public'}
               onOpen={(i) => openItem(i)}
               onPreview={(d) => setPreviewDoc(d)}
-              onDownload={(d) => void download(d)}
             />
           </aside>
         )}
@@ -1063,7 +1101,7 @@ export default function Documents() {
       )}
 
       {previewDoc && (
-        <DocumentPreviewModal key={previewDoc.id} doc={previewDoc} onClose={() => setPreviewDoc(null)} onDownload={(d) => void download(d)} />
+        <DocumentPreviewModal key={previewDoc.id} doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
     </div>
   );
@@ -1128,12 +1166,14 @@ function Crumb({
 }
 
 function EmptyState({
-  searching, query, loc, firstRun, onUpload, onNew, onNewFolder,
+  searching, query, loc, firstRun, onSearchAll, onUpload, onNew, onNewFolder,
 }: {
   searching: boolean;
   query: string;
   loc: Location;
   firstRun: boolean;
+  /** Offered when the search was narrowed to a folder and found nothing there. */
+  onSearchAll?: () => void;
   onUpload: () => void;
   onNew: () => void;
   onNewFolder: () => void;
@@ -1143,7 +1183,21 @@ function EmptyState({
       <div className="px-6 py-20 text-center">
         <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
         <p className="font-medium">No matches for “{query}”</p>
-        <p className="mt-1 text-sm text-muted-foreground">Try a different name, or search all your files.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {query.trim().length < 2 ? 'Keep typing to search names and contents.' : 'No file name or file text matches, and nothing is close.'}
+        </p>
+        {onSearchAll && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSearchAll();
+            }}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            <Search className="h-4 w-4" /> Search all files
+          </button>
+        )}
       </div>
     );
   }
@@ -1188,14 +1242,12 @@ function EmptyState({
 }
 
 function PreviewPane({
-  item, count, publicView, onOpen, onPreview, onDownload,
+  item, count, onOpen, onPreview,
 }: {
   item: Item | null;
   count: number;
-  publicView: boolean;
   onOpen: (i: Item) => void;
   onPreview: (d: Document) => void;
-  onDownload: (d: Document) => void;
 }) {
   if (!item) {
     return (
@@ -1219,40 +1271,24 @@ function PreviewPane({
     );
   }
   const d = item.doc;
-  const app = publicView ? undefined : defaultAppFor(d);
   if (d.id < 0) {
     return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</div>;
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-border/60 p-3">
-        <div className="flex items-start gap-2">
-          <FileIcon doc={d} className="mt-0.5 h-5 w-5" />
-          <div className="min-w-0">
-            <p className="break-words text-[13.5px] font-medium">{d.filename}</p>
-            <p className="text-[11.5px] text-muted-foreground">
-              {typeName(d)} · {formatSize(d.file_size)} · {formatDate(d.updated_at)}
-            </p>
-          </div>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {app && (
-            <button type="button" onClick={() => onOpen(item)} className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground">
-              <app.icon className="h-3.5 w-3.5" /> Open in {app.title}
-            </button>
-          )}
-          <button type="button" onClick={() => onPreview(d)} className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-[12px] hover:bg-muted">
+      <p className="shrink-0 border-b border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground" title={formatDateTime(d.updated_at)}>
+        {typeName(d)} · {formatSize(d.file_size)} · {formatDate(d.updated_at)}
+      </p>
+      <PreviewFrame
+        doc={d}
+        extra={
+          <button type="button" onClick={() => onPreview(d)} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border/60 px-2 py-1.5 text-[12px] hover:bg-muted">
             <Eye className="h-3.5 w-3.5" /> Full preview
           </button>
-          <button type="button" onClick={() => onDownload(d)} className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-[12px] hover:bg-muted">
-            <Download className="h-3.5 w-3.5" /> Download
-          </button>
-        </div>
-        <p className="mt-2 text-[11px] text-muted-foreground" title={formatDateTime(d.updated_at)}>
-          {locationOf(d)}
-        </p>
-      </div>
-      <FilePreview key={d.id} doc={d} className="min-h-0 flex-1 overflow-auto" />
+        }
+      >
+        <FilePreview key={d.id} doc={d} className="min-h-0 flex-1 overflow-auto" />
+      </PreviewFrame>
     </div>
   );
 }

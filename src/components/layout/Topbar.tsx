@@ -1,19 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, GitGraph, MoreHorizontal, Plus } from 'lucide-react';
+import { Bell, GitGraph, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
-import { cn } from '../../lib/utils';
-import { isNavActive, moreNavItems, primaryNav } from '../../lib/navigation';
+import { isNavActive, navGroups } from '../../lib/navigation';
 import { useAuth } from '../../contexts/authState';
 import { useHitlPending } from '../../hooks/useHitlPending';
 import { logsService, notificationsService } from '../../api';
 
 /* Desktop topbar — the primary navigation surface.
  *
- * Modelled on nidhigrahudyog.com: brand left, primary tabs centre
- * (Ask / Automations / Explore / Activity, like Home / Products / Combos /
- * Offers), account actions right, everything else under "⋯ More". A thin
+ * Brand and the current section left, account actions right. Navigation
+ * lives in the Sidebar alone — the topbar used to repeat every link (tabs
+ * plus "More"), and the sidebar repeated the brand, New chat and profile,
+ * so each surface now owns one job. A thin
  * status strip above it (the analogue of their "FREE shipping over ₹499"
  * announcement bar) appears only when something needs you — approvals
  * waiting or runs active — and deep-links to Activity.
@@ -49,42 +47,9 @@ export default function Topbar() {
   });
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
-  const moreActive = moreNavItems.some((item) => isNavActive(location.pathname, item));
-
-  /* Close the More menu on route change — during render keyed on the path,
-     not in an effect: the open menu belongs to the route that opened it, so
-     a new route means a closed menu by derivation. Escape / outside click
-     stay event handlers below. */
-  const [menuPath, setMenuPath] = useState(location.pathname);
-  if (location.pathname !== menuPath) {
-    setMenuPath(location.pathname);
-    setMoreOpen(false);
-  }
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMoreOpen(false);
-    };
-    const onDown = (e: PointerEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('pointerdown', onDown);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('pointerdown', onDown);
-    };
-  }, [moreOpen]);
-
-  const guardGuest = (label: string) => (e: React.MouseEvent) => {
-    if (isGuest) {
-      e.preventDefault();
-      toast.info(`Log in to use ${label}`);
-      navigate('/login');
-    }
-  };
+  const current = navGroups
+    .flatMap((g) => g.items)
+    .find((item) => isNavActive(location.pathname, item));
 
   const initials = (() => {
     if (user?.name) {
@@ -123,83 +88,17 @@ export default function Topbar() {
           </span>
         </Link>
 
-        {/* Primary tabs — centre. */}
-        <nav aria-label="Primary" className="flex min-w-0 flex-1 items-center justify-center gap-1">
-          {primaryNav.map((item) => {
-            const active = isNavActive(location.pathname, item);
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={item.guestOk ? undefined : guardGuest(item.label)}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'relative flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors',
-                  active
-                    ? 'font-semibold text-foreground'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-                )}
-              >
-                <item.icon className={cn('h-4 w-4', active && 'text-primary')} />
-                {item.label}
-                {!isGuest && item.agent && runningCount > 0 && (
-                  <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-agent animate-agent-pulse" aria-label="Runs active" />
-                )}
-                {!isGuest && item.pending && pendingCount > 0 && (
-                  <span className="ml-0.5 rounded bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
-                    {pendingCount}
-                  </span>
-                )}
-                {active && <span className="absolute inset-x-2 -bottom-[9px] h-[2px] rounded-full bg-primary" />}
-              </Link>
-            );
-          })}
-          {/* Overflow — the reference site's "⋯ More". */}
-          <div ref={moreRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setMoreOpen((v) => !v)}
-              aria-expanded={moreOpen}
-              aria-haspopup="menu"
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors',
-                moreActive || moreOpen
-                  ? 'font-semibold text-foreground'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-              )}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-              More
-            </button>
-            {moreOpen && (
-              <div
-                role="menu"
-                className="absolute left-1/2 top-full z-50 mt-2 w-60 -translate-x-1/2 rounded-lg border border-border bg-popover p-1.5 shadow-lg animate-in fade-in zoom-in-95 duration-150"
-              >
-                {moreNavItems.map((item) => {
-                  const active = isNavActive(location.pathname, item);
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      role="menuitem"
-                      onClick={guardGuest(item.label)}
-                      className={cn(
-                        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
-                        active
-                          ? 'bg-accent font-semibold text-foreground'
-                          : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-                      )}
-                    >
-                      <item.icon className={cn('h-4 w-4 shrink-0', active && 'text-primary')} />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </nav>
+        {/* Where you are — the sidebar owns navigation, so the topbar names
+            the current section instead of repeating the links. */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+          {current && (
+            <>
+              <span aria-hidden className="text-border">/</span>
+              <current.icon className="h-4 w-4 shrink-0 text-primary" />
+              <span className="truncate font-medium text-foreground">{current.label}</span>
+            </>
+          )}
+        </div>
 
         {/* Actions — right, like the reference language / wishlist / account / cart icons. */}
         <div className="flex shrink-0 items-center gap-2">

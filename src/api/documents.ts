@@ -126,9 +126,24 @@ export interface TrashResult {
   purges_after_days: number;
 }
 
+export interface ArchiveEntry {
+  name: string;
+  size: number;
+  modified: string;
+}
+
+export interface ArchiveListing {
+  entries: ArchiveEntry[];
+  truncated: boolean;
+  count: number;
+}
+
 export interface WorkbookSheet {
   name: string;
+  /** Formulas as their `=` source. */
   rows: (string | number | boolean | null)[][];
+  /** Calculated values beside the formulas (unevaluable stays null). */
+  values: (string | number | boolean | null)[][];
   row_count: number;
   col_count: number;
   truncated: boolean;
@@ -136,7 +151,26 @@ export interface WorkbookSheet {
 
 export interface WorkbookGrid {
   sheets: WorkbookSheet[];
+  /** Univer `IWorkbookData` for the Sheets app (xlsx only). */
+  snapshot?: unknown;
   updated_at: string;
+}
+
+/**
+ * What a file held before one overwrite — the version history (Phase A).
+ *
+ * Each entry is the file *as it was before* that save, so restoring one is
+ * undo, and the replaced state becomes a version itself (a restore can be
+ * undone). `source` says who saved: the user in an app, an agent, or a
+ * restore.
+ */
+export interface DocumentVersion {
+  id: number;
+  created_at: string;
+  source: 'app' | 'agent' | 'restore';
+  name: string;
+  size: number;
+  has_spec: boolean;
 }
 
 export interface DocumentChunk {
@@ -144,6 +178,39 @@ export interface DocumentChunk {
   content: string;
   chunk_index: number;
   metadata: Record<string, unknown>;
+}
+
+export type DocumentMatchKind = 'name' | 'content' | 'fuzzy';
+
+/** One file in a `searchFiles` answer: the listing row plus how it matched. */
+export interface DocumentSearchHit extends Document {
+  matched_in: DocumentMatchKind;
+  /** ~160-char window around a content match, plain text; null otherwise. */
+  snippet: string | null;
+  /** Conservative closeness, fuzzy hits only. */
+  score?: number;
+}
+
+/** One folder in a `searchFiles` answer — enough to navigate to, not a full `Folder`. */
+export interface FolderSearchHit {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  /** Parent's name path (`/Reports`) for display only — never send it back. */
+  location: string;
+  updated_at: string;
+  matched_in: 'name' | 'fuzzy';
+}
+
+export interface DocumentSearchResult {
+  query: string;
+  exact: DocumentSearchHit[];
+  fuzzy: DocumentSearchHit[];
+  folders: FolderSearchHit[];
+  count: number;
+  /** Capped server-side (`limit`); true means keep typing to narrow it down. */
+  truncated: boolean;
+  note: string | null;
 }
 
 export interface SearchResult {
@@ -202,6 +269,25 @@ export const documentsService = {
 
   async get(id: number): Promise<Document> {
     const r = await apiClient.get<Document>(`/inference/documents/${id}/`);
+    return r.data;
+  },
+
+  /**
+   * Search the caller's files by name and contents, with conservative close
+   * matches by name (`GET /inference/documents/search/`).
+   *
+   * `folder_id` narrows to that subtree (omit for the whole library);
+   * `scope: 'public'` searches the shared library flat. Ranked and capped —
+   * no cursor: `truncated` says when to keep typing.
+   */
+  async searchFiles(params: {
+    q: string;
+    folder_id?: number;
+    scope?: 'personal' | 'public';
+    types?: string;
+    limit?: number;
+  }): Promise<DocumentSearchResult> {
+    const r = await apiClient.get<DocumentSearchResult>('/inference/documents/search/', { params });
     return r.data;
   },
 
@@ -279,6 +365,99 @@ export const documentsService = {
     return r.data;
   },
 
+  /** What the file held before each overwrite, newest first (owner only). */
+  async versions(id: number): Promise<{ versions: DocumentVersion[] }> {
+    const r = await apiClient.get<{ versions: DocumentVersion[] }>(
+      `/inference/documents/${id}/versions/`,
+    );
+    return r.data;
+  },
+
+  /** The bytes of one earlier version, for previewing. */
+  async versionDownload(id: number, versionId: number, opts?: { inline?: boolean }): Promise<Blob> {
+    const r = await apiClient.get<Blob>(
+      `/inference/documents/${id}/versions/${versionId}/download/`,
+      {
+        responseType: 'blob',
+        params: opts?.inline ? { inline: '1' } : undefined,
+      },
+    );
+    return r.data;
+  },
+
+  /** Put a version back. The replaced state becomes a version, so this undoes.
+   *  Sends `If-Match` so a stale panel gets a 412 instead of clobbering. */
+  async restoreVersion(id: number, versionId: number, expectedUpdatedAt?: string): Promise<Document> {
+    const r = await apiClient.post<Document>(
+      `/inference/documents/${id}/versions/${versionId}/restore/`,
+      { ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}) },
+      expectedUpdatedAt ? { headers: { 'If-Match': expectedUpdatedAt } } : undefined,
+    );
+    return r.data;
+  },
+
+  /** The formats this file can be exported as — what the File menu renders. */
+  async exportFormats(id: number): Promise<{ formats: string[] }> {
+    const r = await apiClient.get<{ formats: string[] }>(`/inference/documents/${id}/export/`);
+    return r.data;
+  },
+
+  /** The file in another format, as a blob for saving. */
+  async exportAs(id: number, format: string): Promise<{ blob: Blob; filename: string }> {
+    const r = await apiClient.get<Blob>(`/inference/documents/${id}/export/`, {
+      responseType: 'blob',
+      params: { to: format },
+    });
+    const disposition: string = r.headers?.['content-disposition'] ?? '';
+    const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+    const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `export.${format}`;
+    return { blob: r.data, filename };
+  },
+
+  /** Park an office autosave cheaply: `{spec}` for a deck / Word file made
+   *  here, `{grid: {sheets}}` for a workbook. The bytes rebuild after quiet;
+   *  reads needing them flush first. Sends `If-Match` like every other save. */
+  async saveDraft(
+    id: number,
+    body: { spec?: unknown; grid?: unknown; snapshot?: unknown },
+    expectedUpdatedAt?: string,
+  ): Promise<Document> {
+    const r = await apiClient.post<Document>(
+      `/inference/documents/${id}/draft/`,
+      { ...body, ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}) },
+    );
+    return r.data;
+  },
+
+  /** Convert an uploaded Word/PowerPoint file into an editable spec.
+   *  The original upload stays version 1; the response says what was lost. */
+  async importDoc(id: number, expectedUpdatedAt?: string): Promise<Document & { converted?: boolean; warnings?: string[] }> {
+    const r = await apiClient.post<Document & { converted?: boolean; warnings?: string[] }>(
+      `/inference/documents/${id}/import/`,
+      { ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}) },
+    );
+    return r.data;
+  },
+
+  /** An image the file's spec embeds, as a blob for `<img>` display. */
+  async assetBlob(id: number, path: string): Promise<Blob> {
+    const r = await apiClient.get<Blob>(`/inference/documents/${id}/asset/`, {
+      responseType: 'blob',
+      params: { path },
+    });
+    return r.data;
+  },
+
+  /** Save an image beside the document, for embedding. Answers its spec path. */
+  async uploadImage(id: number, file: File): Promise<{ path: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const r = await apiClient.post<{ path: string }>(`/inference/documents/${id}/images/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return r.data;
+  },
+
   /** Cell edits to an .xlsx, or `{spec}` for a deck / Word file made here. */
   async editOffice(
     id: number,
@@ -289,6 +468,21 @@ export const documentsService = {
       `/inference/documents/${id}/office/`,
       { ...body, ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}) },
     );
+    return r.data;
+  },
+
+  /** A browser-proof PNG for a TIFF/BMP/HEIC image (Phase F). The download
+   *  stays the original; this is only what the preview shows. */
+  async previewImageBlob(id: number): Promise<Blob> {
+    const r = await apiClient.get<Blob>(`/inference/documents/${id}/preview-image/`, {
+      responseType: 'blob',
+    });
+    return r.data;
+  },
+
+  /** The files inside a zip: name, size and date each — never the bytes. */
+  async archive(id: number): Promise<ArchiveListing> {
+    const r = await apiClient.get<ArchiveListing>(`/inference/documents/${id}/archive/`);
     return r.data;
   },
 

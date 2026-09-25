@@ -15,8 +15,9 @@
  * model-authored and may quote a web page.
  */
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { ImageIcon, Loader2 } from 'lucide-react';
+import { Suspense, lazy, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { ChevronLeft, ChevronRight, ImageIcon, Loader2 } from 'lucide-react';
+import type { IWorkbookData } from '@univerjs/core';
 
 import { documentsService, type Document, type WorkbookGrid } from '../../api/documents';
 import ChartArtifact from '../chat/ChartArtifact';
@@ -90,7 +91,7 @@ export default function OfficePreview({ doc: given, className }: { doc: Document
     <div className={cn('min-h-0 overflow-auto', className)}>
       {spec.kind === 'deck' && <DeckPreview spec={spec} />}
       {spec.kind === 'workbook' && <WorkbookPreview spec={spec} />}
-      {spec.kind === 'document' && <DocumentPreview spec={spec} />}
+      {spec.kind === 'document' && <DocumentPreview spec={spec} docId={doc.id} />}
     </div>
   );
 }
@@ -104,6 +105,8 @@ function Rich({ text, italic }: { text: string; italic?: boolean }) {
     </>
   );
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Decks
@@ -126,7 +129,13 @@ function deckColors(t: DeckSpec['theme']): Colors {
 }
 
 /** One slide drawn at 16:9, scaling as a single picture. Shared with the Slides app. */
-export function DeckSlide({ spec, index, className }: { spec: DeckSpec; index: number; className?: string }) {
+export function DeckSlide({ spec, index, className, edit }: {
+  spec: DeckSpec;
+  index: number;
+  className?: string;
+  /** When set, text is edited directly on the slide instead of in a form. */
+  edit?: SlideEdit;
+}) {
   const colors = deckColors(spec.theme);
   const slide = spec.slides[index];
   if (!slide) return null;
@@ -138,7 +147,7 @@ export function DeckSlide({ spec, index, className }: { spec: DeckSpec; index: n
       )}
       style={{ background: colors.bg, color: colors.text }}
     >
-      <SlideBody slide={slide} c={colors} accentTitle={!!spec.theme?.accent_title} />
+      <SlideBody slide={slide} c={colors} accentTitle={!!spec.theme?.accent_title} edit={edit} />
       {slide.layout !== 'title' && (
         <span className="absolute bottom-[3%] right-[5%]" style={{ ...cq(1.1), color: colors.muted }}>
           {index + 1}
@@ -148,24 +157,98 @@ export function DeckSlide({ spec, index, className }: { spec: DeckSpec; index: n
   );
 }
 
+/** On-slide editing: text fields placed over the slide, in its own type. */
+export interface SlideEdit {
+  patch: (change: Partial<Slide>) => void;
+}
+
+/** A transparent input in the slide's own type — the text *is* the field. */
+function EditText({
+  value, onChange, placeholder, multiline, className, ariaLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  className?: string;
+  ariaLabel?: string;
+}) {
+  const cls = cn(
+    'w-full bg-transparent outline-none [color:inherit] [font:inherit] placeholder:opacity-50',
+    'rounded-sm focus-visible:ring-1 focus-visible:ring-primary/50',
+    className,
+  );
+  if (multiline) {
+    return (
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={ariaLabel ?? placeholder}
+        rows={1}
+        className={cn(cls, 'resize-none overflow-hidden')}
+        onInput={(e) => {
+          const el = e.currentTarget;
+          el.style.height = 'auto';
+          el.style.height = `${el.scrollHeight}px`;
+        }}
+      />
+    );
+  }
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      aria-label={ariaLabel ?? placeholder}
+      className={cls}
+    />
+  );
+}
+
 function DeckPreview({ spec }: { spec: DeckSpec }) {
   const t = spec.theme;
+  const [index, setIndex] = useState(0);
+  const current = Math.min(index, spec.slides.length - 1);
+  const slide = spec.slides[current];
   return (
-    <div className="space-y-4 p-4">
-      <p className="text-xs text-muted-foreground">
-        {spec.slides.length} {spec.slides.length === 1 ? 'slide' : 'slides'} · {t.name} theme · in-browser preview —
-        Export for the PowerPoint file, where charts stay editable.
-      </p>
-      {spec.slides.map((slide, i) => (
-        <figure key={i} className="m-0">
-          <DeckSlide spec={spec} index={i} />
+    <div className="space-y-3 p-4">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setIndex((i) => Math.max(0, i - 1))}
+          disabled={current === 0}
+          aria-label="Previous slide"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="min-w-16 text-center text-xs text-muted-foreground">
+          {current + 1} / {spec.slides.length}
+        </span>
+        <button
+          type="button"
+          onClick={() => setIndex((i) => Math.min(spec.slides.length - 1, i + 1))}
+          disabled={current >= spec.slides.length - 1}
+          aria-label="Next slide"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <p className="ml-2 truncate text-xs text-muted-foreground">
+          {t.name} theme · in-browser preview — Export for the PowerPoint file, where charts stay editable.
+        </p>
+      </div>
+      {slide && (
+        <figure key={current} className="m-0">
+          <DeckSlide spec={spec} index={current} />
           {slide.notes && (
             <figcaption className="mt-1.5 px-1 text-[11px] text-muted-foreground">
               <span className="font-medium">Notes:</span> {slide.notes}
             </figcaption>
           )}
         </figure>
-      ))}
+      )}
     </div>
   );
 }
@@ -175,19 +258,33 @@ type Colors = {
   accent: string; onAccent: string; rule: string;
 };
 
-function SlideTitle({ title, c, accentTitle }: { title?: string; c: Colors; accentTitle: boolean }) {
+function SlideTitle({ title, c, accentTitle, edit }: {
+  title?: string;
+  c: Colors;
+  accentTitle: boolean;
+  edit?: SlideEdit;
+}) {
   return (
     <>
       {accentTitle && <div className="absolute inset-y-0 left-0 w-[1.35%]" style={{ background: c.accent }} />}
       <div className="absolute left-[5.25%] right-[5.25%] top-[6.5%] font-bold" style={cq(2.4)}>
-        {title && <Rich text={title} italic={false} />}
+        {edit ? (
+          <EditText value={title ?? ''} onChange={(title) => edit.patch({ title })} placeholder="Title" ariaLabel="Slide title" />
+        ) : (
+          title && <Rich text={title} italic={false} />
+        )}
       </div>
       <div className="absolute left-[5.25%] top-[20.5%] h-[0.75%] w-[6.75%]" style={{ background: c.accent }} />
     </>
   );
 }
 
-function BulletList({ bullets, c, size }: { bullets: Bullet[]; c: Colors; size: number }) {
+function BulletList({ bullets, c, size, edit }: {
+  bullets: Bullet[];
+  c: Colors;
+  size: number;
+  edit?: { bullets: Bullet[]; onChange: (bullets: Bullet[]) => void };
+}) {
   return (
     <ul className="m-0 list-none space-y-[0.9cqw] p-0">
       {bullets.map((b, i) => (
@@ -196,10 +293,54 @@ function BulletList({ bullets, c, size }: { bullets: Bullet[]; c: Colors; size: 
           className="flex gap-[1cqw]"
           style={{ ...cq(b.level ? size - 0.25 : size), color: b.level ? c.muted : c.text, paddingLeft: b.level ? '2.6cqw' : 0 }}
         >
-          <span style={{ color: b.level ? c.muted : c.accent }}>{b.level ? '–' : '•'}</span>
-          <span><Rich text={b.text} italic={false} /></span>
+          {edit ? (
+            <button
+              type="button"
+              title={b.level ? 'Outdent' : 'Indent'}
+              aria-label={b.level ? `Outdent point ${i + 1}` : `Indent point ${i + 1}`}
+              onClick={() => {
+                if (i === 0 && !b.level) return;
+                const next = bullets.map((x, j) => (j === i ? { ...x, level: (x.level ? 0 : 1) as 0 | 1 } : x));
+                edit.onChange(next);
+              }}
+              style={{ color: b.level ? c.muted : c.accent }}
+              className="shrink-0 rounded-sm hover:opacity-70"
+            >
+              {b.level ? '–' : '•'}
+            </button>
+          ) : (
+            <span style={{ color: b.level ? c.muted : c.accent }}>{b.level ? '–' : '•'}</span>
+          )}
+          {edit ? (
+            <EditText
+              value={b.text}
+              onChange={(text) => {
+                if (!text && bullets.length > 1) {
+                  edit.onChange(bullets.filter((_, j) => j !== i));
+                } else {
+                  edit.onChange(bullets.map((x, j) => (j === i ? { ...x, text } : x)));
+                }
+              }}
+              placeholder="Point"
+              ariaLabel={`Point ${i + 1}`}
+            />
+          ) : (
+            <span><Rich text={b.text} italic={false} /></span>
+          )}
         </li>
       ))}
+      {edit && bullets.length < 6 && (
+        <li>
+          <button
+            type="button"
+            onClick={() => edit.onChange([...bullets, { text: '', level: 0 }])}
+            className="rounded-sm text-[0.9em] opacity-60 hover:opacity-100"
+            style={{ color: c.muted }}
+          >
+            + Add point
+          </button>
+        </li>
+      )}
     </ul>
   );
 }
@@ -208,7 +349,13 @@ function Content({ children }: { children: ReactNode }) {
   return <div className="absolute bottom-[10%] left-[5.25%] right-[5.25%] top-[25%]">{children}</div>;
 }
 
-function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentTitle: boolean }) {
+function SlideBody({ slide, c, accentTitle, edit }: {
+  slide: Slide;
+  c: Colors;
+  accentTitle: boolean;
+  edit?: SlideEdit;
+}) {
+  const patch = edit?.patch;
   switch (slide.layout) {
     case 'title':
     case 'closing': {
@@ -217,11 +364,15 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
         <div className="absolute inset-0" style={{ background: onAccent ? c.accent : undefined }}>
           {!onAccent && <div className="absolute left-[5.25%] top-[32.7%] h-[32%] w-[1.05%]" style={{ background: c.accent }} />}
           <div className="absolute bottom-[46.7%] left-[8.6%] right-[5.25%] font-bold" style={{ ...cq(slide.layout === 'title' ? 3.6 : 3.3), color: onAccent ? c.onAccent : c.text }}>
-            {slide.title}
+            {patch ? (
+              <EditText value={slide.title ?? ''} onChange={(title) => patch({ title })} placeholder="Title" ariaLabel="Slide title" />
+            ) : slide.title}
           </div>
-          {slide.subtitle && (
+          {(slide.subtitle || patch) && (
             <div className="absolute left-[8.6%] right-[5.25%] top-[55.3%]" style={{ ...cq(1.65), color: onAccent ? c.onAccent : c.muted }}>
-              {slide.subtitle}
+              {patch ? (
+                <EditText value={slide.subtitle ?? ''} onChange={(subtitle) => patch({ subtitle })} placeholder="Subtitle" ariaLabel="Slide subtitle" />
+              ) : slide.subtitle}
             </div>
           )}
         </div>
@@ -231,9 +382,17 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
       return (
         <>
           <div className="absolute left-[5.25%] top-[38.7%] h-[0.9%] w-[9%]" style={{ background: c.accent }} />
-          <div className="absolute left-[5.25%] right-[5.25%] top-[41.3%] font-bold" style={cq(3)}>{slide.title}</div>
-          {slide.subtitle && (
-            <div className="absolute left-[5.25%] right-[5.25%] top-[58.7%]" style={{ ...cq(1.5), color: c.muted }}>{slide.subtitle}</div>
+          <div className="absolute left-[5.25%] right-[5.25%] top-[41.3%] font-bold" style={cq(3)}>
+            {patch ? (
+              <EditText value={slide.title ?? ''} onChange={(title) => patch({ title })} placeholder="Section" ariaLabel="Section title" />
+            ) : slide.title}
+          </div>
+          {(slide.subtitle || patch) && (
+            <div className="absolute left-[5.25%] right-[5.25%] top-[58.7%]" style={{ ...cq(1.5), color: c.muted }}>
+              {patch ? (
+                <EditText value={slide.subtitle ?? ''} onChange={(subtitle) => patch({ subtitle })} placeholder="Subtitle" ariaLabel="Section subtitle" />
+              ) : slide.subtitle}
+            </div>
           )}
         </>
       );
@@ -241,23 +400,55 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
       const n = slide.bullets?.length ?? 0;
       return (
         <>
-          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} />
-          <Content><BulletList bullets={slide.bullets ?? []} c={c} size={n <= 3 ? 1.95 : n <= 5 ? 1.65 : 1.5} /></Content>
+          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} edit={edit} />
+          <Content>
+            <BulletList
+              bullets={slide.bullets ?? []}
+              c={c}
+              size={n <= 3 ? 1.95 : n <= 5 ? 1.65 : 1.5}
+              edit={patch && {
+                bullets: slide.bullets ?? [],
+                onChange: (bullets) => patch({ bullets }),
+              }}
+            />
+          </Content>
         </>
       );
     }
     case 'two_column':
       return (
         <>
-          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} />
+          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} edit={edit} />
           <Content>
             <div className="grid h-full grid-cols-2 gap-[4.5cqw]">
-              {[slide.left, slide.right].map((col, i) => (
-                <div key={i}>
-                  {col?.heading && <div className="mb-[1.2cqw] font-bold" style={{ ...cq(1.65), color: c.accent }}>{col.heading}</div>}
-                  <BulletList bullets={col?.bullets ?? []} c={c} size={1.42} />
-                </div>
-              ))}
+              {(['left', 'right'] as const).map((side) => {
+                const col = slide[side];
+                return (
+                  <div key={side}>
+                    {(col?.heading || patch) && (
+                      <div className="mb-[1.2cqw] font-bold" style={{ ...cq(1.65), color: c.accent }}>
+                        {patch ? (
+                          <EditText
+                            value={col?.heading ?? ''}
+                            onChange={(heading) => patch({ [side]: { heading, bullets: col?.bullets ?? [] } })}
+                            placeholder="Heading"
+                            ariaLabel={`${side} heading`}
+                          />
+                        ) : col?.heading}
+                      </div>
+                    )}
+                    <BulletList
+                      bullets={col?.bullets ?? []}
+                      c={c}
+                      size={1.42}
+                      edit={patch && {
+                        bullets: col?.bullets ?? [],
+                        onChange: (bullets) => patch({ [side]: { heading: col?.heading ?? '', bullets } }),
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </Content>
         </>
@@ -265,7 +456,7 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
     case 'chart':
       return (
         <>
-          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} />
+          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} edit={edit} />
           <Content>
             <div className="flex h-full flex-col">
               {/* The app's chart component on a neutral panel: close to the
@@ -273,7 +464,13 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
               <div className="min-h-0 flex-1 overflow-hidden rounded bg-card text-foreground">
                 {slide.chart && <ChartArtifact chart={{ ...slide.chart, title: '' }} />}
               </div>
-              {slide.caption && <div className="mt-[0.6cqw] italic" style={{ ...cq(1), color: c.muted }}>{slide.caption}</div>}
+              {(slide.caption || patch) && (
+                <div className="mt-[0.6cqw] italic" style={{ ...cq(1), color: c.muted }}>
+                  {patch ? (
+                    <EditText value={slide.caption ?? ''} onChange={(caption) => patch({ caption })} placeholder="Caption" ariaLabel="Chart caption" />
+                  ) : slide.caption}
+                </div>
+              )}
             </div>
           </Content>
         </>
@@ -281,20 +478,26 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
     case 'image':
       return (
         <>
-          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} />
+          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} edit={edit} />
           <Content>
             <div className="flex h-full flex-col items-center justify-center gap-[1cqw] rounded" style={{ background: c.surface, color: c.muted }}>
               <ImageIcon style={{ width: '4cqw', height: '4cqw' }} />
               <span style={cq(1.1)}>{slide.image}</span>
             </div>
-            {slide.caption && <div className="mt-[0.6cqw] text-center italic" style={{ ...cq(1), color: c.muted }}>{slide.caption}</div>}
+            {(slide.caption || patch) && (
+              <div className="mt-[0.6cqw] text-center italic" style={{ ...cq(1), color: c.muted }}>
+                {patch ? (
+                  <EditText value={slide.caption ?? ''} onChange={(caption) => patch({ caption })} placeholder="Caption" ariaLabel="Image caption" />
+                ) : slide.caption}
+              </div>
+            )}
           </Content>
         </>
       );
     case 'table':
       return (
         <>
-          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} />
+          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} edit={edit} />
           <Content>
             <table className="w-full border-collapse" style={cq(1.05)}>
               <thead>
@@ -319,9 +522,17 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
       return (
         <>
           <div className="absolute left-[8%] top-[8%] font-bold" style={{ ...cq(9), color: c.accent }}>{'“'}</div>
-          <div className="absolute left-[14.25%] right-[14%] top-[29%] flex h-[40%] items-center italic" style={cq(2.25)}>{slide.quote}</div>
-          {slide.attribution && (
-            <div className="absolute left-[14.25%] top-[71%]" style={{ ...cq(1.35), color: c.muted }}>{'—'} {slide.attribution}</div>
+          <div className="absolute left-[14.25%] right-[14%] top-[29%] flex h-[40%] items-center italic" style={cq(2.25)}>
+            {patch ? (
+              <EditText value={slide.quote ?? ''} onChange={(quote) => patch({ quote })} multiline placeholder="Quote" ariaLabel="Quote" />
+            ) : slide.quote}
+          </div>
+          {(slide.attribution || patch) && (
+            <div className="absolute left-[14.25%] top-[71%]" style={{ ...cq(1.35), color: c.muted }}>
+              {patch ? (
+                <span className="flex gap-[0.5cqw]">—<EditText value={slide.attribution ?? ''} onChange={(attribution) => patch({ attribution })} placeholder="Attribution" ariaLabel="Attribution" /></span>
+              ) : <>{'—'} {slide.attribution}</>}
+            </div>
           )}
         </>
       );
@@ -329,14 +540,22 @@ function SlideBody({ slide, c, accentTitle }: { slide: Slide; c: Colors; accentT
       const stats = slide.stats ?? [];
       return (
         <>
-          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} />
+          <SlideTitle title={slide.title} c={c} accentTitle={accentTitle} edit={edit} />
           <Content>
             <div className="grid h-[70%] gap-[3cqw]" style={{ gridTemplateColumns: `repeat(${Math.max(stats.length, 1)}, minmax(0, 1fr))` }}>
               {stats.map((st, i) => (
                 <div key={i} className="relative flex flex-col justify-center rounded-sm px-[2.2cqw]" style={{ background: c.surface }}>
                   <div className="absolute inset-x-0 top-0 h-[3%]" style={{ background: c.accent }} />
-                  <div className="font-bold" style={{ ...cq(stats.length < 4 ? 3.6 : 3), color: c.accent }}>{st.value}</div>
-                  <div className="mt-[1cqw]" style={{ ...cq(1.27), color: c.muted }}>{st.label}</div>
+                  <div className="font-bold" style={{ ...cq(stats.length < 4 ? 3.6 : 3), color: c.accent }}>
+                    {patch ? (
+                      <EditText value={st.value} onChange={(value) => patch({ stats: stats.map((x, j) => (j === i ? { ...x, value } : x)) })} placeholder="0" ariaLabel={`Stat ${i + 1} value`} />
+                    ) : st.value}
+                  </div>
+                  <div className="mt-[1cqw]" style={{ ...cq(1.27), color: c.muted }}>
+                    {patch ? (
+                      <EditText value={st.label} onChange={(label) => patch({ stats: stats.map((x, j) => (j === i ? { ...x, label } : x)) })} placeholder="Label" ariaLabel={`Stat ${i + 1} label`} />
+                    ) : st.label}
+                  </div>
                 </div>
               ))}
             </div>
@@ -448,6 +667,13 @@ function WorkbookPreview({ spec }: { spec: WorkbookSpec }) {
   );
 }
 
+const UniverSheetPreview = lazy(() => import('../apps/UniverSheet').then((m) => ({
+  default: function ReadOnlySheet({ snapshot }: { snapshot: unknown }) {
+    const Sheet = m.default;
+    return <Sheet snapshot={snapshot as IWorkbookData} readOnly />;
+  },
+})));
+
 function LiveWorkbookPreview({ doc, className }: { doc: Document; className?: string }) {
   const [grid, setGrid] = useState<WorkbookGrid | null>(null);
   const [failed, setFailed] = useState(false);
@@ -469,7 +695,44 @@ function LiveWorkbookPreview({ doc, className }: { doc: Document; className?: st
     );
   }
   const sheet = grid.sheets[Math.min(active, grid.sheets.length - 1)];
-  const rows = sheet?.rows.slice(0, 200) ?? [];
+  // The app's own grid in read-only mode, so a file looks the same previewed
+  // and opened. Without a snapshot (or when the engine cannot start), the
+  // calculated-values table below is the fallback.
+  if (sheet && (grid.snapshot as { sheets?: object } | undefined)?.sheets) {
+    return (
+      <div className={cn('flex min-h-0 flex-1 flex-col overflow-hidden p-4', className)}>
+        {grid.sheets.length > 1 && (
+          <div className="mb-3 flex shrink-0 flex-wrap gap-1" role="tablist" aria-label="Sheets">
+            {grid.sheets.map((s, i) => (
+              <button
+                key={s.name}
+                type="button"
+                role="tab"
+                aria-selected={i === active}
+                onClick={() => setActive(i)}
+                className={cn(
+                  'rounded-md border px-2.5 py-1 text-xs transition-colors',
+                  i === active ? 'border-primary/40 bg-primary/10 font-medium text-foreground' : 'border-border/60 text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <Suspense
+          fallback={
+            <div className="flex flex-1 items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          }
+        >
+          <UniverSheetPreview snapshot={grid.snapshot} />
+        </Suspense>
+      </div>
+    );
+  }
+  const rows = (sheet?.values ?? sheet?.rows ?? []).slice(0, 200);
   const width = rows.reduce((m, r) => Math.max(m, r.length), 0);
   return (
     <div className={cn('min-h-0 overflow-auto p-4', className)}>
@@ -524,7 +787,7 @@ function LiveWorkbookPreview({ doc, className }: { doc: Document; className?: st
       )}
       <p className="mt-2 text-xs text-muted-foreground">
         {sheet && sheet.row_count > rows.length ? `Showing ${rows.length} of ${sheet.row_count.toLocaleString()} rows. ` : ''}
-        Formulas are shown as written.
+        Calculated values where the file has them.
       </p>
     </div>
   );
@@ -534,86 +797,30 @@ function LiveWorkbookPreview({ doc, className }: { doc: Document; className?: st
 // Documents
 // ---------------------------------------------------------------------------
 
-function DocumentPreview({ spec }: { spec: DocumentSpec }) {
-  const accent = hex(spec.accent, '#2a78d6');
-  return (
-    <article className="mx-auto max-w-2xl px-6 py-6 text-sm leading-relaxed text-foreground">
-      <h1 className="m-0 text-2xl font-bold">{spec.title}</h1>
-      {spec.subtitle && <p className="mt-1 text-base text-muted-foreground">{spec.subtitle}</p>}
-      <div className="mt-5 space-y-3">
-        {spec.blocks.map((b, i) => {
-          switch (b.type) {
-            case 'heading': {
-              const size = b.level === 1 ? 'text-lg' : b.level === 2 ? 'text-base' : 'text-sm';
-              return <h2 key={i} className={cn('m-0 pt-2 font-bold', size)} style={b.level === 1 ? { color: accent } : undefined}><Rich text={b.text} /></h2>;
-            }
-            case 'paragraph':
-              return <p key={i} className="m-0"><Rich text={b.text} /></p>;
-            case 'quote':
-              return <blockquote key={i} className="m-0 border-l-2 pl-3 italic text-muted-foreground" style={{ borderColor: accent }}><Rich text={b.text} /></blockquote>;
-            case 'bullets':
-            case 'numbered': {
-              const List = b.type === 'bullets' ? 'ul' : 'ol';
-              return (
-                <List key={i} className={cn('m-0 space-y-1 pl-5', b.type === 'bullets' ? 'list-disc' : 'list-decimal')}>
-                  {b.items.map((item, k) => <li key={k}><Rich text={item} /></li>)}
-                </List>
-              );
-            }
-            case 'table':
-              return <DocTable key={i} columns={b.columns} rows={b.rows} caption={b.caption} accent={accent} />;
-            case 'chart': {
-              const xs: string[] = [];
-              for (const s of b.chart.series) for (const p of s.points) if (!xs.includes(p.x)) xs.push(p.x);
-              const rows = xs.map((x) => [x, ...b.chart.series.map((s) => {
-                const y = s.points.find((p) => p.x === x)?.y;
-                return y === null || y === undefined ? '—' : y.toLocaleString('en-US');
-              })]);
-              return (
-                <div key={i}>
-                  <p className="m-0 mb-1 font-semibold">{b.chart.title}</p>
-                  <DocTable columns={[b.chart.x_label || 'Category', ...b.chart.series.map((s) => s.name)]} rows={rows}
-                    caption="Chart data shown as a table." accent={accent} />
-                </div>
-              );
-            }
-            case 'image':
-              return (
-                <div key={i} className="flex items-center gap-2 rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                  <ImageIcon className="h-4 w-4" /> {b.path}{b.caption ? ` — ${b.caption}` : ''}
-                </div>
-              );
-            case 'page_break':
-              return <hr key={i} className="my-4 border-dashed border-border/60" />;
-            default:
-              return null;
-          }
-        })}
-      </div>
-    </article>
-  );
-}
+const TipTapPreview = lazy(() => import('../apps/TipTapEditor').then((m) => ({ default: m.TipTapReadOnly })));
 
-function DocTable({ columns, rows, caption, accent }: { columns: string[]; rows: string[][]; caption: string; accent: string }) {
+/**
+ * The app's own page in read-only mode, so a file looks the same previewed
+ * and opened. TipTap loads lazily here exactly as in the editor.
+ */
+function DocumentPreview({ spec, docId }: { spec: DocumentSpec; docId: number }) {
   return (
-    <div>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr>
-              {columns.map((h, i) => <th key={i} className="border border-border/60 px-2 py-1.5 text-left font-semibold text-white" style={{ background: accent }}>{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, r) => (
-              <tr key={r} className={cn(r % 2 === 1 && 'bg-muted/30')}>
-                {row.map((v, k) => <td key={k} className="border border-border/60 px-2 py-1.5"><Rich text={v} /></td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {caption && <p className="m-0 mt-1 text-[11px] italic text-muted-foreground">{caption}</p>}
+    <div className="px-2 py-4 sm:px-6 sm:py-8">
+      <article className="mx-auto max-w-3xl rounded-sm bg-card px-5 py-8 shadow-md sm:px-12 sm:py-12">
+        <h1 className="m-0 text-2xl font-bold sm:text-3xl">{spec.title}</h1>
+        {spec.subtitle && <p className="m-0 mt-1 text-base text-muted-foreground">{spec.subtitle}</p>}
+        <div className="mt-4">
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              </div>
+            }
+          >
+            <TipTapPreview docId={docId} spec={spec} />
+          </Suspense>
+        </div>
+      </article>
     </div>
   );
 }

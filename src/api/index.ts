@@ -48,7 +48,6 @@ export {
   type DelegatedRun,
   type DelegatedBy,
   type AgentRevision,
-  type AgentRevisionDetail,
   type RunCaller,
   type ExecutionStatistics,
   type DailyTrendPoint,

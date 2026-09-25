@@ -13,6 +13,11 @@ import type { PendingToolCall } from '../../hooks/useChatStream';
 /** How long an approval lasts: this call, this conversation, or for good. */
 export type ApprovalScope = 'once' | 'session' | 'always';
 
+/** The manager asking whether one of its agents may act (`answer_subagent`). */
+function isWorkerRequest(call: PendingToolCall): boolean {
+  return call.tool === 'answer_subagent';
+}
+
 interface ToolApprovalCardProps {
   call: PendingToolCall;
   onApprove: (callId: string, scope: ApprovalScope) => void;
@@ -97,7 +102,12 @@ export default function ToolApprovalCard({ call, onApprove, onDeny }: ToolApprov
             {/* Three answers, quieter as they get longer-lived. The middle
                 one is what people actually want: without it, someone who just
                 wants to stop being asked for the afternoon says "always" and
-                grants a standing allowance over their own mailbox. */}
+                grants a standing allowance over their own mailbox.
+
+                Not for a worker's request (`answer_subagent`): "always allow"
+                there would approve every future request from every agent,
+                whatever it asks to do. */}
+            {!isWorkerRequest(call) && (
             <div className="flex gap-2">
               <button
                 onClick={() => onApprove(call.call_id, 'session')}
@@ -112,6 +122,7 @@ export default function ToolApprovalCard({ call, onApprove, onDeny }: ToolApprov
                 Always allow
               </button>
             </div>
+            )}
           </div>
         </div>
       </div>

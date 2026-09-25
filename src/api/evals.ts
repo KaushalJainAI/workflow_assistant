@@ -23,11 +23,14 @@ export interface GraderSpec {
   [key: string]: unknown;
 }
 
+/** One row of `eval/graders.py::catalog()` — parameter *names*, not types. */
 export interface GraderCatalogEntry {
   type: string;
-  label?: string;
-  description?: string;
-  params?: Record<string, unknown>;
+  params: string[];
+  required: string[];
+  /** A model grades it (`llm_judge`): a case cannot rely on these alone. */
+  calls_model: boolean;
+  description: string;
 }
 
 export interface EvalCase {
@@ -233,13 +236,20 @@ export interface EvalWorld {
   id: number;
   suite: number;
   version: number;
-  status: 'draft' | 'accepted';
+  /** `generating` while the judge builds it in the background; `failed`
+   * with `error_message` if that did not produce a usable world. */
+  status: 'generating' | 'failed' | 'draft' | 'accepted';
   brief: string;
   surfaces: Record<string, unknown>;
   fixtures: Record<string, unknown>;
   facts: Array<{ key?: string; value?: unknown; statement?: string }>;
   created_by_model: string;
   cost_usd: string | null;
+  error_message: string;
+  focus: string;
+  requested_cases: number;
+  /** Cases the pipeline threw out, with the reason for each. */
+  rejected: string[];
   case_count: number;
   is_live: boolean;
   created_at: string;
@@ -249,16 +259,14 @@ export interface EvalWorld {
 export interface SuiteWorld {
   live: EvalWorld | null;
   draft: EvalWorld | null;
+  /** A generation still running, or the newest one that failed. */
+  pending: EvalWorld | null;
   versions: number[];
 }
 
+/** 202 from generate: the world is being built in the background. */
 export interface GeneratedWorld {
   world: EvalWorld;
-  cases: EvalCase[];
-  rejected?: string[];
-  tokens?: number;
-  cost_usd?: string | null;
-  model?: string;
 }
 
 const evalsService = {
@@ -397,10 +405,14 @@ const evalsService = {
   /** The suite's live (accepted) world and its newest draft, if any. */
   getWorld: async (suiteId: number): Promise<SuiteWorld> => {
     const { data } = await apiClient.get<SuiteWorld>(`/eval/suites/${suiteId}/world/`);
-    return { live: data?.live ?? null, draft: data?.draft ?? null, versions: data?.versions ?? [] };
+    return {
+      live: data?.live ?? null, draft: data?.draft ?? null,
+      pending: data?.pending ?? null, versions: data?.versions ?? [],
+    };
   },
 
-  /** Judge-build a world and its cases. Drafts only — minutes, billed. */
+  /** Start judge-building a world and its cases (202; runs in the
+   * background — poll `getWorld`). Drafts only; billed to the judge key. */
   generateWorld: async (
     suiteId: number, body: { focus?: string; cases?: number } = {},
   ): Promise<GeneratedWorld> => {

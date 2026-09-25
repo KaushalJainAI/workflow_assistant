@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
+import { openExternal } from '../../lib/safeUrl';
 
 interface MediaPreviewProps {
   url: string;
@@ -48,7 +49,7 @@ export function MediaPreview({ url, type, title, source, thumbnail, className, c
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    window.open(url, '_blank', 'noopener,noreferrer');
+    openExternal(url);
   };
 
   const resolvedThumbnail = thumbnailFailed ? '' : (thumbnail || '');

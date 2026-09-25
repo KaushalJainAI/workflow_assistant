@@ -829,15 +829,20 @@ export default function Settings() {
                     <code className="flex-1 p-2 bg-background border border-input rounded-lg text-sm font-mono overflow-hidden text-ellipsis">
                       {apiKey || '••••••••••••••••••••••••••••••••'}
                     </code>
-                    <button 
-                      onClick={() => apiKey && copyToClipboard(apiKey)}
-                      className="px-3 py-2 border border-border/60 rounded-lg hover:bg-muted text-sm whitespace-nowrap transition-colors"
-                    >
-                      {isCopied ? 'Copied!' : 'Copy'}
-                    </button>
+                    {/* Only a freshly generated key is whole; a stored one is
+                        its masked prefix, which is not worth copying. */}
+                    {apiKey && !apiKey.endsWith('…') && (
+                      <button
+                        onClick={() => copyToClipboard(apiKey)}
+                        className="px-3 py-2 border border-border/60 rounded-lg hover:bg-muted text-sm whitespace-nowrap transition-colors"
+                      >
+                        {isCopied ? 'Copied!' : 'Copy'}
+                      </button>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     Keep this key secret. It allows full access to your account.
+                    The full key is shown only right after you generate it — copy it then.
                   </p>
                 </div>
                 {/* This showed `/api/webhook/`, a route that does not exist: the

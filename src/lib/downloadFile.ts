@@ -54,6 +54,17 @@ export async function downloadFile(url: string, baseName: string, fallbackExt = 
   }
 }
 
+/** Save a blob the app already holds (a download, an export, a version). */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    triggerDownload(objectUrl, filename);
+  } finally {
+    // Revoke on the next tick — revoking synchronously can race the click.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+  }
+}
+
 /** Default file extension per modality, used when the URL reveals nothing. */
 export const DEFAULT_EXTENSION: Record<'image' | 'video' | 'audio', string> = {
   image: 'png',

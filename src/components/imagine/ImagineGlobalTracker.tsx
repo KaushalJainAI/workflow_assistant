@@ -20,7 +20,7 @@ export function ImagineGlobalTracker() {
   const primary = active[0];
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 max-w-sm w-[calc(100vw-2rem)] sm:w-80">
+    <div className="fixed bottom-[calc(80px+env(safe-area-inset-bottom))] right-4 z-40 md:bottom-4 max-w-sm w-[calc(100vw-2rem)] sm:w-80">
       <div className="rounded-lg border border-border bg-card shadow-md overflow-hidden">
         {/* Collapsed bar */}
         <div className="flex items-center gap-3 px-4 py-3">

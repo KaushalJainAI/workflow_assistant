@@ -4,6 +4,8 @@ import {
   GitGraph,
   Key,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   User,
 } from "lucide-react";
@@ -169,16 +171,16 @@ const Sidebar = () => {
             aria-modal={isMobile && !collapsed ? true : undefined}
             aria-hidden={isMobile && collapsed ? true : undefined}
             className={cn(
-                "h-viewport border-r flex flex-col transition-colors duration-150 overflow-hidden",
+                "border-r flex flex-col transition-colors duration-150 overflow-hidden",
                 // Mobile: fixed drawer, slides in from left, fully hidden when collapsed
                 isMobile
                     ? cn(
-                        "fixed left-0 top-0 z-[60] w-72 shadow-lg",
+                        "fixed left-0 top-0 z-[60] h-viewport w-72 shadow-lg",
                         collapsed ? "-translate-x-full" : "translate-x-0"
                       )
                     // Desktop: in-flow, collapses to icon rail
                     : cn(
-                        "relative flex-shrink-0 z-50",
+                        "relative h-full flex-shrink-0 z-50",
                         collapsed ? "w-16" : "w-64"
                       )
             )}
@@ -187,7 +189,7 @@ const Sidebar = () => {
                 borderColor: 'hsl(var(--sidebar-border))'
             }}
         >
-            <div className={cn(
+            {isMobile && <div className={cn(
                 "p-4 flex items-center border-b transition-all duration-300",
                 collapsed ? "justify-center" : "justify-between"
             )} style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
@@ -209,9 +211,9 @@ const Sidebar = () => {
                 >
                     <Menu className="w-5 h-5" />
                 </button>
-            </div>
+            </div>}
 
-            <div className="p-3">
+            {isMobile && <div className="p-3">
                 {/* The primary action is starting a fresh conversation — chat
                     is where most work begins, including work that later
                     becomes an agent. Guests get their own chat at `/`; the
@@ -235,9 +237,9 @@ const Sidebar = () => {
                         New chat
                     </span>
                 </button>
-            </div>
+            </div>}
 
-            <nav className="flex-1 overflow-y-auto p-2 space-y-3">
+            <nav className={cn("flex-1 overflow-y-auto p-2 space-y-3", !isMobile && "pt-3")}>
                 {navGroups.map((group) => (
                     <div key={group.title}>
                         <h4 className={cn(
@@ -337,7 +339,25 @@ const Sidebar = () => {
             )}
 
             {/* User Section (auth-only) */}
-            {isAuthenticated && <div className="p-2 border-t border-border/60 space-y-1">
+            {!isMobile && (
+                <div className="p-2 border-t border-border/60">
+                    <button
+                        type="button"
+                        onClick={() => setCollapsed(!collapsed)}
+                        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        title={collapsed ? "Expand sidebar" : undefined}
+                        className={cn(
+                            "flex w-full items-center rounded py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+                            collapsed ? "justify-center" : "gap-3 px-3"
+                        )}
+                    >
+                        {collapsed ? <PanelLeftOpen className="w-[18px] h-[18px]" /> : <PanelLeftClose className="w-[18px] h-[18px]" />}
+                        {!collapsed && <span>Collapse</span>}
+                    </button>
+                </div>
+            )}
+
+            {isMobile && isAuthenticated && <div className="p-2 border-t border-border/60 space-y-1">
                 <Link
                     to="/profile"
                     className={cn(

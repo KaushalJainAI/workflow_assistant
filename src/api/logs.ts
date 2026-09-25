@@ -17,7 +17,7 @@ import apiClient from './client';
 // Execution types
 
 /** Who started a run. `trigger_type` says how; this says what. */
-export type RunCaller = 'api' | 'chat' | 'orchestrator' | 'trigger' | 'eval';
+export type RunCaller = 'api' | 'chat' | 'orchestrator' | 'trigger' | 'eval' | 'mission';
 
 export interface ExecutionLog extends CostFields {
   id?: number;
@@ -27,6 +27,8 @@ export interface ExecutionLog extends CostFields {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused';
   trigger_type: string;
   caller: RunCaller;
+  /** The mission this run belongs to, if it is one link in a chain. */
+  mission_id?: number | null;
   /** Delegation depth. 0 is a run the user started. */
   depth: number;
   is_delegated: boolean;
@@ -180,10 +182,6 @@ export interface AgentRevision {
   /** Runs that executed under this revision — has it been tried enough to judge? */
   run_count: number;
   created_at: string;
-}
-
-export interface AgentRevisionDetail extends AgentRevision {
-  config: Record<string, unknown>;
 }
 
 export interface CursorPage<T> {
@@ -378,17 +376,6 @@ export interface CostBreakdown {
 }
 
 export const logsService = {
-  // ========== Insights ==========
-
-  /**
-   * Get execution statistics
-   */
-  async getStatistics(days: number = 30): Promise<ExecutionStatistics> {
-    const response = await apiClient.get<ExecutionStatistics>('/logs/insights/stats/', {
-      params: { days },
-    });
-    return response.data;
-  },
 
   /**
    * Get workflow metrics
@@ -446,11 +433,6 @@ async listExecutions(params?: {
     return data;
   },
 
-  async clearFeedback(target: 'execution' | 'message', id: string | number): Promise<unknown> {
-    const { data } = await apiClient.delete('/logs/feedback/', { params: { target, id } });
-    return data;
-  },
-
   async quality(days = 30): Promise<QualitySummary> {
     const { data } = await apiClient.get<QualitySummary>('/logs/insights/quality/', { params: { days } });
     return data;
@@ -493,16 +475,6 @@ async listRevisions(
   );
   return response.data;
 },
-
-  /**
-   * One revision's full configuration snapshot.
-   */
-  async getRevision(agentId: number, number: number): Promise<AgentRevisionDetail> {
-    const response = await apiClient.get<AgentRevisionDetail>(
-      `/logs/agents/${agentId}/revisions/${number}/`
-    );
-    return response.data;
-  },
 };
 
 export default logsService;

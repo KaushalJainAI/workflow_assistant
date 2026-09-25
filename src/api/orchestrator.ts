@@ -42,6 +42,8 @@ export interface HITLRequest {
   workflow_name?: string;
   /** What the agent is asking to do, rendered by the backend. See `describe_call`. */
   detail?: HITLDetail | null;
+  /** An `ask_user` question's shape (kind, options, bounds); see `lib/question`. */
+  question?: unknown;
 }
 
 /**
@@ -70,7 +72,8 @@ export function hitlOption(option: HITLOption): { label: string; value: string }
 
 export interface HITLResponse {
   action: 'approve' | 'reject' | 'respond' | 'retry' | 'skip' | 'stop';
-  response?: string;
+  /** An option label, a number, a list of options or a sentence. */
+  response?: string | number | string[];
   data?: Record<string, unknown>;
 }
 

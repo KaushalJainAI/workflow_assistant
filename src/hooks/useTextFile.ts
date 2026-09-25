@@ -13,7 +13,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { documentsService, type Document } from '../api/documents';
+import { useRegisterSave } from '../components/apps/useSave';
 import { apiErrorMessage } from '../lib/apiError';
+import { useHistory } from '../lib/history';
 import { toast } from '../lib/toastStore';
 
 export interface TextFile {
@@ -28,12 +30,16 @@ export interface TextFile {
   save: () => Promise<boolean>;
   overwrite: () => Promise<boolean>;
   reload: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 export function useTextFile(docId: number, { autosaveMs }: { autosaveMs?: number } = {}): TextFile {
   const qc = useQueryClient();
   const [doc, setDoc] = useState<Document | null>(null);
-  const [text, setText] = useState('');
+  const [text, setTextState] = useState('');
   const [base, setBase] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +47,8 @@ export function useTextFile(docId: number, { autosaveMs }: { autosaveMs?: number
   const [stale, setStale] = useState(false);
   const [nonce, setNonce] = useState(0);
   const etag = useRef<string | undefined>(undefined);
+  const { record, undo: undoHistory, redo: redoHistory, reset: resetHistory, canUndo, canRedo } =
+    useHistory();
 
   // Callers key the editor on the file, so a different file is a fresh mount
   // that starts in the loading state; `reload` resets it from its handler.
@@ -51,8 +59,9 @@ export function useTextFile(docId: number, { autosaveMs }: { autosaveMs?: number
         if (cancelled) return;
         setDoc(d);
         etag.current = d.updated_at;
-        setText(body);
+        setTextState(body);
         setBase(body);
+        resetHistory();
       })
       .catch((err) => {
         if (!cancelled) setError(apiErrorMessage(err, 'Could not open that file.'));
@@ -63,9 +72,31 @@ export function useTextFile(docId: number, { autosaveMs }: { autosaveMs?: number
     return () => {
       cancelled = true;
     };
+    // A new file is a new mount; `reload` drives refetches through `nonce`,
+    // and `resetHistory` is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, nonce]);
 
   const dirty = text !== base;
+
+  const setText = useCallback(
+    (next: string) => {
+      setTextState((prev) => {
+        if (prev === next) return prev;
+        record(prev);
+        return next;
+      });
+    },
+    [record],
+  );
+
+  const undo = useCallback(() => {
+    setTextState((prev) => undoHistory(prev) ?? prev);
+  }, [undoHistory]);
+
+  const redo = useCallback(() => {
+    setTextState((prev) => redoHistory(prev) ?? prev);
+  }, [redoHistory]);
 
   const write = useCallback(
     async (guard: boolean) => {
@@ -102,12 +133,42 @@ export function useTextFile(docId: number, { autosaveMs }: { autosaveMs?: number
     setNonce((n) => n + 1);
   }, []);
 
-  // Autosave after a pause in typing — Notepad and To Do use it.
+  // Autosave after a pause in typing.
   useEffect(() => {
     if (!autosaveMs || !dirty || stale || loading) return;
     const t = window.setTimeout(() => void write(true), autosaveMs);
     return () => window.clearTimeout(t);
   }, [autosaveMs, dirty, stale, loading, text, write]);
 
-  return { doc, text, setText, loading, error, dirty, saving, stale, save, overwrite, reload };
+  // Flush when the tab is hidden or closed: the pause timer above may never
+  // fire there, and an autosave that only runs while visible is not one.
+  // Best-effort on close — the draft/render still runs server-side on quiet.
+  const flushRef = useRef(() => {});
+  useEffect(() => {
+    flushRef.current = () => {
+      if (dirty && !stale && !loading && !saving) void write(true);
+    };
+  });
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') flushRef.current();
+    };
+    const onHide = () => flushRef.current();
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onHide);
+    };
+  }, []);
+
+  // The app bar and the unsaved-changes dialog save through this.
+  useRegisterSave(save, dirty, saving);
+
+  return {
+    doc, text, setText, loading, error, dirty, saving, stale,
+    save, overwrite, reload, undo, redo, canUndo, canRedo,
+  };
 }
+
+

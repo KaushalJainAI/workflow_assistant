@@ -82,10 +82,30 @@ export interface WorkbookSpec {
   sheets: Sheet[];
 }
 
+/** One inline run: text with its own marks, as TipTap and the importer write. */
+export interface TextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  code?: boolean;
+  link?: string;
+}
+
+export type Align = 'left' | 'center' | 'right' | 'justify';
+
+/**
+ * A list item: a marker string, or an object with text/runs like a paragraph.
+ * `level` survives the TipTap round trip (nested lists); the file renders
+ * document lists flat.
+ */
+export type ListItem = string | { text?: string; runs?: TextRun[]; level?: 0 | 1 };
+
 export type Block =
-  | { type: 'heading'; text: string; level: 1 | 2 | 3 }
-  | { type: 'paragraph' | 'quote'; text: string }
-  | { type: 'bullets' | 'numbered'; items: string[] }
+  | { type: 'heading'; text?: string; runs?: TextRun[]; level: 1 | 2 | 3; align?: Align }
+  | { type: 'paragraph' | 'quote'; text?: string; runs?: TextRun[]; align?: Align }
+  | { type: 'bullets' | 'numbered'; items: ListItem[] }
   | { type: 'table'; columns: string[]; rows: string[][]; caption: string }
   | { type: 'image'; path: string; caption: string }
   | { type: 'chart'; chart: ChartSpec }

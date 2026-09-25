@@ -299,19 +299,6 @@ export const chatService = {
     await apiClient.delete(url);
   },
 
-  async sendMessage(
-    sessionId: string, 
-    content: string, 
-    intent?: string,
-    reference?: { message_id: number; snippet: string }
-  ): Promise<{ user_message: ChatMessage; ai_response: ChatMessage }> {
-    const body: Record<string, unknown> = { content };
-    if (intent && intent !== 'normal') body.intent = intent;
-    if (reference) body.reference = reference;
-    const response = await apiClient.post(`/chat/sessions/${sessionId}/message/`, body);
-    return response.data;
-  },
-
   /**
    * Stream a message via SSE. Calls onEvent for each parsed event.
    * Event types: the `Event` enum in `Backend/chat/events.py` — status,
@@ -359,6 +346,9 @@ export const chatService = {
       command?: { name: string; args?: Record<string, unknown>; text?: string };
       /** Regenerate this answer with the same command attached. */
       regenerateOf?: number;
+      /** Answer an `ask_user` question card: its call id and the value. */
+      answerToolCall?: string;
+      answer?: string | number | string[];
     },
   ): Promise<void> {
     const body: Record<string, unknown> = { content };
@@ -381,6 +371,10 @@ export const chatService = {
     // is a 400 under the input, never a model turn.
     if (extras?.command) body.command = extras.command;
     if (extras?.regenerateOf != null) body.regenerate_of = extras.regenerateOf;
+    if (extras?.answerToolCall) {
+      body.answer_tool_call = extras.answerToolCall;
+      body.answer = extras.answer;
+    }
 
     return streamSse({
       path: `/chat/sessions/${sessionId}/message/stream/`,

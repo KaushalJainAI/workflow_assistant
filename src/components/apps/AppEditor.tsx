@@ -2,14 +2,19 @@
  * Which editor an app shows for a file. One switch, so a new app is a
  * registry entry in `lib/apps.ts` plus a case here.
  */
+import { Suspense, lazy } from 'react';
 import type { Document } from '../../api/documents';
 import type { AppMeta } from '../../lib/apps';
 import { extensionOf } from '../../lib/apps';
 import FilePreview from '../files/FilePreview';
+import { EditorLoading } from './EditorChrome';
 import { MediaPlayer, PdfViewer, PhotosViewer, Whiteboard } from './MediaEditors';
-import { SlidesEditor, WordEditor } from './OfficeEditors';
+import { SlidesEditor } from './OfficeEditors';
 import SheetEditor from './SheetEditor';
 import { CodeEditor, MarkdownEditor, NotepadEditor, TasksEditor, WebEditor } from './TextEditors';
+
+// TipTap stays a lazy chunk: only the Docs app downloads it.
+const TipTapEditor = lazy(() => import('./TipTapEditor'));
 
 interface Props {
   app: AppMeta;
@@ -23,7 +28,11 @@ export default function AppEditor({ app, doc, siblings, onDirtyChange, onOpenDoc
   const common = { doc, onDirtyChange };
   switch (app.editor) {
     case 'writer':
-      return doc.file_type === 'docx' ? <WordEditor {...common} onOpenDoc={onOpenDoc} /> : <MarkdownEditor {...common} />;
+      return doc.file_type === 'docx' ? (
+        <Suspense fallback={<EditorLoading label="Loading the editor…" />}>
+          <TipTapEditor {...common} />
+        </Suspense>
+      ) : <MarkdownEditor {...common} />;
     case 'notepad':
       return <NotepadEditor {...common} />;
     case 'tasks':

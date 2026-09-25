@@ -19,9 +19,7 @@ import {
   Clock,
   Coins,
   MemoryStick,
-  Pause,
   Play,
-  Rocket,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -636,12 +634,4 @@ function AgentRunCard({
       )}
     </Shell>
   );
-}
-
-export function PauseIcon() {
-  return <Pause className="h-3.5 w-3.5" />;
-}
-
-export function RocketIcon() {
-  return <Rocket className="h-3.5 w-3.5" />;
 }

@@ -10,14 +10,6 @@
 import apiClient from './client';
 import type { CommandChip, CommandDef } from '../lib/commands';
 
-export interface CommandCandidate {
-  id?: number | string;
-  value: string;
-  label: string;
-  description?: string;
-  [key: string]: unknown;
-}
-
 const commandsService = {
   /** Commands this user can run, for the palette and `/help`. */
   async list(): Promise<CommandDef[]> {
@@ -25,18 +17,6 @@ const commandsService = {
       '/chat/commands/',
     );
     return Array.isArray(data?.commands) ? data.commands : [];
-  },
-
-  /** Candidates for one argument (`command`, `arg`, `q`). Capped server-side. */
-  async complete(
-    command: string,
-    arg: string,
-    q: string,
-  ): Promise<CommandCandidate[]> {
-    const { data } = await apiClient.get<{
-      candidates: CommandCandidate[];
-    }>('/chat/commands/complete/', { params: { command, arg, q } });
-    return Array.isArray(data?.candidates) ? data.candidates : [];
   },
 
   /** Run an action-kind command server-side and return its card. */

@@ -126,12 +126,6 @@ const nodeService = {
     return response.data;
   },
 
-  /** Read the platform fallback model (everyone). */
-  async getFallback(): Promise<FallbackModel> {
-    const response = await apiClient.get<FallbackModel>('/llm/fallback/');
-    return response.data;
-  },
-
   /** Change the platform fallback model (staff-only). */
   async updateFallback(provider: string, model: string): Promise<FallbackModel & { warning?: string }> {
     const response = await apiClient.patch<FallbackModel & { warning?: string }>(
