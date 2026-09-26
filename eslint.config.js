@@ -32,4 +32,27 @@ export default defineConfig([
       }],
     },
   },
+  {
+    // `src/api/` is the only place that talks to the backend. A page that
+    // calls the HTTP client itself grows its own copy of the URL, the envelope
+    // handling and the types, and the copies drift (Skills once declared ids
+    // as strings while the service said numbers). Helpers from `api/client`
+    // — `tokenManager`, `handleApiError` — stay importable; only the client
+    // itself and raw axios are fenced in.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/api/**', '**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: 'axios',
+          message: 'Call the backend through a service in src/api/, not axios directly.',
+        }],
+        patterns: [{
+          group: ['**/api/client'],
+          importNames: ['default'],
+          message: 'Add a function to the matching service in src/api/ and call that instead.',
+        }],
+      }],
+    },
+  },
 ])

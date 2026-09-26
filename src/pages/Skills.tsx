@@ -18,44 +18,21 @@ import {
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
-import apiClient from '../api/client';
+import skillsService, { type Skill, type SkillTab } from '../api/skills';
 import MarkdownMessage from '../components/chat/MarkdownMessage';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { IconButton } from '../components/ui/IconButton';
 import SidebarMenuButton from '../components/layout/SidebarMenuButton';
 
-interface Skill {
-    id: string;
-    title: string;
-    description: string;
-    content: string;
-    author: string;
-    isShared: boolean;
-    updatedAt: string;
-    category: string;
-}
-
 export default function Skills() {
     const queryClient = useQueryClient();
     const [searchQuery, setSearchQuery] = usePersistedState('skills.search', '', { storage: 'session' });
-    const [activeTab, setActiveTab] = usePersistedState<'mine' | 'public'>('skills.tab', 'mine');
-    
+    const [activeTab, setActiveTab] = usePersistedState<SkillTab>('skills.tab', 'mine');
+
     // Skills Data from React Query
     const { data: skillsData, isLoading } = useQuery({
         queryKey: ['skills', activeTab, searchQuery],
-        queryFn: async () => {
-            const response = await apiClient.get('/skills/search/', {
-                params: {
-                    query: searchQuery,
-                    tab: activeTab,
-                    page_size: 20
-                }
-            });
-            return {
-                results: response.data.results,
-                total: response.data.total
-            };
-        },
+        queryFn: () => skillsService.search(searchQuery, activeTab),
         staleTime: 5 * 60 * 1000,
     });
     
@@ -65,7 +42,7 @@ export default function Skills() {
 
     // Editor State
     const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
-    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<Skill['id'] | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState('');
     const [editTitle, setEditTitle] = useState('');
@@ -103,10 +80,10 @@ export default function Skills() {
             };
 
             if (selectedSkill) {
-                await apiClient.patch(`/skills/${selectedSkill.id}/`, payload);
+                await skillsService.update(selectedSkill.id, payload);
                 toast.success('Skill updated successfully');
             } else {
-                await apiClient.post('/skills/', payload);
+                await skillsService.create(payload);
                 toast.success('Skill created successfully');
             }
             setIsEditing(false);
@@ -119,8 +96,7 @@ export default function Skills() {
 
     const handleShare = async (skill: Skill) => {
         try {
-            const response = await apiClient.post(`/skills/${skill.id}/share/`);
-            toast.success(response.data.message);
+            toast.success(await skillsService.toggleShare(skill.id));
             queryClient.invalidateQueries({ queryKey: ['skills'] });
         } catch (error) {
             console.error('Failed to share skill:', error);
@@ -128,9 +104,9 @@ export default function Skills() {
         }
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = async (id: Skill['id']) => {
         try {
-            await apiClient.delete(`/skills/${id}/`);
+            await skillsService.remove(id);
             toast.success('Skill deleted');
             queryClient.invalidateQueries({ queryKey: ['skills'] });
         } catch (error) {
@@ -143,7 +119,7 @@ export default function Skills() {
 
     const handleIncorporate = async (skill: Skill) => {
         try {
-            await apiClient.post(`/skills/${skill.id}/fork/`);
+            await skillsService.fork(skill.id);
             toast.success('Skill incorporated into your collection!');
             queryClient.invalidateQueries({ queryKey: ['skills'] });
             setActiveTab('mine');
@@ -437,7 +413,7 @@ export default function Skills() {
                     </div>
                 </div>
             )}
-            {pendingDeleteId && (
+            {pendingDeleteId !== null && (
                 <ConfirmDialog
                     title="Delete skill?"
                     body="This removes the skill from your collection. This cannot be undone."

@@ -26,15 +26,18 @@ You sign in and land on **Ask** (the chat). From the menu you can reach:
 | Evals | `/evals` | `pages/Evals.tsx` | Testing how good an agent is |
 | Connections | `/connections` | `pages/Connections.tsx` | Gmail, Drive, Slack, MCP servers... |
 | Credentials | `/credentials` | `pages/Credentials.tsx` | Saved API keys |
-| Apps | `/apps` | `pages/Apps.tsx` | Shortcuts into your files by type |
+| Apps | `/apps`, `/apps/:appId` | `pages/Apps.tsx`, `components/apps/AppFrame.tsx` | The launcher, and the full-screen Docs, Sheets, Slides, code and PDF apps. An app opens without the normal menus, with its own bar, tabs and file panel |
 | Documents | `/documents` | `pages/Documents.tsx` | Your files, folders and knowledge bases |
 | Dashboards | `/dashboards` | `pages/Dashboards.tsx` | Live tiles an agent saved |
 | Pages | `/pages` | `pages/Pages.tsx` | Pages you published by link |
 | Settings / Profile | `/settings`, `/profile` | `pages/Settings.tsx`, `pages/Profile.tsx` | Your preferences, including Memory (what the assistant remembers about you) |
-| Missions | Activity (`/runs`, Missions section) | `pages/Runs.tsx` (Missions section, via `api/missions.ts`) | Long goals that span many agent runs |
+| Missions | Part of `/runs` | `pages/Runs.tsx` (data from `api/missions.ts`) | Long goals that span many agent runs |
 
 Public pages without login: `/a/:slug` (a shared agent) and `/p/:slug` (a
 published page).
+
+Some old addresses only redirect: `/inbox`, `/overview` and `/missions` go to
+`/runs`, and `/insights` goes to Settings.
 
 ## Tools we use
 
@@ -65,8 +68,10 @@ src/
 │   ├── apps/         the document apps (Docs, Sheets, Slides...): AppFrame,
 │   │                 AppBar, FileMenu, one editor per file type. The heavy
 │   │                 editors (Univer, TipTap, CodeMirror, pdf.js) load lazily,
-│   │                 only inside the app that uses them
-│   └── agents/, runs/, files/, schedules/, ...   one folder per feature
+│   │                 only inside the app that uses them. Edits save by
+│   │                 themselves (there is no Save button)
+│   ├── files/        file cards and the shared file preview
+│   └── agents/, runs/, orchestration/, schedules/, ...   one folder per feature
 ├── api/              one file per backend area. THE ONLY place that calls the backend
 ├── hooks/            reusable React logic (useChatStream, useLiveRun, ...)
 ├── lib/              plain functions, no React (cron text, costs, paths, ...)
@@ -135,7 +140,7 @@ The screen is drawn by smaller pieces it passes data and callbacks to:
 | File | What it is |
 |---|---|
 | `components/chat/ChatHistorySidebar.tsx` | The conversation list on the left |
-| `components/chat/ChatHeader.tsx` | The chat's slim toolbar under the global top bar: history button, the conversation's title, memory-off chip, cost, settings. Same 48px height as the history drawer's header, and the same icon buttons as the top bar |
+| `components/chat/ChatHeader.tsx` | The thin bar above the chat: history button, title, memory-off chip, cost, settings |
 | `components/chat/ChatSettingsDialog.tsx` | Per-chat system prompt and memory switch |
 | `components/chat/ChatMessageItem.tsx` | One saved question or answer, with its sources, reasoning, charts and action buttons |
 | `components/chat/ToolApprovalCard.tsx` | "The assistant wants to do X": Approve / Deny / Allow for this chat / Always |
@@ -146,6 +151,9 @@ The screen is drawn by smaller pieces it passes data and callbacks to:
 | `components/chat/MarkdownMessage.tsx` | Draws one answer |
 | `components/chat/ChartArtifact.tsx`, `HtmlArtifact.tsx` | Charts and HTML the AI produced |
 | `components/chat/TodoPanel.tsx` | The AI's plan while it works |
+| `components/orchestration/PlanPanel.tsx` | When the AI hands work to several agents: one lane per worker, with Steer / Stop buttons. A side rail on desktop, a bottom sheet on phones |
+| `components/chat/QuestionCard.tsx` | A question the AI paused to ask you (pick one, pick several, a number, or text). The Activity page uses the same card |
+| `components/files/PreviewFrame.tsx` | The one file preview used everywhere: chat's side drawer, the Documents page, and the preview dialog |
 | `components/chat/CommandPalette.tsx`, `CommandCard.tsx` | The `/` command menu and its results |
 | `components/chat/ThinkingTimer.tsx` | The ticking timer (kept separate so it doesn't redraw everything) |
 
@@ -163,7 +171,8 @@ The screen is drawn by smaller pieces it passes data and callbacks to:
 
 Add a function to the matching file in `src/api/`, and use it from the page
 with `useQuery` or `useMutation`. Never call `axios` or `fetch` from a
-component.
+component. `npm run lint` enforces this: importing the HTTP client (or axios)
+outside `src/api/` is an error. Helpers such as `tokenManager` are fine.
 
 **Add a shared UI piece**
 

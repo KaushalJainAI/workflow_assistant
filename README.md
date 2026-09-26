@@ -15,13 +15,14 @@ folder layout, and the pattern to copy when adding a screen.
 
 | Route | What it's for |
 |---|---|
-| `/ai-chat` | Streaming chat with live tool calls, a plan (todo) panel, charts, approvals inline, and **steering**: type while the agent works to redirect it |
+| `/ai-chat` | Streaming chat with live tool calls, a plan (todo) panel, charts, approvals and questions inline, Ask / Auto / Plan modes, `/` commands, and **steering**: type while the agent works to redirect it |
 | `/agents`, `/agents/:id` | Automations list (searchable, grouped by category with Scheduled vs On demand inside) and agent builder: prompt, model and reasoning effort, granted tools, connector scopes, autonomy level, spend cap, schedules |
 | `/templates` | Explore: curated agents grouped by pack (plus standalone and community sections); requirements are matched to *your* knowledge bases and connections, never someone else's ids. Installed entries show an Installed mark with Open and Uninstall |
-| `/runs` | Activity: runs waiting for your decision, and run history (each model turn with its reasoning, each tool call, cost) |
+| `/runs` | Activity: runs waiting for your decision, missions, and run history (each model turn with its reasoning, each tool call, cost) |
 | `/schedules` | Cron schedules with a live plain-English reading ("Every weekday at 9:00") |
-| `/connections` | Gmail, Drive, Calendar and MCP servers |
+| `/connections` | Gmail, Drive, Sheets, Calendar, Notion, messaging apps and MCP servers |
 | `/documents` | File system and knowledge bases |
+| `/apps`, `/apps/:appId` | Full-screen Docs (TipTap), Sheets (Univer) and Slides apps that edit the same real files agents write, with autosave, undo, version history and export |
 | `/evals` | Evaluation suites and human review of grader decisions |
 | `/a/:slug` | Public page for a published agent (no account needed) |
 
