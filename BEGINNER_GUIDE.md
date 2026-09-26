@@ -135,7 +135,7 @@ The screen is drawn by smaller pieces it passes data and callbacks to:
 | File | What it is |
 |---|---|
 | `components/chat/ChatHistorySidebar.tsx` | The conversation list on the left |
-| `components/chat/ChatHeader.tsx` | The top bar: history button, memory-off chip, cost, settings |
+| `components/chat/ChatHeader.tsx` | The chat's slim toolbar under the global top bar: history button, the conversation's title, memory-off chip, cost, settings. Same 48px height as the history drawer's header, and the same icon buttons as the top bar |
 | `components/chat/ChatSettingsDialog.tsx` | Per-chat system prompt and memory switch |
 | `components/chat/ChatMessageItem.tsx` | One saved question or answer, with its sources, reasoning, charts and action buttons |
 | `components/chat/ToolApprovalCard.tsx` | "The assistant wants to do X": Approve / Deny / Allow for this chat / Always |

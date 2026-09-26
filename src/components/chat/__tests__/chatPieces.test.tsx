@@ -76,6 +76,18 @@ describe('ChatHistorySidebar', () => {
 });
 
 describe('ChatHeader', () => {
+  it('names the conversation, not a status it never checked', () => {
+    const props = {
+      isGuest: false, historyOpen: false, onOpenHistory: vi.fn(),
+      onShowSettings: vi.fn(), onEditSettings: vi.fn(),
+    };
+    const { rerender } = render(<ChatHeader {...props} session={session()} />);
+    expect(screen.getByText('Trip plan')).toBeTruthy();
+    expect(screen.queryByText('Assistant online')).toBeNull();
+    rerender(<ChatHeader {...props} session={null} />);
+    expect(screen.getByText('New conversation')).toBeTruthy();
+  });
+
   it('shows the memory-off chip, which opens settings without resetting the draft', () => {
     const onShow = vi.fn();
     const onEdit = vi.fn();

@@ -28,6 +28,7 @@ import UnsavedDialog from '../components/apps/UnsavedDialog';
 import VersionHistoryPanel from '../components/apps/VersionHistoryPanel';
 import { useSave } from '../components/apps/useSave';
 import { useAppTabs } from '../hooks/useAppTabs';
+import { useRecentFiles, useRecordOpen } from '../hooks/useRecents';
 import { acceptsDoc, getApp, type AppMeta, type NewFileOption } from '../lib/apps';
 import { apiErrorMessage } from '../lib/apiError';
 import { fileIcon, formatDate, formatSize, locationOf } from '../lib/fileDisplay';
@@ -120,10 +121,33 @@ function Workspace({ app }: { app: AppMeta }) {
   });
   const selected = listed ?? (fetched && fetched.id === selectedId ? fetched : null);
 
-  const { tabs, close } = useAppTabs(
+  const { tabs, close, restoredActive } = useAppTabs(
     app.id,
     selected ? { id: selected.id, name: selected.filename } : null,
   );
+
+  // Every file shown here counts as opened, and the app reopens where it was
+  // left: when the URL names no file, the one in front last time comes back.
+  useRecordOpen(selected?.id ?? null, app.id);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || restoredActive === null) return;
+    restored.current = true;
+    if (fileParam !== null) return;
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('file', String(restoredActive));
+      return next;
+    }, { replace: true });
+  }, [restoredActive, fileParam, setParams]);
+
+  const recentOpened = useRecentFiles({ types: app.accepts!.types, limit: 20 });
+  const recent = useMemo(() => {
+    const opened = (recentOpened.data ?? []).map((r) => r.document).filter((d) => acceptsDoc(app, d));
+    return opened.length > 0
+      ? { label: 'Recently opened', docs: opened.slice(0, 6) }
+      : { label: 'Recently changed', docs: all.slice(0, 6) };
+  }, [recentOpened.data, all, app]);
 
   // A file open from a tab whose row has not loaded yet still labels the tab.
   const tabName = (id: number) =>
@@ -508,7 +532,8 @@ function Workspace({ app }: { app: AppMeta }) {
             <Welcome
               app={app}
               missing={missing}
-              recent={all.slice(0, 6)}
+              recent={recent.docs}
+              recentLabel={recent.label}
               onOpen={open}
               actions={
                 app.editor === 'whiteboard' ? (
@@ -575,11 +600,12 @@ function Workspace({ app }: { app: AppMeta }) {
 }
 
 function Welcome({
-  app, missing, recent, onOpen, actions, onAskAi,
+  app, missing, recent, recentLabel, onOpen, actions, onAskAi,
 }: {
   app: AppMeta;
   missing: boolean;
   recent: Document[];
+  recentLabel: string;
   onOpen: (d: Document) => void;
   actions: React.ReactNode;
   onAskAi: () => void;
@@ -606,7 +632,7 @@ function Welcome({
       </div>
       {recent.length > 0 && (
         <div className="mt-8 w-full max-w-xl text-left">
-          <p className="mb-2 text-[12px] font-medium text-muted-foreground">Recent</p>
+          <p className="mb-2 text-[12px] font-medium text-muted-foreground">{recentLabel}</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {recent.map((d) => {
               const FIcon = fileIcon(d);

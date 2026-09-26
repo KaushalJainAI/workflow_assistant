@@ -56,7 +56,8 @@ export default function ChatHistorySidebar({
         )}
       >
         <div className="w-[85vw] max-w-[320px] md:w-[300px] flex flex-col h-full">
-          <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
+          {/* h-12, the chat toolbar's height, so the two borders meet in one line. */}
+          <div className="h-12 px-4 flex items-center justify-between border-b border-border shrink-0">
             <div className="flex items-center gap-2">
               <History className="w-4 h-4 text-muted-foreground" />
               <h2 className="text-[13px] font-semibold tracking-tight">

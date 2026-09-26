@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, Download, FileOutput, Loader2, X } from 'lucide-react';
 
 import { documentsService, type Document } from '../../api/documents';
+import { useRecordOpen } from '../../hooks/useRecents';
 import { defaultAppFor, openInAppPath } from '../../lib/apps';
 import { downloadBlob } from '../../lib/downloadFile';
 import { apiErrorMessage } from '../../lib/apiError';
@@ -91,6 +92,9 @@ export default function PreviewFrame({ doc, onClose, extra, children, className 
   const app = defaultAppFor(doc);
   const openPath = (app && openInAppPath(doc, app)) || `/documents?doc=${doc.id}`;
   const formats = useExportFormats(doc);
+  // A preview is an open too: the Files pane, the dialog and the chat drawer
+  // all come through here, so each of them feeds "Jump back in".
+  useRecordOpen(doc.id, 'preview');
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
 

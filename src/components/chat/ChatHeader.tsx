@@ -1,6 +1,12 @@
 /**
- * The bar at the top of the chat page: history button, memory-off warning,
- * the conversation's running cost, and the chat-settings button.
+ * The conversation's own toolbar: history, the conversation's title, the
+ * memory-off warning, the running cost, and chat settings.
+ *
+ * It sits under the global Topbar, so it is deliberately a *toolbar*, not a
+ * second app bar: 48px (the history drawer's header is the same height, so
+ * their borders meet in one line), the canvas colour rather than the Topbar's
+ * card colour, and the Topbar's flat 36px icon buttons. It names the
+ * conversation rather than the section — the Topbar already says "Ask".
  */
 import { BrainCircuit, Coins, History, Settings2, Shield } from 'lucide-react';
 
@@ -29,31 +35,42 @@ export default function ChatHeader({
   onShowSettings,
   onEditSettings,
 }: ChatHeaderProps) {
+  // A saved conversation shows its title; a new one says so plainly. The
+  // "Assistant online" pill this replaces was always green — it checked
+  // nothing, so it said nothing.
+  const title = session?.title?.trim() || 'New conversation';
+
   return (
     <header className={cn(
-      "h-16 shrink-0 flex items-center px-4 md:px-6 justify-between border-b border-border/40 bg-background/50",
+      "h-12 shrink-0 flex items-center gap-3 px-3 md:px-6 justify-between border-b border-border bg-background",
       // Guest: the banner band overlays the top — push the header below
       // it instead of stretching it.
       isGuest && "mt-14 md:mt-10"
     )}>
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-1.5 min-w-0">
         {!isGuest && <SidebarMenuButton />}
         {!historyOpen && (
           <button
             onClick={onOpenHistory}
-            className="p-2.5 md:p-3 bg-card/40 border border-border/60 hover:bg-card/60 rounded-lg transition-colors text-muted-foreground group shrink-0"
+            className={toolbarButton}
             aria-label="Conversation history"
+            title="Conversation history"
           >
-            <History className="w-5 h-5 group-hover:text-primary transition-colors" />
+            <History className="h-[18px] w-[18px]" />
           </button>
         )}
-        <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded border border-border bg-secondary">
-           <div className="w-1.5 h-1.5 rounded-full bg-success" />
-           <span className="text-[11px] font-semibold text-muted-foreground">Assistant online</span>
-        </div>
+        <h2
+          className={cn(
+            "ml-1 truncate text-sm font-medium",
+            session?.title?.trim() ? "text-foreground" : "text-muted-foreground",
+          )}
+          title={title}
+        >
+          {title}
+        </h2>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+      <div className="flex items-center gap-1 sm:gap-2 min-w-0 shrink-0">
          {/* Memory state is shown in the header, not buried in the panel:
              with it off the assistant behaves very differently, and a user
              who forgot they switched it off reads that as the model being
@@ -78,7 +95,7 @@ export default function ChatHeader({
          {session && session.cost_source
            && session.cost_source !== 'unpriced' && (
             <div
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums shrink-0"
+              className="flex items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground tabular-nums shrink-0"
               title={describeConversationCost(
                 session.total_cost_usd, session.cost_source,
                 session.total_tokens_used ?? 0,
@@ -95,7 +112,10 @@ export default function ChatHeader({
               </span>
             </div>
          )}
-         <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+         <div
+           className="hidden lg:flex items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground"
+           title="Sent over an encrypted connection; your API keys are encrypted at rest"
+         >
             <Shield className="w-3.5 h-3.5" />
             Encrypted
          </div>
@@ -103,13 +123,18 @@ export default function ChatHeader({
            <button
              onClick={onEditSettings}
              title="Chat settings"
-             className="p-1.5 rounded-lg text-muted-foreground transition-colors duration-200
-                        hover:bg-muted hover:text-foreground active:scale-95"
+             aria-label="Chat settings"
+             className={toolbarButton}
            >
-             <Settings2 className="w-4 h-4" />
+             <Settings2 className="h-[18px] w-[18px]" />
            </button>
          )}
       </div>
     </header>
   );
 }
+
+/** The Topbar's icon-button shape (bell, avatar), so the two bars read as one set. */
+const toolbarButton =
+  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground ' +
+  'transition-colors hover:bg-secondary hover:text-foreground active:scale-95';

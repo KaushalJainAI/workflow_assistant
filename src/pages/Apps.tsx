@@ -3,18 +3,23 @@
  *
  * Every tile opens a real route: the workspace apps at `/apps/<id>` (the
  * user's matching files beside an editor) and the pages that already exist
- * (Files, Dashboards, Pages, Imagine). Recent files come from the server's
- * document stream and open straight into the app that suits them — agent
- * output included, because an agent's file is the user's file.
+ * (Files, Dashboards, Pages, Imagine).
+ *
+ * Two recent lists, because they answer different questions. "Jump back in"
+ * is what the user *opened* (`api/recents.ts`), and reopens each file in the
+ * app it was last used in. "Recently changed" is what was *edited*, by anyone
+ * including an agent, since an agent's file is the user's file.
  */
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { AppWindow, Search, Sparkles } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AppWindow, Search, Sparkles, X } from 'lucide-react';
 
 import { documentsService } from '../api/documents';
+import { recentsService, type RecentFile } from '../api/recents';
+import { useRecentFiles } from '../hooks/useRecents';
 import PageHeader from '../components/layout/PageHeader';
-import { acceptsDoc, defaultAppFor, openInAppPath, searchApps, type AppMeta } from '../lib/apps';
+import { acceptsDoc, defaultAppFor, getApp, openInAppPath, searchApps, type AppMeta } from '../lib/apps';
 import { fileIcon, fileTint, formatDate, locationOf } from '../lib/fileDisplay';
 import { cn } from '../lib/utils';
 
@@ -37,6 +42,11 @@ export default function Apps() {
     () => [...files].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).filter((d) => defaultAppFor(d)).slice(0, 8),
     [files],
   );
+  const opened = useRecentFiles({ limit: 8 });
+  const openedRows = useMemo(
+    () => (opened.data ?? []).filter((r) => defaultAppFor(r.document)),
+    [opened.data],
+  );
   const countFor = (app: AppMeta) => files.filter((d) => acceptsDoc(app, d)).length;
   const capped = !!data?.my_has_more;
 
@@ -54,6 +64,8 @@ export default function Apps() {
             className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
+
+        {!query && openedRows.length > 0 && <JumpBackIn rows={openedRows} />}
 
         {apps.length === 0 && (
           <p className="py-10 text-center text-sm text-muted-foreground">No apps match that search.</p>
@@ -92,7 +104,7 @@ export default function Apps() {
         {!query && (
           <section>
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Recent files</h2>
+              <h2 className="text-sm font-semibold">Recently changed</h2>
               <Link to="/documents" className="text-[12.5px] text-primary hover:underline">Open Files</Link>
             </div>
             {recents.length === 0 ? (
@@ -127,6 +139,61 @@ export default function Apps() {
         )}
       </div>
     </div>
+  );
+}
+
+/** The app a recent file reopens in: the one it was last used in, if it can. */
+function appForRecent(row: RecentFile): AppMeta {
+  const last = getApp(row.app);
+  return last && last.kind === 'workspace' && acceptsDoc(last, row.document) ? last : defaultAppFor(row.document)!;
+}
+
+function JumpBackIn({ rows }: { rows: RecentFile[] }) {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ['recents', 'list'] });
+  const forget = (id: number) => void recentsService.forget(id).then(refresh).catch(() => undefined);
+  const clear = () => void recentsService.clear().then(refresh).catch(() => undefined);
+  return (
+    <section className="mb-8">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Jump back in</h2>
+        <button type="button" onClick={clear} className="text-[12.5px] text-muted-foreground hover:text-foreground">
+          Clear
+        </button>
+      </div>
+      <ul className="m-0 grid list-none gap-2 p-0 sm:grid-cols-2 xl:grid-cols-4">
+        {rows.map((row) => {
+          const d = row.document;
+          const app = appForRecent(row);
+          const Icon = fileIcon(d);
+          return (
+            <li key={d.id} className="group relative">
+              <Link
+                to={openInAppPath(d, app)!}
+                className="flex items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5 pr-8 no-underline hover:border-primary/40"
+              >
+                <Icon className={cn('h-5 w-5 shrink-0', fileTint(d))} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] text-foreground">{d.filename}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {app.title} · opened {formatDate(row.opened_at)}
+                  </span>
+                </span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => forget(d.id)}
+                aria-label={`Remove ${d.filename} from recent`}
+                title="Remove from recent"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-70 hover:bg-muted hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
