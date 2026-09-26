@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { isNavActive, navGroups } from '../../lib/navigation';
 import { useAuth } from '../../contexts/authState';
 import { useHitlPending } from '../../hooks/useHitlPending';
-import { logsService, notificationsService } from '../../api';
+import { useLiveCount } from '../../hooks/useActivityLive';
+import { notificationsService } from '../../api';
 
 /* Desktop topbar — the primary navigation surface.
  *
@@ -30,15 +31,7 @@ export default function Topbar() {
 
   const { data: pending = [] } = useHitlPending(isAuthenticated);
   const pendingCount = pending.length;
-  const { data: runningCount = 0 } = useQuery({
-    queryKey: ['nav', 'running'],
-    enabled: isAuthenticated,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const page = await logsService.listExecutions({ status: 'running', limit: 1 });
-      return page.results.length;
-    },
-  });
+  const runningCount = useLiveCount(isAuthenticated);
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
     enabled: isAuthenticated,

@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 import type { StandaloneChatMessage as ChatMessage } from '../../api';
-import type { ChartSpec, HtmlArtifact as HtmlArtifactData, TodoItem } from '../../api/chat';
+import type { ChartSpec, HtmlArtifact as HtmlArtifactData } from '../../api/chat';
 import type { MessagePanel } from '../../hooks/useMessagePanels';
 import { prettyModel } from '../../lib/modelNames';
 import { cn } from '../../lib/utils';
@@ -45,7 +45,8 @@ import { formatWordCount, stripXmlTags } from './format';
 import HtmlArtifact from './HtmlArtifact';
 import MarkdownMessage from './MarkdownMessage';
 import { MediaPreview } from './MediaPreview';
-import TodoPanel from './TodoPanel';
+import PlanSummary from '../plan/PlanSummary';
+import { actionsFrom, historyFrom } from '../../lib/planView';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
@@ -517,7 +518,10 @@ export default function ChatMessageItem({
             it set out to do and what it could not finish. */}
         {Array.isArray(message.metadata?.todos) &&
           (message.metadata?.todos ?? []).length > 0 && (
-            <TodoPanel todos={message.metadata?.todos as TodoItem[]} />
+            <PlanSummary
+              history={historyFrom(message.metadata?.todo_history, message.metadata?.todos)}
+              actions={actionsFrom(message.metadata?.tool_trace)}
+            />
           )}
 
         {/* Files the turn saved, linked by id rather than by

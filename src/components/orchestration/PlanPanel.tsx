@@ -1,17 +1,15 @@
 import { memo, useEffect, useState } from 'react';
 import {
-  Ban,
   Check,
   ChevronUp,
-  CircleDashed,
   GitBranch,
-  Loader2,
   Lock,
   Send,
   Square,
 } from 'lucide-react';
 import agentsService from '../../api/agents';
 import type { TodoItem } from '../../api/chat';
+import PlanView from '../plan/PlanView';
 import { planProgress, type PlanChange, type PlanLease, type PlanTask } from '../../lib/planStream';
 import { apiErrorMessage } from '../../lib/apiError';
 import { toast } from 'sonner';
@@ -26,26 +24,21 @@ import { toast } from 'sonner';
  * <ElapsedTime/>, which owns its own interval for the same reason
  * <ThinkingTimer/> does.
  *
- * The inline `TodoPanel` stays for chats with no delegation: when a run has
+ * Chats with no delegation show the plan in the dock above the composer: when a run has
  * tasks the transcript shows a one-line pill that focuses this panel instead
  * of repeating the list.
  */
 
 interface Props {
   todos: TodoItem[];
+  /** Every revision of the plan, so the panel can show what changed. */
+  todoHistory?: TodoItem[][];
   tasks: PlanTask[];
   leases: PlanLease[];
   changes: PlanChange[];
   /** Replay mode (`/runs`): lanes render without action buttons. */
   readOnly?: boolean;
 }
-
-const STATUS_ICON = {
-  done: Check,
-  doing: Loader2,
-  blocked: Ban,
-  open: CircleDashed,
-} as const;
 
 /** A clock that ticks without re-rendering anything above it. */
 function ElapsedTime({ since }: { since?: number }) {
@@ -215,7 +208,7 @@ function WorkerLane({ task, readOnly }: { task: PlanTask; readOnly: boolean }) {
   );
 }
 
-function PanelBody({ todos, tasks, leases, changes, readOnly }: Props) {
+function PanelBody({ todos, todoHistory, tasks, leases, changes, readOnly }: Props) {
   const { done, total, running } = planProgress(tasks);
   const showPlan = todos.length > 0;
   const showTasks = tasks.length > 0;
@@ -236,31 +229,11 @@ function PanelBody({ todos, tasks, leases, changes, readOnly }: Props) {
               </span>
             )}
           </div>
-          <ul className="m-0 list-none space-y-0.5 p-0">
-            {todos.map((todo, i) => {
-              const Icon = STATUS_ICON[todo.status] ?? CircleDashed;
-              return (
-                <li key={`${i}-${todo.text}`} className="flex items-start gap-2 rounded px-1 py-0.5 text-[12px]">
-                  <Icon
-                    className={`mt-0.5 h-3 w-3 shrink-0 ${
-                      todo.status === 'done' ? 'text-emerald-500'
-                        : todo.status === 'doing' ? 'animate-spin text-primary'
-                        : todo.status === 'blocked' ? 'text-amber-500'
-                        : 'text-muted-foreground/50'
-                    }`}
-                  />
-                  <span className={todo.status === 'done' ? 'text-muted-foreground line-through' : ''}>
-                    {todo.text}
-                  </span>
-                  {todo.owner && (
-                    <span className="ml-auto shrink-0 rounded bg-secondary px-1 text-[10px] text-muted-foreground">
-                      {todo.owner}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          {/* The same component as the dock and saved replies, so a team
+              run shows dropped steps, reasons and history the same way. */}
+          <div className="overflow-hidden rounded-md border border-border/60">
+            <PlanView history={todoHistory?.length ? todoHistory : [todos]} bare />
+          </div>
         </section>
       )}
 

@@ -87,6 +87,8 @@ export interface TodoItem {
   /** Which worker owns this step, and which plan task it mirrors (coding lead). */
   owner?: string;
   task_id?: string;
+  /** Why a step is blocked (or what it waits on). Shown under the item. */
+  note?: string;
 }
 
 /** One point on a chart. `y` is null where the value is unknown, which the
@@ -144,6 +146,8 @@ export interface ToolTraceEntry {
   summary?: string;
   thought?: string;
   args?: { query?: string; question?: string; [key: string]: unknown };
+  /** The plan step in progress when this call was made. */
+  step?: string;
   [key: string]: unknown;
 }
 
@@ -204,6 +208,8 @@ export interface ChatMessageMetadata {
   html_artifacts?: HtmlArtifact[];
   charts?: ChartSpec[];
   todos?: TodoItem[];
+  /** Every revision of the plan, oldest first (`todos.record_revision`). */
+  todo_history?: { n?: number; todos?: TodoItem[] }[];
   files?: FileCardData[];
   follow_ups?: string[];
   [key: string]: unknown;

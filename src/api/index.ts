@@ -67,6 +67,13 @@ export {
 } from './notifications';
 export { default as nodeService, type NodeSchema, type NodeField, type NodeHandle } from './nodeService';
 export { chatService, type ChatSession, type ChatMessage as StandaloneChatMessage } from './chat';
+export {
+  default as activityService,
+  type LiveItem,
+  type LiveKind,
+  type FileActivityItem,
+  type FileActivityKind,
+} from './activity';
 export { 
   default as mcpService, 
   type MCPServer, 

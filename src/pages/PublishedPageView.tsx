@@ -74,6 +74,11 @@ export default function PublishedPageView() {
             <Globe className="h-3.5 w-3.5" />
             Published {new Date(page.updated_at).toLocaleDateString()} · a snapshot, not a live document
           </p>
+          {/* Transparency (EU AI Act Art. 50, India IT Rules 2026): anyone
+              reading a page made here is told it may be AI-generated. */}
+          <p className="mt-1 text-[12px] text-muted-foreground">
+            Made with an AI assistant: parts of this page may be AI-generated.
+          </p>
         </header>
         {page.kind === 'report' && <Report body={page.body} />}
         {page.kind === 'html' && <HtmlPage html={page.body} title={page.title} />}

@@ -425,6 +425,36 @@ async listExecutions(params?: {
     return response.data;
   },
 
+  /**
+   * Delete one finished run. 409 while live (stop first) or eval-owned
+   * (delete the sweep instead). Turns/steps/trace cascade; cost rows stay.
+   */
+  async deleteExecution(executionId: string): Promise<void> {
+    await apiClient.delete(`/logs/executions/${executionId}/`);
+  },
+
+  /**
+   * Delete many finished runs: `{ids}` or `{status, older_than_days}`.
+   * All or nothing — any live or eval-owned row 409s the whole request.
+   */
+  async bulkDeleteExecutions(body: {
+    ids?: string[];
+    status?: 'failed' | 'cancelled' | 'timeout';
+    older_than_days?: number;
+  }): Promise<{ deleted: number }> {
+    const { data } = await apiClient.post('/logs/executions/bulk-delete/', body);
+    return data;
+  },
+
+  /**
+   * Close one run stuck `running` as failed, without waiting for the sweep.
+   * 409 for anything not running.
+   */
+  async markExecutionFailed(executionId: string): Promise<{ execution_id: string; status: string }> {
+    const { data } = await apiClient.post(`/logs/executions/${executionId}/mark-failed/`, {});
+    return data;
+  },
+
   async submitFeedback(body: {
     target: 'execution' | 'message'; id: string | number;
     rating: 1 | -1; reason?: string; comment?: string;

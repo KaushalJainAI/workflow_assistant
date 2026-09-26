@@ -1,10 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { GitGraph, Plus } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../contexts/authState';
 import { useHitlPending } from '../../hooks/useHitlPending';
-import { logsService } from '../../api';
+import { useLiveCount } from '../../hooks/useActivityLive';
 
 /* Phone top bar — brand + actions.
  *
@@ -23,15 +22,7 @@ export default function MobileTopBar() {
 
   const { data: pending = [] } = useHitlPending(isAuthenticated);
   const pendingCount = pending.length;
-  const { data: runningCount = 0 } = useQuery({
-    queryKey: ['nav', 'running'],
-    enabled: isAuthenticated,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const page = await logsService.listExecutions({ status: 'running', limit: 1 });
-      return page.results.length;
-    },
-  });
+  const runningCount = useLiveCount(isAuthenticated);
 
   const initials = (() => {
     if (user?.name) {

@@ -44,6 +44,7 @@ import {
 } from '../api/credentials';
 import { mcpService, MCPToolsError, type MCPServer, type MCPServerCategory } from '../api/mcp';
 import MCPServerModal from '../components/mcp/MCPServerModal';
+import HeldToolsPanel from '../components/mcp/HeldToolsPanel';
 import MessagingChannels from '../components/messaging/MessagingChannels';
 import PageHeader from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -1034,6 +1035,7 @@ export default function Connections() {
       )}
 
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 space-y-10 custom-scrollbar">
+        <HeldToolsPanel />
         {CATEGORY_ORDER.map((category) => {
           const group = byCategory.get(category) ?? [];
           if (group.length === 0) return null;

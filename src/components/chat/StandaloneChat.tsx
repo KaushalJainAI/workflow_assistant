@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useDeferredValue } from 'react';
+import { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   RUN_STATUS_EVENT,
@@ -46,7 +46,8 @@ import { TextSelectionMenu } from './TextSelectionMenu';
 import { MediaPreview } from './MediaPreview';
 import HtmlArtifact from './HtmlArtifact';
 import ChartArtifact from './ChartArtifact';
-import TodoPanel from './TodoPanel';
+import PlanDock from '../plan/PlanDock';
+import { actionsFrom, historyFrom } from '../../lib/planView';
 import PlanPanel from '../orchestration/PlanPanel';
 import FileCards from '../files/FileCards';
 import FilePreviewProvider from '../files/FilePreviewProvider';
@@ -267,6 +268,21 @@ export default function StandaloneChat() {
     applyPlanEvent,
     resetPlan,
   } = usePlanStream();
+
+  // What the plan dock shows: the running turn's plan while there is one,
+  // otherwise the most recent reply's — so the current plan has one place.
+  const dockPlan = useMemo(() => {
+    if (isLoading && live.todoHistory.length > 0) {
+      return { history: live.todoHistory, actions: actionsFrom(live.activity), live: true };
+    }
+    const last = [...messages].reverse().find(
+      m => m.role === 'assistant' && Array.isArray(m.metadata?.todos) && m.metadata.todos.length > 0);
+    return {
+      history: last ? historyFrom(last.metadata?.todo_history, last.metadata?.todos) : [],
+      actions: last ? actionsFrom(last.metadata?.tool_trace) : [],
+      live: false,
+    };
+  }, [isLoading, live.todoHistory, live.activity, messages]);
 
   // Bound as consts so a `&&` guard narrows them inside event handlers too,
   // which a `live.x` property read does not.
@@ -1090,7 +1106,10 @@ export default function StandaloneChat() {
       if (frame.type === RUN_STATUS_EVENT) {
         setIsLoading(false);
         clearStreamStatus();
-        if (frame.status === 'error' && frame.code === 'SECURITY_VIOLATION') {
+        // Both refusals happen before the server saves anything, so both take
+        // the message back out: the injection filter and the content policy.
+        if (frame.status === 'error'
+            && (frame.code === 'SECURITY_VIOLATION' || frame.code === 'CONTENT_POLICY')) {
           dropRefusedMessageRef.current(
             conversationId,
             run.meta,
@@ -1760,9 +1779,6 @@ export default function StandaloneChat() {
                             When the run dispatched a team, the transcript
                             shows a one-line pill that focuses the side panel
                             instead of repeating the list. */}
-                        {live.todos.length > 0 && plan.tasks.length === 0 && (
-                          <TodoPanel todos={live.todos} live />
-                        )}
                         {live.todos.length > 0 && plan.tasks.length > 0 && (() => {
                           const { done, total } = planProgress(plan.tasks);
                           return (
@@ -2109,6 +2125,7 @@ export default function StandaloneChat() {
             <div id="plan-panel" className="contents">
               <PlanPanel
                 todos={live.todos}
+                todoHistory={live.todoHistory}
                 tasks={plan.tasks}
                 leases={plan.leases}
                 changes={plan.changes}
@@ -2129,6 +2146,13 @@ export default function StandaloneChat() {
           <div className="max-w-4xl mx-auto space-y-4">
             
             <div className="relative group/input">
+
+              {/* The plan, pinned above the composer so it never scrolls
+                  away. A team run shows it in the side panel instead. */}
+              {plan.tasks.length === 0 && dockPlan.history.length > 0 && (
+                <PlanDock history={dockPlan.history} actions={dockPlan.actions}
+                  live={dockPlan.live} />
+              )}
 
               {/* Continue Exploring — above the chatbox */}
               {!isInitialState && !isLoading && (() => {

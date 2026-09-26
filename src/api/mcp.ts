@@ -272,6 +272,34 @@ export const mcpService = {
     );
     return response.data;
   },
+
+  /**
+   * Tools withheld until the user reviews them (`mcp_integration/pinning.py`):
+   * new ones whose description is addressed to an AI, and ones a server
+   * changed after the user connected it.
+   */
+  async heldTools(): Promise<{ servers: HeldToolsGroup[] }> {
+    const response = await apiClient.get<{ servers: HeldToolsGroup[] }>('/mcp/servers/held-tools/');
+    return response.data;
+  },
+
+  async approveHeldTool(serverId: number, toolName: string): Promise<void> {
+    await apiClient.post(`/mcp/servers/${serverId}/held-tools/approve/`, { tool_name: toolName });
+  },
 };
+
+export interface HeldTool {
+  tool_name: string;
+  status: 'changed' | 'quarantined';
+  reason: string;
+  description: string;
+  updated_at: string;
+}
+
+export interface HeldToolsGroup {
+  server_id: number;
+  server_name: string;
+  tools: HeldTool[];
+}
 
 export default mcpService;

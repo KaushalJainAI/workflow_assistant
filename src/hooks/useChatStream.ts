@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { ChartSpec, FileCardData, TodoItem, HtmlArtifact as HtmlArtifactData } from '../api/chat';
 import type { ChatMediaItem, CodeExecutionEntry } from '../api/chat';
 import { toQuestionSpec, type QuestionSpec } from '../lib/question';
+import { appendRevision } from '../lib/planView';
 
 /**
  * One frame off the SSE wire. The payload shape varies per `type` and is not
@@ -56,6 +57,8 @@ export interface StreamActivity {
   args?: Record<string, unknown>;
   iteration?: number;
   thought?: string;
+  /** The plan step in progress when the call was made (`agent.py::_plan_calls`). */
+  step?: string;
 }
 
 /**
@@ -129,6 +132,8 @@ export interface ChatStreamState {
   artifacts: HtmlArtifactData[];
   charts: ChartSpec[];
   todos: TodoItem[];
+  /** Every distinct revision of the plan this turn, oldest first. */
+  todoHistory: TodoItem[][];
   files: FileCardData[];
   blockedAttachments: { message: string; items: BlockedAttachment[] } | null;
   pendingToolCall: PendingToolCall | null;
@@ -152,6 +157,7 @@ const EMPTY: ChatStreamState = {
   artifacts: [],
   charts: [],
   todos: [],
+  todoHistory: [],
   files: [],
   blockedAttachments: null,
   pendingToolCall: null,
@@ -186,6 +192,7 @@ function appendActivity(activity: StreamActivity[], event: StreamEvent): StreamA
       args: obj(event.args),
       iteration: num(event.iteration),
       thought: str(event.thought),
+      ...(typeof event.step === 'string' && event.step ? { step: event.step } : {}),
     },
   ];
 }
@@ -227,7 +234,10 @@ function reduceEvent(state: ChatStreamState, event: StreamEvent): ChatStreamStat
       // Replaced wholesale, never merged: `update_todos` replaces the whole
       // list every time, so applying this as a delta would reconstruct a state
       // the server never sent.
-      return { ...state, todos: arr<TodoItem>(event.todos) };
+    {
+      const todos = arr<TodoItem>(event.todos);
+      return { ...state, todos, todoHistory: appendRevision(state.todoHistory, todos) };
+    }
     case 'files_update':
       // Whole list, like todos: a second write to one file updates its entry
       // on the server, so appending here would show it twice.

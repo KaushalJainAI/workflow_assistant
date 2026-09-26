@@ -62,6 +62,14 @@ const missionsService = {
     const { data } = await apiClient.post(`/missions/${id}/cancel/`);
     return data;
   },
+
+  /**
+   * Delete a stopped mission. 409 while active/waiting (cancel first).
+   * Past runs keep their rows — only the goal goes.
+   */
+  async remove(id: number | string): Promise<void> {
+    await apiClient.delete(`/missions/${id}/`);
+  },
 };
 
 export default missionsService;

@@ -14,9 +14,10 @@ import { navGroups } from "../../lib/navigation";
 import { OPEN_SIDEBAR_EVENT } from "./sidebarBus";
 import { useQuery } from "@tanstack/react-query";
 import { useHitlPending } from "../../hooks/useHitlPending";
+import { useLiveCount } from "../../hooks/useActivityLive";
 import { useAuth } from "../../contexts/authState";
 import { useImagineOptional } from "../../contexts/imagineState";
-import { logsService, notificationsService } from "../../api";
+import { notificationsService } from "../../api";
 import { toast } from "sonner";
 
 
@@ -95,15 +96,7 @@ const Sidebar = () => {
     const pendingCount = pending.length;
     // No global "something is running" push exists (the execution socket is
     // per-run), so this one genuinely has to poll. A minute is enough for a dot.
-    const { data: runningCount = 0 } = useQuery({
-        queryKey: ['nav', 'running'],
-        enabled: isAuthenticated,
-        refetchInterval: 60_000,
-        queryFn: async () => {
-            const page = await logsService.listExecutions({ status: 'running', limit: 1 });
-            return page.results.length;
-        },
-    });
+    const runningCount = useLiveCount(isAuthenticated);
     // Unread notification rows. Shared key with NotificationsTab and the
     // socket hook, so a push refreshes this without waiting for the poll.
     const { data: notifications = [] } = useQuery({
