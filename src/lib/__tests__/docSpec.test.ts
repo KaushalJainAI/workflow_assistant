@@ -123,6 +123,43 @@ group('specToTipTap', () => {
   it('never returns an empty document', () => {
     expect(specToTipTap([])).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] });
   });
+  // Agents write emphasis as markers in plain text; the file renders them
+  // (`office/document.py`), so the page must too, not show the asterisks.
+  it('draws **bold** and *italic* markers in plain text as marks', () => {
+    const doc = specToTipTap([
+      { type: 'paragraph', text: 'Revenue grew **38%** and *fast*.' },
+      { type: 'bullets', items: ['a **key** point'] },
+    ]);
+    expect(doc.content?.[0].content).toEqual([
+      { type: 'text', text: 'Revenue grew ', marks: undefined },
+      { type: 'text', text: '38%', marks: [{ type: 'bold' }] },
+      { type: 'text', text: ' and ', marks: undefined },
+      { type: 'text', text: 'fast', marks: [{ type: 'italic' }] },
+      { type: 'text', text: '.', marks: undefined },
+    ]);
+    const item = doc.content?.[1].content?.[0].content?.[0].content;
+    expect(item?.[1]).toEqual({ type: 'text', text: 'key', marks: [{ type: 'bold' }] });
+    // Saved back as runs: the emphasis survives an edit instead of the stars.
+    expect(tipTapToBlocks(doc)[0]).toEqual({
+      type: 'paragraph',
+      runs: [{ text: 'Revenue grew ' }, { text: '38%', bold: true }, { text: ' and ' },
+        { text: 'fast', italic: true }, { text: '.' }],
+    });
+  });
+
+  it('heads a table with its first row, and shows a caption only when asked', () => {
+    const table: Block = { type: 'table', columns: ['A'], rows: [['1']], caption: 'Table 1' };
+    const editor = specToTipTap([table]);
+    expect(editor.content?.[0].content?.[0].content?.[0].type).toBe('tableHeader');
+    expect(editor.content?.[0].content?.[1].content?.[0].type).toBe('tableCell');
+    expect(editor.content).toHaveLength(1);
+
+    const preview = specToTipTap([table], { captions: true });
+    expect(preview.content?.[1]).toEqual({
+      type: 'paragraph',
+      content: [{ type: 'text', text: 'Table 1', marks: [{ type: 'italic' }] }],
+    });
+  });
 });
 
 group('pruneBlocks', () => {

@@ -1,7 +1,7 @@
 /**
  * OfficePreview: a deck, a workbook and a Word document drawn from their stored spec.
  *
- * The specs below are the shape `chat/tools/office/*::preview` stores in
+ * The specs below are the shape the office tools (`office/*::preview`) store in
  * `Document.metadata.spec`. The point is that each renders what the file says —
  * and that a document arriving from a listing (which leaves the spec out) is
  * fetched in full rather than shown as "no preview".
@@ -44,14 +44,25 @@ describe('OfficePreview — decks', () => {
       ],
     })} />);
 
+    // One slide at a time, the way the Slides app presents it: walk the deck
+    // with the Next button and check each slide's own words.
+    const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next slide' }));
+    expect(screen.getByText('1 / 6')).toBeInTheDocument();
+    expect(screen.getByText(/dark theme · in-browser preview/)).toBeInTheDocument();
     expect(screen.getByText('EV market in India')).toBeInTheDocument();
+    next();
     expect(screen.getByText('Subsidies').tagName).toBe('STRONG');
     expect(screen.getByText('FAME III')).toBeInTheDocument();
-    expect(screen.getByText('Stress subsidies')).toBeInTheDocument();
+    expect(screen.getByText(/Stress subsidies/)).toBeInTheDocument();
+    next();
     expect(screen.getByText('₹4.2 Cr')).toBeInTheDocument();
+    next();
     expect(screen.getByText('Ather')).toBeInTheDocument();
+    next();
     expect(screen.getByText(/An analyst/)).toBeInTheDocument();
-    expect(screen.getByText(/6 slides · dark theme/)).toBeInTheDocument();
+    next();
+    expect(screen.getByText('6 / 6')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next slide' })).toBeDisabled();
   });
 
   it('renders stored text as text, never as markup', () => {
@@ -85,7 +96,7 @@ describe('OfficePreview — workbooks', () => {
 });
 
 describe('OfficePreview — documents', () => {
-  it('draws headings, emphasis, lists and tables', () => {
+  it('draws headings, emphasis, lists and tables', async () => {
     render(<OfficePreview doc={doc({
       kind: 'document', title: 'Q3 review', subtitle: 'For the board', accent: '2A78D6', blocks: [
         { type: 'heading', text: 'Summary', level: 1 },
@@ -95,7 +106,9 @@ describe('OfficePreview — documents', () => {
       ],
     }, { file_type: 'docx' })} />);
 
-    expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument();
+    // The preview is the Docs editor read-only, which loads lazily.
+    expect(await screen.findByRole('heading', { name: 'Summary' }, { timeout: 5000 }))
+      .toBeInTheDocument();
     expect(screen.getByText('38%').tagName).toBe('STRONG');
     expect(screen.getByText('Table 1')).toBeInTheDocument();
   });

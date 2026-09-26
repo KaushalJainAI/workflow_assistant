@@ -13,6 +13,7 @@
  */
 import type { JSONContent } from '@tiptap/core';
 
+import { spans } from './officeSpec';
 import type { Align, Block, ListItem, TextRun } from './officeSpec';
 
 export interface DocSpecInput {
@@ -27,6 +28,12 @@ interface ImageMaps {
   displaySrc?: (path: string) => string;
   /** What the spec stores for an editor source (a storage path). */
   storePath?: (src: string) => string;
+  /**
+   * Draw each table's caption under it. Read-only previews only: the editor
+   * has no caption node, so a caption drawn there would come back as an
+   * ordinary paragraph on the next save.
+   */
+  captions?: boolean;
 }
 
 type MarkName = 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'link';
@@ -233,11 +240,19 @@ function inlineNodes(text: string | undefined, runs: TextRun[] | undefined): JSO
     }
     return out;
   }
-  return text ? [{ type: 'text', text }] : [];
+  // Plain `text` may carry `**bold**` / `*italic*` markers: the agents' tools
+  // write them, and the file renderers honour them (`office/document.py`).
+  // Parsed with the same rule the file uses, so the page and the file agree.
+  if (!text) return [];
+  return spans(text).map((span) => ({
+    type: 'text',
+    text: span.text,
+    marks: span.bold ? [{ type: 'bold' }] : span.italic ? [{ type: 'italic' }] : undefined,
+  }));
 }
 
 function itemNodes(item: ListItem): JSONContent[] {
-  if (typeof item === 'string') return [{ type: 'text', text: item }];
+  if (typeof item === 'string') return inlineNodes(item, undefined);
   return inlineNodes(item.text, item.runs);
 }
 
@@ -290,16 +305,24 @@ export function specToTipTap(blocks: Block[], maps: ImageMaps = {}): JSONContent
         break;
       }
       case 'table':
+        // The first row is the header, as the file draws it and as
+        // `tipTapToBlocks` reads it back.
         content.push({
           type: 'table',
-          content: [block.columns, ...block.rows].map((row) => ({
+          content: [block.columns, ...block.rows].map((row, i) => ({
             type: 'tableRow',
             content: row.map((cell) => ({
-              type: 'tableCell',
+              type: i === 0 ? 'tableHeader' : 'tableCell',
               content: [{ type: 'paragraph', content: cell ? [{ type: 'text', text: cell }] : [] }],
             })),
           })),
         });
+        if (maps.captions && block.caption) {
+          content.push({
+            type: 'paragraph',
+            content: [{ type: 'text', text: block.caption, marks: [{ type: 'italic' }] }],
+          });
+        }
         break;
       case 'image':
         content.push({

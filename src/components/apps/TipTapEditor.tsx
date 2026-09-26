@@ -266,7 +266,10 @@ export function TipTapReadOnly({ docId, spec }: { docId: number; spec: DocumentS
         TableCell,
         Image.configure({ inline: false, allowBase64: false }),
       ],
-      content: specToTipTap(spec.blocks, { displaySrc: (path) => toDisplay[path] ?? path }),
+      content: specToTipTap(spec.blocks, {
+        displaySrc: (path) => toDisplay[path] ?? path,
+        captions: true,
+      }),
       editable: false,
       editorProps: { attributes: { class: 'tiptap-doc' } },
     },
